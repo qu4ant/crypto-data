@@ -50,7 +50,9 @@ def temp_db():
 def mock_cmc_client():
     """Mock CoinMarketCapClient for testing."""
     with patch('crypto_data.ingestion.CoinMarketCapClient') as mock_client:
-        mock_instance = MagicMock()
+        mock_instance = AsyncMock()
+        mock_instance.__aenter__.return_value = mock_instance
+        mock_instance.__aexit__.return_value = None
         mock_client.return_value = mock_instance
         yield mock_instance
 
@@ -69,7 +71,7 @@ def mock_binance_client():
 def test_ingest_universe_fetches_and_stores_snapshot(temp_db, mock_cmc_client):
     """Test that universe snapshot is fetched from CMC and stored in database."""
     # Mock CMC API response
-    mock_cmc_client.get_historical_listings.return_value = [
+    mock_cmc_client.get_historical_listings = AsyncMock(return_value=[
         {
             'symbol': 'BTC',
             'cmcRank': 1,
@@ -82,12 +84,9 @@ def test_ingest_universe_fetches_and_stores_snapshot(temp_db, mock_cmc_client):
             'tags': ['smart-contracts'],
             'quotes': [{'marketCap': 200000000000}]
         }
-    ]
+    ])
 
-    with patch('crypto_data.ingestion.load_universe_config') as mock_config:
-        mock_config.return_value = ([], [])  # No exclusions
-
-        ingest_universe(temp_db, '2024-01-01', top_n=100)
+    asyncio.run(ingest_universe(temp_db, months=['2024-01'], top_n=100, exclude_tags=[], exclude_symbols=[]))
 
     # Verify data was stored
     db = CryptoDatabase(temp_db)
@@ -103,7 +102,7 @@ def test_ingest_universe_fetches_and_stores_snapshot(temp_db, mock_cmc_client):
 
 def test_ingest_universe_filters_excluded_tags(temp_db, mock_cmc_client):
     """Test that coins with excluded tags are filtered out."""
-    mock_cmc_client.get_historical_listings.return_value = [
+    mock_cmc_client.get_historical_listings = AsyncMock(return_value=[
         {
             'symbol': 'BTC',
             'cmcRank': 1,
@@ -116,12 +115,9 @@ def test_ingest_universe_filters_excluded_tags(temp_db, mock_cmc_client):
             'tags': ['stablecoin'],  # Should be filtered
             'quotes': [{'marketCap': 80000000000}]
         }
-    ]
+    ])
 
-    with patch('crypto_data.ingestion.load_universe_config') as mock_config:
-        mock_config.return_value = (['stablecoin'], [])
-
-        ingest_universe(temp_db, '2024-01-01', top_n=100)
+    asyncio.run(ingest_universe(temp_db, months=['2024-01'], top_n=100, exclude_tags=['stablecoin'], exclude_symbols=[]))
 
     # Verify USDT was filtered
     db = CryptoDatabase(temp_db)
@@ -135,7 +131,7 @@ def test_ingest_universe_filters_excluded_tags(temp_db, mock_cmc_client):
 
 def test_ingest_universe_filters_excluded_symbols(temp_db, mock_cmc_client):
     """Test that blacklisted symbols are filtered out."""
-    mock_cmc_client.get_historical_listings.return_value = [
+    mock_cmc_client.get_historical_listings = AsyncMock(return_value=[
         {
             'symbol': 'BTC',
             'cmcRank': 1,
@@ -148,12 +144,9 @@ def test_ingest_universe_filters_excluded_symbols(temp_db, mock_cmc_client):
             'tags': [],
             'quotes': [{'marketCap': 1000000000}]
         }
-    ]
+    ])
 
-    with patch('crypto_data.ingestion.load_universe_config') as mock_config:
-        mock_config.return_value = ([], ['FTT', 'LUNA'])
-
-        ingest_universe(temp_db, '2024-01-01', top_n=100)
+    asyncio.run(ingest_universe(temp_db, months=['2024-01'], top_n=100, exclude_tags=[], exclude_symbols=['FTT', 'LUNA']))
 
     # Verify FTT was filtered
     db = CryptoDatabase(temp_db)
@@ -167,19 +160,16 @@ def test_ingest_universe_filters_excluded_symbols(temp_db, mock_cmc_client):
 
 def test_ingest_universe_atomic_transaction_commits(temp_db, mock_cmc_client):
     """Test that transaction commits on success."""
-    mock_cmc_client.get_historical_listings.return_value = [
+    mock_cmc_client.get_historical_listings = AsyncMock(return_value=[
         {
             'symbol': 'BTC',
             'cmcRank': 1,
             'tags': [],
             'quotes': [{'marketCap': 500000000000}]
         }
-    ]
+    ])
 
-    with patch('crypto_data.ingestion.load_universe_config') as mock_config:
-        mock_config.return_value = ([], [])
-
-        ingest_universe(temp_db, '2024-01-01', top_n=100)
+    asyncio.run(ingest_universe(temp_db, months=['2024-01'], top_n=100, exclude_tags=[], exclude_symbols=[]))
 
     # Verify data persisted (transaction committed)
     db = CryptoDatabase(temp_db)
@@ -190,71 +180,66 @@ def test_ingest_universe_atomic_transaction_commits(temp_db, mock_cmc_client):
 
 
 def test_ingest_universe_transaction_rolls_back_on_error(temp_db, mock_cmc_client):
-    """Test that transaction rolls back on database error."""
-    mock_cmc_client.get_historical_listings.return_value = [
+    """Test that failed API calls don't insert data (batch version logs and continues)."""
+    mock_cmc_client.get_historical_listings = AsyncMock(return_value=[
         {
             'symbol': 'BTC',
             'cmcRank': 1,
             'tags': [],
             'quotes': [{'marketCap': 500000000000}]
         }
-    ]
+    ])
 
-    with patch('crypto_data.ingestion.load_universe_config') as mock_config:
-        mock_config.return_value = ([], [])
+    # First insert succeeds
+    asyncio.run(ingest_universe(temp_db, months=['2024-01'], top_n=100, exclude_tags=[], exclude_symbols=[]))
 
-        # First insert succeeds
-        ingest_universe(temp_db, '2024-01-01', top_n=100)
-
-        # Verify data was inserted
-        db = CryptoDatabase(temp_db)
-        count = db.execute("SELECT COUNT(*) FROM crypto_universe").fetchone()[0]
-        db.close()
-        assert count == 1
-
-        # Simulate error during fetch (before transaction)
-        mock_cmc_client.get_historical_listings.side_effect = Exception("API error")
-
-        with pytest.raises(Exception):
-            ingest_universe(temp_db, '2024-01-01', top_n=100)
-
-    # Original data should still be there (transaction never started)
+    # Verify data was inserted
     db = CryptoDatabase(temp_db)
     count = db.execute("SELECT COUNT(*) FROM crypto_universe").fetchone()[0]
     db.close()
-
     assert count == 1
+
+    # Simulate error during fetch (before transaction)
+    # Batch version logs error and continues (doesn't raise)
+    mock_cmc_client.get_historical_listings = AsyncMock(side_effect=Exception("API error"))
+
+    # Should not raise - batch version continues on error
+    asyncio.run(ingest_universe(temp_db, months=['2024-01'], top_n=100, exclude_tags=[], exclude_symbols=[]))
+
+    # Original data should still be there (no new data inserted due to error)
+    db = CryptoDatabase(temp_db)
+    count = db.execute("SELECT COUNT(*) FROM crypto_universe WHERE date = '2024-01-01'").fetchone()[0]
+    db.close()
+
+    assert count == 1  # Still just the original data
 
 
 def test_ingest_universe_replaces_existing_date(temp_db, mock_cmc_client):
     """Test that existing data for a date is replaced (DELETE + INSERT)."""
-    mock_cmc_client.get_historical_listings.return_value = [
+    mock_cmc_client.get_historical_listings = AsyncMock(return_value=[
         {
             'symbol': 'BTC',
             'cmcRank': 1,
             'tags': [],
             'quotes': [{'marketCap': 500000000000}]
         }
-    ]
+    ])
 
-    with patch('crypto_data.ingestion.load_universe_config') as mock_config:
-        mock_config.return_value = ([], [])
+    # First insert
+    asyncio.run(ingest_universe(temp_db, months=['2024-01'], top_n=100, exclude_tags=[], exclude_symbols=[]))
 
-        # First insert
-        ingest_universe(temp_db, '2024-01-01', top_n=100)
+    # Update mock to return different data
+    mock_cmc_client.get_historical_listings = AsyncMock(return_value=[
+        {
+            'symbol': 'ETH',
+            'cmcRank': 1,
+            'tags': [],
+            'quotes': [{'marketCap': 200000000000}]
+        }
+    ])
 
-        # Update mock to return different data
-        mock_cmc_client.get_historical_listings.return_value = [
-            {
-                'symbol': 'ETH',
-                'cmcRank': 1,
-                'tags': [],
-                'quotes': [{'marketCap': 200000000000}]
-            }
-        ]
-
-        # Second insert (same date)
-        ingest_universe(temp_db, '2024-01-01', top_n=100)
+    # Second insert (same date)
+    asyncio.run(ingest_universe(temp_db, months=['2024-01'], top_n=100, exclude_tags=[], exclude_symbols=[]))
 
     # Verify only ETH exists (BTC was deleted)
     db = CryptoDatabase(temp_db)
@@ -267,14 +252,11 @@ def test_ingest_universe_replaces_existing_date(temp_db, mock_cmc_client):
 
 
 def test_ingest_universe_handles_api_failure(temp_db, mock_cmc_client):
-    """Test that API failures are handled gracefully."""
-    mock_cmc_client.get_historical_listings.side_effect = Exception("API error")
+    """Test that API failures are handled gracefully (batch version logs and continues)."""
+    mock_cmc_client.get_historical_listings = AsyncMock(side_effect=Exception("API error"))
 
-    with patch('crypto_data.ingestion.load_universe_config') as mock_config:
-        mock_config.return_value = ([], [])
-
-        with pytest.raises(Exception):
-            ingest_universe(temp_db, '2024-01-01', top_n=100)
+    # Batch version doesn't raise - it logs error and continues
+    asyncio.run(ingest_universe(temp_db, months=['2024-01'], top_n=100, exclude_tags=[], exclude_symbols=[]))
 
     # Verify no partial data was stored
     db = CryptoDatabase(temp_db)
@@ -286,12 +268,9 @@ def test_ingest_universe_handles_api_failure(temp_db, mock_cmc_client):
 
 def test_ingest_universe_handles_empty_response(temp_db, mock_cmc_client):
     """Test that empty API responses are handled."""
-    mock_cmc_client.get_historical_listings.return_value = []
+    mock_cmc_client.get_historical_listings = AsyncMock(return_value=[])
 
-    with patch('crypto_data.ingestion.load_universe_config') as mock_config:
-        mock_config.return_value = ([], [])
-
-        ingest_universe(temp_db, '2024-01-01', top_n=100)
+    asyncio.run(ingest_universe(temp_db, months=['2024-01'], top_n=100, exclude_tags=[], exclude_symbols=[]))
 
     # Verify no data stored
     db = CryptoDatabase(temp_db)

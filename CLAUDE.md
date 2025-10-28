@@ -17,15 +17,15 @@ Developer guidance for Claude Code when working with this repository.
 ### Main Components
 
 **Public API** (`src/crypto_data/__init__.py`):
-- `sync(db_path, start_date, end_date, top_n, interval, data_types)` - End-to-end workflow
-- `ingest_universe(db_path, date, top_n)` - CoinMarketCap rankings to DuckDB
+- `sync(db_path, start_date, end_date, top_n, interval, data_types, exclude_tags, exclude_symbols)` - End-to-end workflow
+- `ingest_universe(db_path, months, top_n, exclude_tags, exclude_symbols)` - **Async** CoinMarketCap rankings to DuckDB (parallel downloads)
 - `ingest_binance_async(db_path, symbols, ...)` - Binance OHLCV to DuckDB (async, 20 concurrent downloads)
 - `CryptoDatabase` - Schema management, stats, context manager
 - `setup_colored_logging()`, `get_logger()` - Colored logging utilities
 - `get_symbols_from_universe(db_path, start_date, end_date, top_n)` - Extract symbols (UNION strategy)
 
 **Internal Clients** (`src/crypto_data/clients/` - not exported):
-- `CoinMarketCapClient` - Retry logic (429→60s, 500/503→5s, max 3 retries)
+- `CoinMarketCapClient` - **Async** client with retry logic (429→60s, 500/503→5s, max 3 retries)
 - `BinanceDataVisionClientAsync` - Async HTTP downloads with aiohttp
 
 **Scripts**:
@@ -36,7 +36,7 @@ Developer guidance for Claude Code when working with this repository.
 - CoinMarketCap: Universe rankings (top N by market cap), stablecoin flags
 - Not included: Premium Index, Funding Rates
 
-## Database Schema
+## Database Schema (v4.0.0 - Multi-Exchange)
 
 **Single DuckDB file**: `crypto_data.db`
 
@@ -45,13 +45,23 @@ Developer guidance for Claude Code when working with this repository.
    - Primary key: `(date, symbol)`, Index: `(date, rank)`
    - Columns: date, symbol, rank, market_cap, categories
    - Symbols are base assets (BTC not BTCUSDT), interval-independent
+   - Exchange-agnostic (rankings are global)
 
-2. `binance_spot`, `binance_futures` - OHLCV data
-   - Primary key: `(symbol, interval, timestamp)`, Index: `(symbol, interval, timestamp)`
-   - Columns: symbol, interval, timestamp, open, high, low, close, volume, quote_volume, trades_count, taker_buy_*
+2. `spot`, `futures` - OHLCV data (MULTI-EXCHANGE)
+   - **Primary key**: `(exchange, symbol, interval, timestamp)` - exchange is now part of PK
+   - **Index**: `(exchange, symbol, interval, timestamp)`
+   - **New column**: `exchange VARCHAR NOT NULL` - 'binance', 'bybit', 'kraken', etc.
+   - Other columns: symbol, interval, timestamp, open, high, low, close, volume, quote_volume, trades_count, taker_buy_*
    - Interval stored as column (5m, 1h, 4h, 1d in same table)
+   - **Current status**: Only Binance implemented (exchange='binance')
 
 ## Design Decisions
+
+**Multi-Exchange Architecture (v4.0.0)**: Schema designed to support multiple exchanges
+- Tables `spot` and `futures` include `exchange` column in primary key
+- Allows future expansion to Bybit, Kraken, Coinbase, etc. without schema changes
+- All queries filter by `WHERE exchange = 'binance'` currently
+- Benefits: Cross-exchange analysis, arbitrage detection, data redundancy
 
 **Rebrands as Separate Symbols**: MATIC→POL, RNDR→RENDER treated as different coins
 - Rationale: Trading interruptions (gaps), separate files in data source, different liquidity
@@ -61,6 +71,13 @@ Developer guidance for Claude Code when working with this repository.
 - Returns ~120-150 symbols for top 100 over 12 months (captures entries/exits)
 - Avoids survivorship bias, captures failed/delisted coins
 - Alternative INTERSECTION strategy not implemented (would miss market dynamics)
+
+**Explicit Parameters Only**: Universe filtering follows "explicit is better than implicit"
+- `sync()` and `ingest_universe()` require `exclude_tags` and `exclude_symbols` as direct parameters
+- No config files, no hidden dependencies - everything is explicit and testable
+- Benefits: Better testability, dependency injection, autodocumented API, zero hidden config
+- Default: empty lists (no exclusions) if not provided
+- Note: `ingest_universe()` is async - use `asyncio.run()` or await it within async context
 
 ## Common Commands
 
@@ -75,11 +92,45 @@ from crypto_data import sync, ingest_universe, ingest_binance_async, setup_color
 
 setup_colored_logging()  # Optional but recommended
 
-# Complete workflow (one function call)
-sync(db_path='crypto_data.db', start_date='2024-01-01', end_date='2024-12-31',
-     top_n=100, interval='5m', data_types=['spot', 'futures'])
+# Complete workflow (one function call) - Explicit parameters
+sync(
+    db_path='crypto_data.db',
+    start_date='2024-01-01',
+    end_date='2024-12-31',
+    top_n=100,
+    interval='5m',
+    data_types=['spot', 'futures'],
+    exclude_tags=['stablecoin', 'wrapped-tokens', 'privacy'],
+    exclude_symbols=['LUNA', 'FTT', 'UST']
+)
+
+# Without exclusions (default = empty lists)
+sync(
+    db_path='crypto_data.db',
+    start_date='2024-01-01',
+    end_date='2024-12-31',
+    top_n=100,
+    interval='5m',
+    data_types=['spot', 'futures']
+)
 
 # Step-by-step: ingest_universe() → get_symbols_from_universe() → ingest_binance_async()
+import asyncio
+
+# 1. Ingest universe for multiple months (async, parallel)
+asyncio.run(ingest_universe(
+    db_path='crypto_data.db',
+    months=['2024-01', '2024-02', '2024-03'],  # List of months
+    top_n=100,
+    exclude_tags=['stablecoin'],
+    exclude_symbols=['LUNA', 'FTT']
+))
+
+# 2. Extract symbols (UNION strategy)
+symbols = get_symbols_from_universe('crypto_data.db', '2024-01-01', '2024-12-31', 100)
+
+# 3. Ingest Binance data (async)
+ingest_binance_async('crypto_data.db', symbols, '2024-01-01', '2024-12-31', interval='5m')
 ```
 
 **Testing**:
@@ -103,7 +154,6 @@ src/crypto_data/
 │   ├── coinmarketcap.py     # CMC API client
 │   └── binance_vision_async.py  # Binance async HTTP client
 └── utils/                   # INTERNAL (except get_symbols_from_universe)
-    ├── config.py            # Config loading
     ├── database.py          # import_to_duckdb, data_exists, etc.
     ├── dates.py             # generate_month_list
     ├── formatting.py        # format_availability_bar, format_file_size
@@ -111,16 +161,21 @@ src/crypto_data/
     └── symbols.py           # get_symbols_from_universe (PUBLIC)
 
 scripts/: Download_data_universe.py
-tests/: 7 test modules (database, universe, binance, config, 1000-prefix, timestamps)
-config/: binance_config.yaml, universe_config.yaml
+tests/: 6 test modules (database, universe, binance, 1000-prefix, timestamps, helpers)
 ```
 
 ## Workflow & Data Flow
 
 **sync() function** (end-to-end):
-1. **Universe**: Generate month list → Call `ingest_universe()` for each month → Atomic transaction (DELETE + INSERT)
+1. **Universe**: Generate month list → Call `ingest_universe(months=[...])` (async, parallel downloads) → Atomic transaction (DELETE + INSERT per month)
 2. **Symbol Extraction**: `get_symbols_from_universe()` - UNION strategy, adds USDT suffix
 3. **Binance**: Async downloads (20 concurrent) → Auto-detect timestamp format (ms vs μs) → Auto-detect CSV headers → Import to DuckDB
+
+**ingest_universe() function** (async batch):
+- Takes a list of months (e.g., `['2024-01', '2024-02']`)
+- Downloads snapshots in parallel (max 5 concurrent by default)
+- Each month: Fetch from CoinMarketCap API → Filter by tags/symbols → DELETE + INSERT (atomic)
+- Logs errors and continues (doesn't raise on API failures)
 
 **Key Features**:
 - **Transaction safety**: Each symbol+data_type import wrapped in BEGIN/COMMIT/ROLLBACK (atomic imports)
@@ -143,12 +198,8 @@ config/: binance_config.yaml, universe_config.yaml
 **Conda**: Always use `/Users/user/miniconda3/envs/quant/`
 - Activate: `source /Users/user/miniconda3/bin/activate quant`
 
-**Dependencies**: duckdb, requests, beautifulsoup4, PyYAML, pandas, aiohttp
+**Dependencies**: duckdb, requests, pandas, aiohttp
 **Dev**: pytest, pytest-cov
-
-**Config files**:
-- `config/binance_config.yaml` - Binance settings (database, symbols, data_types, interval, dates)
-- `config/universe_config.yaml` - Universe filtering (excluded tags/symbols)
 
 ## Coding Standards
 
@@ -184,6 +235,12 @@ config/: binance_config.yaml, universe_config.yaml
 ## Development Notes
 
 **v3.0.0 vs v2.0.0**: Complete rewrite. Removed Parquet storage, reader/loader classes. Added DuckDB-only storage. ~52% less code.
+
+**Recent improvements (CoinMarketCap async migration)**:
+- `CoinMarketCapClient` migrated to async (aiohttp instead of requests)
+- `ingest_universe()` renamed from `ingest_universe_batch_async()` - now async with parallel downloads
+- API simplified: One async function instead of two (sync + async versions)
+- All 174 tests passing, no coroutine warnings
 
 **When adding features**:
 - Scope: Ingestion ONLY (not querying)

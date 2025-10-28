@@ -113,6 +113,7 @@ def process_download_results(
                     symbol=result['symbol'],
                     data_type=result['data_type'],
                     interval=interval,
+                    exchange='binance',
                     original_symbol=original_symbol  # Store with original symbol (e.g., PEPEUSDT)
                 )
                 stats['downloaded'] += 1
@@ -144,7 +145,7 @@ def query_data_availability(
     """
     Query availability summary from OHLCV tables.
 
-    Executes UNION query across binance_spot and binance_futures tables
+    Executes UNION query across spot and futures tables (filtered by exchange='binance')
     to get first/last dates for each symbol+data_type combination.
 
     Used by log_ingestion_summary() to display availability bars and coverage %.
@@ -179,8 +180,8 @@ def query_data_availability(
             'spot' as data_type,
             MIN(DATE(timestamp)) as first_date,
             MAX(DATE(timestamp)) as last_date
-        FROM binance_spot
-        WHERE symbol IN ({placeholders}) AND interval = ?
+        FROM spot
+        WHERE exchange = 'binance' AND symbol IN ({placeholders}) AND interval = ?
         GROUP BY symbol
         UNION ALL
         SELECT
@@ -188,8 +189,8 @@ def query_data_availability(
             'futures' as data_type,
             MIN(DATE(timestamp)) as first_date,
             MAX(DATE(timestamp)) as last_date
-        FROM binance_futures
-        WHERE symbol IN ({placeholders}) AND interval = ?
+        FROM futures
+        WHERE exchange = 'binance' AND symbol IN ({placeholders}) AND interval = ?
         GROUP BY symbol
         ORDER BY symbol, data_type
     """
@@ -265,15 +266,6 @@ def log_ingestion_summary(
     logger.info(f"  Failed: {stats['failed']}")
     logger.info(f"  Not found: {stats['not_found']}")
 
-    # Log 'not found' explanation
-    if stats['not_found'] > 0:
-        logger.info("")
-        logger.info("Note: 'Not found' means data doesn't exist in Binance Data Vision.")
-        logger.info("Common reasons:")
-        logger.info("  - Symbol delisted (e.g., FTTUSDT after Nov 2022)")
-        logger.info("  - Symbol not yet launched in that period")
-        logger.info("  - Futures contract started later than spot market")
-
     # Log detailed availability if requested
     if show_availability and symbols and start_date and end_date and interval:
         try:
@@ -285,7 +277,7 @@ def log_ingestion_summary(
             if availability_result:
                 logger.info("")
                 logger.info(f"Data Availability ({start_date} → {end_date}):")
-                logger.info(f"  {'Symbol':<12} {'Type':<8} {'Coverage':<30} {'Period'}")
+                logger.info(f"  {'Symbol':<12} {'Type':<8} {'Coverage':<30}")
 
                 # Group results by symbol to detect missing market types
                 symbol_types = {}
@@ -313,7 +305,7 @@ def log_ingestion_summary(
                         elif 'futures' not in symbol_types[symbol]:
                             warning = f" {YELLOW}⚠ FUTURES MISSING{RESET}"
 
-                    logger.info(f"  {symbol:<12} {data_type:<8} {bar} {pct:3d}% ({months_covered:2d}/{total}m) {dates}{warning}")
+                    logger.info(f"  {symbol:<12} {data_type:<8} {bar} {pct:3d}% ({months_covered:2d}/{total}m){warning}")
 
             db.close()
 

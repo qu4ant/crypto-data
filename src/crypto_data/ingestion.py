@@ -25,7 +25,6 @@ import pandas as pd
 from crypto_data.clients.coinmarketcap import CoinMarketCapClient
 from crypto_data.clients.binance_vision_async import BinanceDataVisionClientAsync
 from crypto_data.database import CryptoDatabase
-from crypto_data.utils.config import load_universe_config
 from crypto_data.utils.dates import generate_month_list
 from crypto_data.utils.formatting import format_file_size
 from crypto_data.utils.database import import_to_duckdb, data_exists
@@ -38,9 +37,6 @@ from crypto_data.utils.ingestion_helpers import (
 
 logger = logging.getLogger(__name__)
 
-# Project root for config loading
-project_root = Path(__file__).parent.parent.parent
-
 # Cache for auto-discovered 1000-prefix ticker mappings (e.g., PEPEUSDT → 1000PEPEUSDT)
 # Persists across multiple downloads in the same session to avoid repeated 404s
 _ticker_mappings = {}
@@ -50,7 +46,8 @@ _ticker_mappings = {}
 # UNIVERSE INGESTION (CoinMarketCap)
 # =============================================================================
 
-def _fetch_snapshot(
+async def _fetch_snapshot(
+    client: CoinMarketCapClient,
     date: pd.Timestamp,
     top_n: int,
     excluded_tags: List[str],
@@ -63,15 +60,28 @@ def _fetch_snapshot(
     Filters out coins that match any of the excluded tags (case-insensitive)
     or excluded symbols (case-insensitive).
 
+    Parameters
+    ----------
+    client : CoinMarketCapClient
+        Async CMC client (shared session)
+    date : pd.Timestamp
+        Date for the snapshot
+    top_n : int
+        Number of top coins to fetch
+    excluded_tags : List[str]
+        Tags to exclude
+    excluded_symbols : List[str]
+        Symbols to exclude
+    date_str : str
+        Date string in YYYY-MM-DD format
+
     Returns
     -------
     pd.DataFrame
         DataFrame with columns: date, symbol, rank, market_cap, categories
     """
-    # Instantiate client and fetch from CoinMarketCap historical listings API
-    client = CoinMarketCapClient()
-    coins = client.get_historical_listings(date_str, top_n)
-    logger.info(f"  → Fetched {len(coins)} coins from CoinMarketCap")
+    # Fetch from CoinMarketCap historical listings API (async)
+    coins = await client.get_historical_listings(date_str, top_n)
 
     # Convert excluded tags to lowercase once (for case-insensitive matching)
     excluded_tags_lower = [tag.lower() for tag in excluded_tags]
@@ -122,104 +132,124 @@ def _fetch_snapshot(
     # Convert to DataFrame
     df = pd.DataFrame(records)
 
-    logger.info(f"  → Kept {len(df)} coins, filtered {filtered_count}")
-
     return df
 
 
-def ingest_universe(
+async def ingest_universe(
     db_path: str,
-    date: str,
+    months: List[str],
     top_n: int = 100,
-    rate_limit_delay: float = 0.0
+    exclude_tags: List[str] = [],
+    exclude_symbols: List[str] = [],
+    max_concurrent: int = 5
 ):
     """
-    Fetch universe snapshot from CoinMarketCap with historical rankings and save to DuckDB.
+    Fetch universe snapshots for multiple months in parallel, write to DB sequentially.
 
-    Process:
-    1. Fetch top N markets from CoinMarketCap historical API (1 API call)
-    2. Filter based on excluded tags (stablecoins, wrapped tokens, etc.) and symbols (LUNA, FTT, etc.)
-    3. Transform to DataFrame with metadata (rank, market_cap, categories)
-    4. DELETE existing data for this date, INSERT new data (atomic transaction)
-
-    Total API calls: 1 (CoinMarketCap only)
+    This function downloads all month snapshots concurrently (max_concurrent at a time)
+    and then writes them sequentially to avoid database write conflicts.
 
     Parameters
     ----------
     db_path : str
         Path to DuckDB database file
-    date : str
-        Date of the snapshot (YYYY-MM-DD format)
+    months : List[str]
+        List of month strings in YYYY-MM format (e.g., ['2024-01', '2024-02'])
     top_n : int
         Number of top cryptocurrencies to fetch (default: 100)
-    rate_limit_delay : float
-        Delay between API calls in seconds (default: 0.0)
-        With 0.0, relies on 429 retry logic for automatic throttling
+    exclude_tags : List[str]
+        List of CoinMarketCap tags to exclude (e.g., ['stablecoin', 'wrapped-tokens'])
+    exclude_symbols : List[str]
+        List of symbols to exclude (e.g., ['LUNA', 'FTT', 'UST'])
+    max_concurrent : int
+        Maximum number of concurrent API requests (default: 5)
 
     Example
     -------
-    >>> ingest_universe(
+    >>> import asyncio
+    >>> asyncio.run(ingest_universe_batch_async(
     ...     db_path='crypto_data.db',
-    ...     date='2022-01-01',
-    ...     top_n=100
-    ... )
+    ...     months=['2024-01', '2024-02', '2024-03'],
+    ...     top_n=100,
+    ...     exclude_tags=['stablecoin'],
+    ...     exclude_symbols=['LUNA'],
+    ...     max_concurrent=5
+    ... ))
     """
-    logger.info(f"Starting CoinMarketCap universe ingestion")
-    logger.info(f"  Database: {db_path}")
-    logger.info(f"  Date: {date}")
-    logger.info(f"  Top N: {top_n}")
+    # Create async client with concurrency control
+    async with CoinMarketCapClient(max_concurrent=max_concurrent) as client:
+        # Build tasks for all months
+        tasks = []
+        for month in months:
+            snapshot_date_str = f'{month}-01'
+            snapshot_date = pd.Timestamp(snapshot_date_str)
 
-    # Load universe config (excluded tags and symbols)
-    excluded_tags, excluded_symbols = load_universe_config()
-    if excluded_tags:
-        logger.info(f"  Excluding tags: {', '.join(excluded_tags[:5])}{'...' if len(excluded_tags) > 5 else ''}")
-    if excluded_symbols:
-        logger.info(f"  Excluding symbols: {', '.join(excluded_symbols)}")
+            # Create task for fetching this month
+            task = _fetch_snapshot(
+                client=client,
+                date=snapshot_date,
+                top_n=top_n,
+                excluded_tags=exclude_tags,
+                excluded_symbols=exclude_symbols,
+                date_str=snapshot_date_str
+            )
+            tasks.append((month, snapshot_date_str, task))
 
-    # Parse date
-    snapshot_date = pd.Timestamp(date)
+        # Download all months in parallel
+        logger.info(f"Downloading {len(tasks)} months in parallel...")
+        results = await asyncio.gather(*[task for _, _, task in tasks], return_exceptions=True)
 
-    # Fetch from CoinMarketCap
-    logger.info(f"Fetching historical rankings from CoinMarketCap API...")
-    df_new = _fetch_snapshot(snapshot_date, top_n, excluded_tags, excluded_symbols, date)
-
-    logger.info(f"Fetched {len(df_new)} coins")
-
-    # Connect to database
+    # Write to database sequentially (avoid write conflicts)
     db = CryptoDatabase(db_path)
     conn = db.conn
 
-    # Atomic transaction: DELETE + INSERT
-    # DELETE removes previous snapshot for this date (start fresh)
-    # Ensures consistency: each run is complete
-    committed = False
-    try:
-        conn.execute("BEGIN TRANSACTION")
+    success_count = 0
+    fail_count = 0
 
-        conn.execute("DELETE FROM crypto_universe WHERE date = ?", [date])
-        logger.debug(f"Deleted existing snapshot for {date}")
+    for i, (month, date_str, _) in enumerate(tasks):
+        result = results[i]
 
-        # Only insert if we have data (empty DataFrame would cause DuckDB error)
-        if len(df_new) > 0:
-            conn.execute("INSERT INTO crypto_universe SELECT * FROM df_new")
-            logger.debug(f"Inserted {len(df_new)} new records")
+        # Handle exceptions
+        if isinstance(result, Exception):
+            logger.error(f"  ⚠ Warning: Failed {date_str}: {result}")
+            fail_count += 1
+            continue
 
-        conn.execute("COMMIT")
-        committed = True
+        # result is a DataFrame
+        df_new = result
 
-        logger.info(f"✓ Updated {len(df_new)} records for {date}")
+        # Atomic transaction: DELETE + INSERT
+        committed = False
+        try:
+            conn.execute("BEGIN TRANSACTION")
 
-    except Exception as e:
-        # Only ROLLBACK if transaction was not committed
-        if not committed:
-            conn.execute("ROLLBACK")
-            logger.debug("Transaction rolled back")
-        logger.error(f"Failed to update universe: {e}")
-        raise
-    finally:
-        db.close()
+            conn.execute("DELETE FROM crypto_universe WHERE date = ?", [date_str])
+            logger.debug(f"Deleted existing snapshot for {date_str}")
 
-    logger.info("CoinMarketCap universe ingestion complete")
+            # Only insert if we have data
+            if len(df_new) > 0:
+                conn.execute("INSERT INTO crypto_universe SELECT * FROM df_new")
+                logger.debug(f"Inserted {len(df_new)} new records for {date_str}")
+
+            conn.execute("COMMIT")
+            committed = True
+            success_count += 1
+
+        except Exception as e:
+            # Only ROLLBACK if transaction was not committed
+            if not committed:
+                conn.execute("ROLLBACK")
+                logger.debug("Transaction rolled back")
+            logger.error(f"Failed to update universe for {date_str}: {e}")
+            fail_count += 1
+            # Continue with other months instead of raising
+            continue
+
+    db.close()
+
+    # Summary log
+    logger.info(f"✓ Downloaded {success_count}/{len(tasks)} snapshots successfully" +
+                (f" ({fail_count} failed)" if fail_count > 0 else ""))
 
 
 # =============================================================================
@@ -359,7 +389,7 @@ async def _download_symbol_data_type_async(
 
     for month in months:
         # Skip if data exists
-        if skip_existing and data_exists(conn, symbol, month, data_type, interval):
+        if skip_existing and data_exists(conn, symbol, month, data_type, interval, exchange='binance'):
             logger.debug(f"  Skipped {symbol} {data_type} {month} (already exists)")
             stats['skipped'] += 1
             continue
@@ -369,8 +399,6 @@ async def _download_symbol_data_type_async(
     if not months_to_download:
         logger.info(f"  {symbol} {data_type}: All data already exists (skipped {len(months)} months)")
         return []
-
-    logger.info(f"  {symbol} {data_type}: Downloading {len(months_to_download)} months in parallel...")
 
     # Download all months in parallel
     async with BinanceDataVisionClientAsync(max_concurrent=max_concurrent) as client:
@@ -554,22 +582,12 @@ def ingest_binance_async(
         → Detects gap at Dec 2022 (404)
         → STOPS: Does NOT import Sep 2023+ even though data exists
     """
-    logger.info(f"Starting Async Binance Ingestion")
-    logger.info(f"  Database: {db_path}")
-    logger.info(f"  Symbols: {len(symbols)} symbols")
-    logger.info(f"  Data types: {data_types}")
-    logger.info(f"  Date range: {start_date} to {end_date}")
-    logger.info(f"  Interval: {interval}")
-    logger.info(f"  Max concurrent downloads per symbol: {max_concurrent}")
-    logger.info(f"  Gap detection threshold: {failure_threshold} consecutive months (0 = disabled)")
-
     # Parse dates
     start = datetime.strptime(start_date, "%Y-%m-%d")
     end = datetime.strptime(end_date, "%Y-%m-%d")
 
     # Generate month list
     months = generate_month_list(start, end)
-    logger.info(f"  Months to process: {len(months)}")
 
     # Connect to database
     db = CryptoDatabase(db_path)
@@ -630,6 +648,7 @@ def ingest_binance_async(
                 # Only retry if we haven't already used a cached mapping
                 if (data_type == 'futures' and
                     download_symbol == symbol and  # Not using cached mapping already
+                    len(results) > 0 and  # Must have actual results (not skipped due to existing data)
                     all(not r['success'] and r['error'] == 'not_found' for r in results)):
 
                     # Try with 1000-prefix (e.g., PEPEUSDT → 1000PEPEUSDT)
@@ -701,7 +720,9 @@ def sync(
     end_date: str,
     top_n: int,
     interval: str = '5m',
-    data_types: List[str] = None
+    data_types: List[str] = None,
+    exclude_tags: List[str] = [],
+    exclude_symbols: List[str] = []
 ):
     """
     Complete workflow: universe + binance in one call.
@@ -726,6 +747,12 @@ def sync(
         Kline interval (default: '5m')
     data_types : List[str], optional
         Data types to download (default: ['spot', 'futures'])
+    exclude_tags : List[str]
+        List of CoinMarketCap tags to exclude (e.g., ['stablecoin', 'wrapped-tokens'])
+        Default: [] (no exclusions)
+    exclude_symbols : List[str]
+        List of symbols to exclude (e.g., ['LUNA', 'FTT', 'UST'])
+        Default: [] (no exclusions)
 
     Example
     -------
@@ -735,7 +762,9 @@ def sync(
     ...     end_date='2024-12-31',
     ...     top_n=100,
     ...     interval='5m',
-    ...     data_types=['spot', 'futures']
+    ...     data_types=['spot', 'futures'],
+    ...     exclude_tags=['stablecoin', 'wrapped-tokens', 'privacy'],
+    ...     exclude_symbols=['LUNA', 'FTT', 'UST']
     ... )
     """
     if data_types is None:
@@ -761,14 +790,15 @@ def sync(
     logger.info(f"Step 1/2: Ingesting Universe ({len(months)} monthly snapshots)")
     logger.info("-" * 60)
 
-    # Ingest universe for each month
-    for i, month in enumerate(months, 1):
-        snapshot_date = f'{month}-01'
-        logger.info(f"  [{i}/{len(months)}] Universe snapshot: {snapshot_date}")
-        try:
-            ingest_universe(db_path=db_path, date=snapshot_date, top_n=top_n)
-        except Exception as e:
-            logger.error(f"  ⚠ Warning: Failed {snapshot_date}: {e}")
+    # Ingest universe for all months in parallel (async)
+    asyncio.run(ingest_universe(
+        db_path=db_path,
+        months=months,
+        top_n=top_n,
+        exclude_tags=exclude_tags,
+        exclude_symbols=exclude_symbols,
+        max_concurrent=5
+    ))
 
     logger.info("")
     logger.info(f"Step 2/2: Ingesting Binance Data")
@@ -782,7 +812,6 @@ def sync(
         logger.error("Make sure Step 1 (universe ingestion) completed successfully.")
         return
 
-    logger.info(f"  Extracted {len(symbols)} symbols from universe")
     logger.info("")
 
     # Ingest Binance (using parallel async version)
@@ -807,9 +836,9 @@ def sync(
         db = CryptoDatabase(db_path)
         result = db.execute("""
             SELECT COUNT(DISTINCT symbol) FROM (
-                SELECT symbol FROM binance_spot
+                SELECT symbol FROM spot WHERE exchange = 'binance'
                 UNION
-                SELECT symbol FROM binance_futures
+                SELECT symbol FROM futures WHERE exchange = 'binance'
             )
         """).fetchone()
         symbol_count = result[0] if result else 0

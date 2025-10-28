@@ -19,6 +19,7 @@ def import_to_duckdb(
     symbol: str,
     data_type: str,
     interval: str,
+    exchange: str = 'binance',
     original_symbol: Optional[str] = None
 ):
     """
@@ -39,13 +40,15 @@ def import_to_duckdb(
         Data type ('spot' or 'futures')
     interval : str
         Kline interval (e.g., '5m', '1h')
+    exchange : str, optional
+        Exchange name (default: 'binance')
     original_symbol : str, optional
         Original symbol to store in database (e.g., 'PEPEUSDT').
         If None, uses symbol parameter. This ensures consistency when
         Binance uses different tickers for spot vs futures.
     """
-    table = f"binance_{data_type}"
-    logger.debug(f"Importing to {table}")
+    table = data_type  # 'spot' or 'futures'
+    logger.debug(f"Importing to {table} (exchange={exchange})")
 
     # Extract ZIP file
     with zipfile.ZipFile(file_path, 'r') as zip_ref:
@@ -81,9 +84,10 @@ def import_to_duckdb(
                       'taker_buy_base_volume', 'taker_buy_quote_volume', 'ignore']
             df = pd.read_csv(csv_path, header=None, names=columns)
 
-        # Add symbol and interval columns
+        # Add exchange, symbol and interval columns
         # Use original_symbol if provided (handles 1000-prefix normalization)
         storage_symbol = original_symbol if original_symbol else symbol
+        df['exchange'] = exchange
         df['symbol'] = storage_symbol
         df['interval'] = interval
 
@@ -109,21 +113,29 @@ def import_to_duckdb(
             pass
 
         # Select and reorder columns for insertion
-        final_columns = ['symbol', 'interval', 'timestamp', 'open', 'high', 'low', 'close',
+        final_columns = ['exchange', 'symbol', 'interval', 'timestamp', 'open', 'high', 'low', 'close',
                         'volume', 'quote_volume', 'trades_count',
                         'taker_buy_base_volume', 'taker_buy_quote_volume']
         df = df[final_columns]
 
         # Drop duplicates (handles daylight saving time duplicates)
         original_len = len(df)
-        df = df.drop_duplicates(subset=['symbol', 'interval', 'timestamp'], keep='first')
+        df = df.drop_duplicates(subset=['exchange', 'symbol', 'interval', 'timestamp'], keep='first')
         if len(df) < original_len:
             logger.debug(f"  Removed {original_len - len(df)} duplicate timestamps")
 
-        # Insert into DuckDB (OR REPLACE handles re-imports)
-        conn.execute(f"INSERT OR REPLACE INTO {table} SELECT * FROM df")
-
-        logger.debug(f"  Import successful: {len(df)} rows")
+        # Insert into DuckDB
+        try:
+            conn.execute(f"INSERT INTO {table} SELECT * FROM df")
+            logger.debug(f"  Import successful: {len(df)} rows")
+        except Exception as insert_error:
+            # Skip silencieusement si duplicate (données déjà là)
+            if "Duplicate key" in str(insert_error):
+                logger.debug(f"Skipped duplicate data for {storage_symbol} {table}")
+                # Données déjà présentes, on continue sans erreur
+            else:
+                # Autre erreur, on la propage
+                raise
 
     except Exception as e:
         logger.error(f"  Import failed: {e}")
@@ -135,7 +147,7 @@ def import_to_duckdb(
             csv_path.unlink()
 
 
-def data_exists(conn, symbol: str, month: str, data_type: str, interval: str) -> bool:
+def data_exists(conn, symbol: str, month: str, data_type: str, interval: str, exchange: str = 'binance') -> bool:
     """
     Check if data already exists and is complete for given symbol/month/interval.
 
@@ -154,13 +166,15 @@ def data_exists(conn, symbol: str, month: str, data_type: str, interval: str) ->
         Data type ('spot' or 'futures')
     interval : str
         Kline interval (e.g., '5m', '1h')
+    exchange : str, optional
+        Exchange name (default: 'binance')
 
     Returns
     -------
     bool
         True if data exists and is complete, False otherwise
     """
-    table = f"binance_{data_type}"
+    table = data_type  # 'spot' or 'futures'
 
     # Parse month to get date range
     year, month_num = month.split('-')
@@ -175,11 +189,12 @@ def data_exists(conn, symbol: str, month: str, data_type: str, interval: str) ->
     # Get MAX timestamp for this month
     result = conn.execute(f"""
         SELECT MAX(timestamp) FROM {table}
-        WHERE symbol = ?
+        WHERE exchange = ?
+            AND symbol = ?
             AND interval = ?
             AND timestamp >= ?
             AND timestamp < ?
-    """, [symbol, interval, start_date, end_date]).fetchone()
+    """, [exchange, symbol, interval, start_date, end_date]).fetchone()
 
     if not result or not result[0]:
         # No data for this month

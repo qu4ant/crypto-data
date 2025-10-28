@@ -1,31 +1,32 @@
 """
-CoinMarketCap API Client
+CoinMarketCap API Client (Async)
 
 Handles API communication with CoinMarketCap's historical listings endpoint.
 Implements automatic retry logic for rate limits and server errors.
 """
 
 import logging
-import time
+import asyncio
 from typing import Optional
-import requests
+import aiohttp
 
 logger = logging.getLogger(__name__)
 
 
 class CoinMarketCapClient:
     """
-    Client for CoinMarketCap API.
+    Async client for CoinMarketCap API.
 
     Handles:
     - API communication with CoinMarketCap historical listings
     - Automatic retry on rate limits (429) and server errors (500, 503)
     - Configurable retry behavior and timeouts
+    - Concurrency control with semaphore
 
     Example
     -------
-    >>> client = CoinMarketCapClient()
-    >>> data = client.get_historical_listings(date='2024-01-01', limit=100)
+    >>> async with CoinMarketCapClient(max_concurrent=5) as client:
+    ...     data = await client.get_historical_listings(date='2024-01-01', limit=100)
     >>> # Returns list of coin dictionaries with ranking and market data
     """
 
@@ -35,7 +36,8 @@ class CoinMarketCapClient:
         max_retries: int = 3,
         rate_limit_wait: int = 60,
         server_error_delay: int = 5,
-        timeout: int = 10
+        timeout: int = 10,
+        max_concurrent: int = 10
     ):
         """
         Initialize CoinMarketCap API client.
@@ -52,16 +54,32 @@ class CoinMarketCapClient:
             Wait time in seconds after 500/503 server errors (default: 5)
         timeout : int
             Request timeout in seconds (default: 10)
+        max_concurrent : int
+            Maximum number of concurrent requests (default: 5)
         """
         self.api_base = api_base or 'https://api.coinmarketcap.com/data-api/v3'
         self.max_retries = max_retries
         self.rate_limit_wait = rate_limit_wait
         self.server_error_delay = server_error_delay
         self.timeout = timeout
+        self.max_concurrent = max_concurrent
 
-        logger.debug(f"Initialized CoinMarketCap client: base={self.api_base}, retries={max_retries}")
+        self._session = None
+        self._semaphore = asyncio.Semaphore(max_concurrent)
 
-    def get_historical_listings(self, date: str, limit: int) -> list:
+        logger.debug(f"Initialized CoinMarketCap client: base={self.api_base}, retries={max_retries}, concurrent={max_concurrent}")
+
+    async def __aenter__(self):
+        """Async context manager entry."""
+        self._session = aiohttp.ClientSession()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        """Async context manager exit."""
+        if self._session:
+            await self._session.close()
+
+    async def get_historical_listings(self, date: str, limit: int) -> list:
         """
         Fetch historical cryptocurrency listings from CoinMarketCap.
 
@@ -83,13 +101,13 @@ class CoinMarketCapClient:
 
         Raises
         ------
-        requests.HTTPError
+        aiohttp.ClientError
             If all retries exhausted or non-retryable error occurs
 
         Example
         -------
-        >>> client = CoinMarketCapClient()
-        >>> coins = client.get_historical_listings('2024-01-01', 100)
+        >>> async with CoinMarketCapClient() as client:
+        ...     coins = await client.get_historical_listings('2024-01-01', 100)
         >>> # coins[0] = {'symbol': 'BTC', 'cmcRank': 1, 'quotes': [...], ...}
         """
         url = f"{self.api_base}/cryptocurrency/listings/historical"
@@ -104,17 +122,16 @@ class CoinMarketCapClient:
 
         logger.debug(f"Fetching historical listings: date={date}, limit={limit}")
 
-        response = self._call_with_retry(url, params, self.timeout)
-        data = response.json()
+        response_data = await self._call_with_retry(url, params, self.timeout)
 
-        if 'data' in data:
-            logger.debug(f"Successfully fetched {len(data['data'])} coins")
-            return data['data']
+        if 'data' in response_data:
+            logger.debug(f"Successfully fetched {len(response_data['data'])} coins")
+            return response_data['data']
         else:
-            logger.error(f"Unexpected API response format: {data}")
+            logger.error(f"Unexpected API response format: {response_data}")
             return []
 
-    def _call_with_retry(self, url: str, params: dict, timeout: int) -> requests.Response:
+    async def _call_with_retry(self, url: str, params: dict, timeout: int) -> dict:
         """
         Make API call with automatic retry on rate limits and server errors.
 
@@ -134,58 +151,67 @@ class CoinMarketCapClient:
 
         Returns
         -------
-        requests.Response
-            Successful response object
+        dict
+            Parsed JSON response
 
         Raises
         ------
-        requests.HTTPError
+        aiohttp.ClientError
             If all retries exhausted or non-retryable error
         """
-        for attempt in range(self.max_retries + 1):  # 0 = initial, 1-3 = retries
-            try:
-                response = requests.get(url, params=params, timeout=timeout)
-                response.raise_for_status()
-                return response
+        if not self._session:
+            raise RuntimeError("Client must be used as async context manager (async with)")
 
-            except requests.HTTPError as e:
-                status_code = e.response.status_code
+        async with self._semaphore:  # Limit concurrent requests
+            for attempt in range(self.max_retries + 1):  # 0 = initial, 1-3 = retries
+                try:
+                    async with self._session.get(
+                        url,
+                        params=params,
+                        timeout=aiohttp.ClientTimeout(total=timeout)
+                    ) as response:
+                        # Check for HTTP errors
+                        if response.status == 429:
+                            # Rate limit error - wait and retry
+                            if attempt < self.max_retries:
+                                logger.warning(
+                                    f"Rate limit hit (429), waiting {self.rate_limit_wait}s before retry "
+                                    f"(attempt {attempt + 1}/{self.max_retries})..."
+                                )
+                                await asyncio.sleep(self.rate_limit_wait)
+                                continue
+                            else:
+                                logger.error(f"Rate limit error - all {self.max_retries} retries exhausted")
+                                response.raise_for_status()
 
-                # Rate limit error (429) - wait and retry
-                if status_code == 429:
+                        elif response.status in [500, 503]:
+                            # Server errors - wait and retry
+                            if attempt < self.max_retries:
+                                logger.warning(
+                                    f"Server error ({response.status}), waiting {self.server_error_delay}s before retry "
+                                    f"(attempt {attempt + 1}/{self.max_retries})..."
+                                )
+                                await asyncio.sleep(self.server_error_delay)
+                                continue
+                            else:
+                                logger.error(f"Server error - all {self.max_retries} retries exhausted")
+                                response.raise_for_status()
+
+                        # Other status codes
+                        response.raise_for_status()
+
+                        # Success - parse and return JSON
+                        return await response.json()
+
+                except aiohttp.ClientError as e:
+                    # Network errors, timeouts, etc.
                     if attempt < self.max_retries:
-                        logger.warning(
-                            f"Rate limit hit (429), waiting {self.rate_limit_wait}s before retry "
-                            f"(attempt {attempt + 1}/{self.max_retries})..."
-                        )
-                        time.sleep(self.rate_limit_wait)
+                        logger.warning(f"Request failed, retrying: {e}")
+                        await asyncio.sleep(self.server_error_delay)
                         continue
                     else:
-                        logger.error(f"Rate limit error - all {self.max_retries} retries exhausted")
+                        logger.error(f"Request failed - all {self.max_retries} retries exhausted: {e}")
                         raise
 
-                # Server errors (500, 503) - wait and retry
-                elif status_code in [500, 503]:
-                    if attempt < self.max_retries:
-                        logger.warning(
-                            f"Server error ({status_code}), waiting {self.server_error_delay}s before retry "
-                            f"(attempt {attempt + 1}/{self.max_retries})..."
-                        )
-                        time.sleep(self.server_error_delay)
-                        continue
-                    else:
-                        logger.error(f"Server error - all {self.max_retries} retries exhausted")
-                        raise
-
-                # Other HTTP errors - raise immediately
-                else:
-                    logger.error(f"HTTP error {status_code}: {e}")
-                    raise
-
-            except requests.RequestException as e:
-                # Network errors, timeouts, etc. - raise immediately
-                logger.error(f"Request failed: {e}")
-                raise
-
-        # Should never reach here, but just in case
-        raise Exception("Unexpected error in retry logic")
+            # Should never reach here, but just in case
+            raise Exception("Unexpected error in retry logic")

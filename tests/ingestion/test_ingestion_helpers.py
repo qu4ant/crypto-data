@@ -90,6 +90,7 @@ def test_process_download_results_successful_import():
                 symbol='BTCUSDT',
                 data_type='spot',
                 interval='5m',
+                exchange='binance',
                 original_symbol='BTCUSDT'
             )
 
@@ -299,8 +300,8 @@ def test_query_data_availability_executes_correct_query():
 
     # Verify query contains expected parts
     query = mock_conn.execute.call_args[0][0]
-    assert 'binance_spot' in query
-    assert 'binance_futures' in query
+    assert 'spot' in query
+    assert 'futures' in query
     assert 'UNION ALL' in query
     assert 'MIN(DATE(timestamp))' in query
     assert 'MAX(DATE(timestamp))' in query
@@ -358,7 +359,7 @@ def test_log_ingestion_summary_logs_basic_stats():
 
 
 def test_log_ingestion_summary_logs_not_found_explanation():
-    """Test that 'not found' explanation is logged when not_found > 0."""
+    """Test that 'not found' count is logged when not_found > 0."""
     stats = {
         'downloaded': 100,
         'skipped': 0,
@@ -369,13 +370,12 @@ def test_log_ingestion_summary_logs_not_found_explanation():
     with patch('crypto_data.utils.ingestion_helpers.logger') as mock_logger:
         log_ingestion_summary(stats, 'test.db', show_availability=False)
 
-        # Verify explanation logged
-        assert any("doesn't exist in Binance Data Vision" in str(call) for call in mock_logger.info.call_args_list)
-        assert any('Symbol delisted' in str(call) for call in mock_logger.info.call_args_list)
+        # Verify not_found count is logged
+        assert any('Not found: 10' in str(call) for call in mock_logger.info.call_args_list)
 
 
 def test_log_ingestion_summary_skips_explanation_when_zero():
-    """Test that 'not found' explanation is NOT logged when not_found = 0."""
+    """Test that 'not found' is logged as 0 when not_found = 0."""
     stats = {
         'downloaded': 100,
         'skipped': 0,
@@ -386,8 +386,8 @@ def test_log_ingestion_summary_skips_explanation_when_zero():
     with patch('crypto_data.utils.ingestion_helpers.logger') as mock_logger:
         log_ingestion_summary(stats, 'test.db', show_availability=False)
 
-        # Verify explanation NOT logged
-        assert not any("doesn't exist in Binance Data Vision" in str(call) for call in mock_logger.info.call_args_list)
+        # Verify not_found count is logged as 0
+        assert any('Not found: 0' in str(call) for call in mock_logger.info.call_args_list)
 
 
 def test_log_ingestion_summary_logs_database_size():
