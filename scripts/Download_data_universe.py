@@ -13,7 +13,7 @@ def main():
         db_path='crypto_data.db',
         start_date='2022-01-01',
         end_date='2025-09-01',
-        top_n=5,  # Top 5 coins to test filtering
+        top_n=10,  # Top 5 coins to test filtering
         interval='15m',
         data_types=['spot', 'futures']
     )
