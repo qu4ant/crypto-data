@@ -54,29 +54,18 @@ class CryptoDatabase:
 
     def _create_tables(self):
         """Create all required tables and indexes."""
-        self._create_metadata()
         self._create_binance_spot()
         self._create_binance_futures()
         self._create_crypto_universe()
 
         logger.info("All tables and indexes created")
 
-    def _create_metadata(self):
-        """Create metadata table for storing database configuration."""
-        self.conn.execute("""
-            CREATE TABLE IF NOT EXISTS _metadata (
-                key VARCHAR PRIMARY KEY,
-                value VARCHAR
-            )
-        """)
-
-        logger.debug("Created _metadata table")
-
     def _create_binance_spot(self):
         """Create binance_spot table for spot OHLCV data."""
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS binance_spot (
                 symbol VARCHAR NOT NULL,
+                interval VARCHAR NOT NULL,
                 timestamp TIMESTAMP NOT NULL,
                 open DOUBLE,
                 high DOUBLE,
@@ -87,14 +76,14 @@ class CryptoDatabase:
                 trades_count INTEGER,
                 taker_buy_base_volume DOUBLE,
                 taker_buy_quote_volume DOUBLE,
-                PRIMARY KEY (symbol, timestamp)
+                PRIMARY KEY (symbol, interval, timestamp)
             )
         """)
 
         # Create index for common queries
         self.conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_spot_symbol_time
-            ON binance_spot(symbol, timestamp)
+            CREATE INDEX IF NOT EXISTS idx_spot_symbol_interval_time
+            ON binance_spot(symbol, interval, timestamp)
         """)
 
         logger.debug("Created binance_spot table")
@@ -104,6 +93,7 @@ class CryptoDatabase:
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS binance_futures (
                 symbol VARCHAR NOT NULL,
+                interval VARCHAR NOT NULL,
                 timestamp TIMESTAMP NOT NULL,
                 open DOUBLE,
                 high DOUBLE,
@@ -114,37 +104,35 @@ class CryptoDatabase:
                 trades_count INTEGER,
                 taker_buy_base_volume DOUBLE,
                 taker_buy_quote_volume DOUBLE,
-                PRIMARY KEY (symbol, timestamp)
+                PRIMARY KEY (symbol, interval, timestamp)
             )
         """)
 
         # Create index for common queries
         self.conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_futures_symbol_time
-            ON binance_futures(symbol, timestamp)
+            CREATE INDEX IF NOT EXISTS idx_futures_symbol_interval_time
+            ON binance_futures(symbol, interval, timestamp)
         """)
 
         logger.debug("Created binance_futures table")
 
     def _create_crypto_universe(self):
-        """Create crypto_universe table for cryptocurrency rankings."""
+        """Create crypto_universe table for CoinMarketCap rankings."""
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS crypto_universe (
                 date DATE NOT NULL,
                 symbol VARCHAR NOT NULL,
-                rank INTEGER,
+                rank INTEGER NOT NULL,
                 market_cap DOUBLE,
                 categories VARCHAR,
-                exchanges VARCHAR,
-                has_perpetual BOOLEAN,
                 PRIMARY KEY (date, symbol)
             )
         """)
 
-        # Create index for date queries
+        # Create index for common queries (backtesting, symbol selection)
         self.conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_universe_date
-            ON crypto_universe(date)
+            CREATE INDEX IF NOT EXISTS idx_universe_date_rank
+            ON crypto_universe(date, rank)
         """)
 
         logger.debug("Created crypto_universe table")
@@ -164,55 +152,6 @@ class CryptoDatabase:
             Query result
         """
         return self.conn.execute(sql)
-
-    def set_metadata(self, key: str, value: str):
-        """
-        Store metadata key-value pair.
-
-        Parameters
-        ----------
-        key : str
-            Metadata key
-        value : str
-            Metadata value
-        """
-        self.conn.execute("""
-            INSERT OR REPLACE INTO _metadata (key, value)
-            VALUES (?, ?)
-        """, [key, value])
-
-        logger.debug(f"Stored metadata: {key} = {value}")
-
-    def get_metadata(self, key: str):
-        """
-        Retrieve metadata value by key.
-
-        Parameters
-        ----------
-        key : str
-            Metadata key
-
-        Returns
-        -------
-        str or None
-            Metadata value, or None if key doesn't exist
-        """
-        result = self.conn.execute("""
-            SELECT value FROM _metadata WHERE key = ?
-        """, [key]).fetchone()
-
-        return result[0] if result else None
-
-    def get_interval(self):
-        """
-        Get stored interval from metadata.
-
-        Returns
-        -------
-        str or None
-            Interval string (e.g., '5m', '1h'), or None if not set
-        """
-        return self.get_metadata('interval')
 
     def get_table_stats(self):
         """
@@ -266,7 +205,6 @@ class CryptoDatabase:
             SELECT
                 COUNT(*) as record_count,
                 COUNT(DISTINCT symbol) as symbol_count,
-                COUNT(DISTINCT date) as snapshot_count,
                 MIN(date) as min_date,
                 MAX(date) as max_date
             FROM crypto_universe
@@ -276,9 +214,8 @@ class CryptoDatabase:
             stats['crypto_universe'] = {
                 'records': result[0],
                 'symbols': result[1],
-                'snapshots': result[2],
-                'min_date': result[3],
-                'max_date': result[4]
+                'min_date': result[2],
+                'max_date': result[3]
             }
 
         return stats
