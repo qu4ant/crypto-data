@@ -1,14 +1,10 @@
 #!/usr/bin/env python3
 """
-Setup script for Binance Historical Data Management System
+Setup script for crypto-data - GitHub distribution
 """
 
 from setuptools import setup, find_packages
 from pathlib import Path
-
-# Read the README file for long description
-readme_path = Path(__file__).parent / "docs" / "README.md"
-long_description = readme_path.read_text(encoding="utf-8") if readme_path.exists() else ""
 
 # Read requirements from requirements.txt
 requirements_path = Path(__file__).parent / "requirements.txt"
@@ -19,11 +15,9 @@ if requirements_path.exists():
 
 setup(
     name="crypto-data",
-    version="2.0.0",
-    author="Guillaume Tonnerre",
-    description="Pure data infrastructure for cryptocurrency market data - OHLCV from Binance, universe rankings from CoinGecko",
-    long_description=long_description,
-    long_description_content_type="text/markdown",
+    version="4.0.0",
+    description="DuckDB ingestion pipeline for cryptocurrency market data",
+    url="https://github.com/qu4ant/crypto-data",
     package_dir={"": "src"},
     packages=find_packages(where="src"),
     python_requires=">=3.8",
@@ -32,31 +26,11 @@ setup(
         "dev": [
             "pytest>=7.0.0",
             "pytest-cov>=4.0.0",
-            "pytest-asyncio>=0.21.0",  # For async tests (test_binance_client_async.py)
+            "pytest-asyncio>=0.21.0",
             "black>=22.0.0",
             "flake8>=5.0.0",
             "mypy>=1.0.0",
-            "requests-mock>=1.9.0",  # For testing CoinGecko API
+            "requests-mock>=1.9.0",
         ]
     },
-    classifiers=[
-        "Development Status :: 4 - Beta",
-        "Intended Audience :: Financial and Insurance Industry",
-        "License :: OSI Approved :: MIT License",
-        "Operating System :: OS Independent",
-        "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
-        "Programming Language :: Python :: 3.10",
-        "Programming Language :: Python :: 3.11",
-        "Topic :: Office/Business :: Financial",
-        "Topic :: Software Development :: Libraries :: Python Modules",
-    ],
-    entry_points={
-        "console_scripts": [
-            "crypto-data-download=scripts.download_data:main",
-        ],
-    },
-    include_package_data=True,
-    zip_safe=False,
 )

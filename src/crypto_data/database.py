@@ -45,25 +45,26 @@ class CryptoDatabase:
         # Connect to database
         self.conn = duckdb.connect(str(self.db_path))
 
-        logger.info(f"Connected to database: {self.db_path}")
+        logger.debug(f"Connected to database: {self.db_path}")
 
         # Create tables if they don't exist
         self._create_tables()
 
-        logger.info("Database initialized successfully")
+        logger.debug("Database initialized successfully")
 
     def _create_tables(self):
         """Create all required tables and indexes."""
-        self._create_binance_spot()
-        self._create_binance_futures()
+        self._create_spot()
+        self._create_futures()
         self._create_crypto_universe()
 
-        logger.info("All tables and indexes created")
+        logger.debug("All tables and indexes created")
 
-    def _create_binance_spot(self):
-        """Create binance_spot table for spot OHLCV data."""
+    def _create_spot(self):
+        """Create spot table for spot OHLCV data (multi-exchange)."""
         self.conn.execute("""
-            CREATE TABLE IF NOT EXISTS binance_spot (
+            CREATE TABLE IF NOT EXISTS spot (
+                exchange VARCHAR NOT NULL,
                 symbol VARCHAR NOT NULL,
                 interval VARCHAR NOT NULL,
                 timestamp TIMESTAMP NOT NULL,
@@ -76,22 +77,23 @@ class CryptoDatabase:
                 trades_count INTEGER,
                 taker_buy_base_volume DOUBLE,
                 taker_buy_quote_volume DOUBLE,
-                PRIMARY KEY (symbol, interval, timestamp)
+                PRIMARY KEY (exchange, symbol, interval, timestamp)
             )
         """)
 
         # Create index for common queries
         self.conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_spot_symbol_interval_time
-            ON binance_spot(symbol, interval, timestamp)
+            CREATE INDEX IF NOT EXISTS idx_spot_exchange_symbol_interval_time
+            ON spot(exchange, symbol, interval, timestamp)
         """)
 
-        logger.debug("Created binance_spot table")
+        logger.debug("Created spot table")
 
-    def _create_binance_futures(self):
-        """Create binance_futures table for futures OHLCV data."""
+    def _create_futures(self):
+        """Create futures table for futures OHLCV data (multi-exchange)."""
         self.conn.execute("""
-            CREATE TABLE IF NOT EXISTS binance_futures (
+            CREATE TABLE IF NOT EXISTS futures (
+                exchange VARCHAR NOT NULL,
                 symbol VARCHAR NOT NULL,
                 interval VARCHAR NOT NULL,
                 timestamp TIMESTAMP NOT NULL,
@@ -104,17 +106,17 @@ class CryptoDatabase:
                 trades_count INTEGER,
                 taker_buy_base_volume DOUBLE,
                 taker_buy_quote_volume DOUBLE,
-                PRIMARY KEY (symbol, interval, timestamp)
+                PRIMARY KEY (exchange, symbol, interval, timestamp)
             )
         """)
 
         # Create index for common queries
         self.conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_futures_symbol_interval_time
-            ON binance_futures(symbol, interval, timestamp)
+            CREATE INDEX IF NOT EXISTS idx_futures_exchange_symbol_interval_time
+            ON futures(exchange, symbol, interval, timestamp)
         """)
 
-        logger.debug("Created binance_futures table")
+        logger.debug("Created futures table")
 
     def _create_crypto_universe(self):
         """Create crypto_universe table for CoinMarketCap rankings."""
@@ -153,77 +155,10 @@ class CryptoDatabase:
         """
         return self.conn.execute(sql)
 
-    def get_table_stats(self):
-        """
-        Get statistics for all tables.
-
-        Returns
-        -------
-        dict
-            Dictionary with table statistics
-        """
-        stats = {}
-
-        # Binance spot stats
-        result = self.conn.execute("""
-            SELECT
-                COUNT(*) as record_count,
-                COUNT(DISTINCT symbol) as symbol_count,
-                MIN(timestamp) as min_date,
-                MAX(timestamp) as max_date
-            FROM binance_spot
-        """).fetchone()
-
-        if result:
-            stats['binance_spot'] = {
-                'records': result[0],
-                'symbols': result[1],
-                'min_date': result[2],
-                'max_date': result[3]
-            }
-
-        # Binance futures stats
-        result = self.conn.execute("""
-            SELECT
-                COUNT(*) as record_count,
-                COUNT(DISTINCT symbol) as symbol_count,
-                MIN(timestamp) as min_date,
-                MAX(timestamp) as max_date
-            FROM binance_futures
-        """).fetchone()
-
-        if result:
-            stats['binance_futures'] = {
-                'records': result[0],
-                'symbols': result[1],
-                'min_date': result[2],
-                'max_date': result[3]
-            }
-
-        # Crypto universe stats
-        result = self.conn.execute("""
-            SELECT
-                COUNT(*) as record_count,
-                COUNT(DISTINCT symbol) as symbol_count,
-                MIN(date) as min_date,
-                MAX(date) as max_date
-            FROM crypto_universe
-        """).fetchone()
-
-        if result:
-            stats['crypto_universe'] = {
-                'records': result[0],
-                'symbols': result[1],
-                'min_date': result[2],
-                'max_date': result[3]
-            }
-
-        return stats
-
     def close(self):
         """Close database connection."""
         self.conn.close()
-        logger.info("Database connection closed")
+        logger.debug("Database connection closed")
 
     def __enter__(self):
         """Context manager entry."""

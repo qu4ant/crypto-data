@@ -19,7 +19,8 @@ def temp_db(tmp_path):
 
     # Create tables
     conn.execute("""
-        CREATE TABLE binance_spot (
+        CREATE TABLE spot (
+            exchange VARCHAR,
             symbol VARCHAR,
             interval VARCHAR,
             timestamp TIMESTAMP,
@@ -32,12 +33,13 @@ def temp_db(tmp_path):
             trades_count INTEGER,
             taker_buy_base_volume DOUBLE,
             taker_buy_quote_volume DOUBLE,
-            PRIMARY KEY (symbol, interval, timestamp)
+            PRIMARY KEY (exchange, symbol, interval, timestamp)
         )
     """)
 
     conn.execute("""
-        CREATE TABLE binance_futures (
+        CREATE TABLE futures (
+            exchange VARCHAR,
             symbol VARCHAR,
             interval VARCHAR,
             timestamp TIMESTAMP,
@@ -50,7 +52,7 @@ def temp_db(tmp_path):
             trades_count INTEGER,
             taker_buy_base_volume DOUBLE,
             taker_buy_quote_volume DOUBLE,
-            PRIMARY KEY (symbol, interval, timestamp)
+            PRIMARY KEY (exchange, symbol, interval, timestamp)
         )
     """)
 
@@ -90,7 +92,7 @@ def test_csv_with_duplicates_logs_removal(tmp_path, temp_db, caplog):
     assert any("Removed 1 duplicate" in record.message for record in caplog.records)
 
     # Verify only 3 rows were inserted (1 duplicate removed)
-    result = temp_db.execute("SELECT COUNT(*) FROM binance_spot").fetchone()
+    result = temp_db.execute("SELECT COUNT(*) FROM spot").fetchone()
     assert result[0] == 3
 
 
@@ -110,7 +112,7 @@ def test_csv_with_count_column_normalized(tmp_path, temp_db):
     import_to_duckdb(temp_db, zip_path, 'BTCUSDT', 'spot', '5m')
 
     # Verify data was imported with trades_count column
-    result = temp_db.execute("SELECT trades_count FROM binance_spot ORDER BY timestamp LIMIT 1").fetchone()
+    result = temp_db.execute("SELECT trades_count FROM spot ORDER BY timestamp LIMIT 1").fetchone()
     assert result[0] == 1000
 
 
@@ -130,7 +132,7 @@ def test_csv_with_taker_buy_volume_normalized(tmp_path, temp_db):
     import_to_duckdb(temp_db, zip_path, 'BTCUSDT', 'spot', '5m')
 
     # Verify data was imported with taker_buy_base_volume column
-    result = temp_db.execute("SELECT taker_buy_base_volume FROM binance_spot ORDER BY timestamp LIMIT 1").fetchone()
+    result = temp_db.execute("SELECT taker_buy_base_volume FROM spot ORDER BY timestamp LIMIT 1").fetchone()
     assert result[0] == 50
 
 
@@ -149,7 +151,7 @@ def test_import_with_original_symbol(tmp_path, temp_db):
     import_to_duckdb(temp_db, zip_path, '1000PEPEUSDT', 'spot', '5m', original_symbol='PEPEUSDT')
 
     # Verify symbol stored is PEPEUSDT, not 1000PEPEUSDT
-    result = temp_db.execute("SELECT DISTINCT symbol FROM binance_spot").fetchone()
+    result = temp_db.execute("SELECT DISTINCT symbol FROM spot").fetchone()
     assert result[0] == 'PEPEUSDT'
 
 
@@ -225,7 +227,7 @@ def test_import_with_header_detection(tmp_path, temp_db):
     import_to_duckdb(temp_db, zip_path, 'BTCUSDT', 'spot', '5m')
 
     # Verify 2 rows were imported (header not counted)
-    result = temp_db.execute("SELECT COUNT(*) FROM binance_spot").fetchone()
+    result = temp_db.execute("SELECT COUNT(*) FROM spot").fetchone()
     assert result[0] == 2
 
 
@@ -244,7 +246,7 @@ def test_import_without_header(tmp_path, temp_db):
     import_to_duckdb(temp_db, zip_path, 'BTCUSDT', 'spot', '5m')
 
     # Verify 2 rows were imported
-    result = temp_db.execute("SELECT COUNT(*) FROM binance_spot").fetchone()
+    result = temp_db.execute("SELECT COUNT(*) FROM spot").fetchone()
     assert result[0] == 2
 
 
@@ -262,6 +264,6 @@ def test_import_adds_symbol_and_interval_columns(tmp_path, temp_db):
     import_to_duckdb(temp_db, zip_path, 'BTCUSDT', 'spot', '5m')
 
     # Verify symbol and interval columns were added
-    result = temp_db.execute("SELECT symbol, interval FROM binance_spot").fetchone()
+    result = temp_db.execute("SELECT symbol, interval FROM spot").fetchone()
     assert result[0] == 'BTCUSDT'
     assert result[1] == '5m'

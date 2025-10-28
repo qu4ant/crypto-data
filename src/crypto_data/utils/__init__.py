@@ -12,7 +12,6 @@ Public API
 
 Internal Utilities
 ------------------
-- config: Configuration loading (load_universe_config)
 - dates: Date manipulation (generate_month_list)
 - formatting: Display formatting (format_file_size, format_availability_bar)
 - database: Database operations (import_to_duckdb, data_exists, etc.)

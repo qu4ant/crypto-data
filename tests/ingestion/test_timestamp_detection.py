@@ -94,7 +94,7 @@ def test_timestamp_milliseconds_detection():
             # Verify timestamps are correctly converted
             result = conn.execute("""
                 SELECT timestamp
-                FROM binance_spot
+                FROM spot
                 ORDER BY timestamp
             """).fetchall()
 
@@ -142,7 +142,7 @@ def test_timestamp_microseconds_detection():
             # Verify timestamps are correctly converted
             result = conn.execute("""
                 SELECT timestamp
-                FROM binance_spot
+                FROM spot
                 ORDER BY timestamp
             """).fetchall()
 
@@ -189,7 +189,7 @@ def test_timestamp_threshold_boundary():
             # Verify all timestamps are valid (no NaT)
             result = conn.execute("""
                 SELECT timestamp
-                FROM binance_spot
+                FROM spot
                 ORDER BY timestamp
             """).fetchall()
 
@@ -237,7 +237,7 @@ def test_timestamp_mixed_format_error():
             # Verify both timestamps are valid (even if logically inconsistent)
             result = conn.execute("""
                 SELECT timestamp
-                FROM binance_spot
+                FROM spot
                 ORDER BY timestamp
             """).fetchall()
 
@@ -283,7 +283,7 @@ def test_timestamp_with_header():
             # Verify timestamps are correctly converted
             result = conn.execute("""
                 SELECT timestamp
-                FROM binance_spot
+                FROM spot
                 ORDER BY timestamp
             """).fetchall()
 

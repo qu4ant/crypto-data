@@ -69,7 +69,7 @@ def test_1000prefix_normalization():
             # Verify data is stored with original symbol
             result = conn.execute("""
                 SELECT symbol, close, volume
-                FROM binance_futures
+                FROM futures
                 WHERE interval = '5m'
             """).fetchall()
 
@@ -108,7 +108,7 @@ def test_normal_symbol_unchanged():
             # Verify data is stored with same symbol
             result = conn.execute("""
                 SELECT symbol
-                FROM binance_spot
+                FROM spot
                 WHERE interval = '5m'
             """).fetchall()
 
