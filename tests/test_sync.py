@@ -1,0 +1,240 @@
+"""
+Tests for sync() orchestration function.
+
+Tests that sync() correctly orchestrates the complete workflow:
+universe ingestion → symbol extraction → Binance data ingestion.
+
+Uses mocks to avoid external API calls and file I/O.
+"""
+
+import pytest
+import tempfile
+from pathlib import Path
+from unittest.mock import patch, MagicMock, call
+
+from crypto_data.ingestion import sync
+
+
+def test_sync_orchestrates_full_workflow():
+    """Test that sync() calls all components in correct order."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = str(Path(tmpdir) / 'test.db')
+
+        # Mock all heavy functions
+        with patch('crypto_data.ingestion.ingest_universe') as mock_ingest_universe, \
+             patch('crypto_data.ingestion.get_symbols_from_universe') as mock_get_symbols, \
+             patch('crypto_data.ingestion.ingest_binance_async') as mock_ingest_binance, \
+             patch('crypto_data.ingestion.CryptoDatabase') as mock_db, \
+             patch('crypto_data.ingestion.Path') as mock_path:
+
+            # Setup mocks
+            mock_get_symbols.return_value = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT']
+
+            # Mock CryptoDatabase for symbol count
+            mock_db_instance = MagicMock()
+            mock_db_instance.execute.return_value.fetchone.return_value = (3,)
+            mock_db.return_value = mock_db_instance
+
+            # Mock Path for database size
+            mock_path_instance = MagicMock()
+            mock_path_instance.stat.return_value.st_size = 1024 * 1024  # 1 MB
+            mock_path.return_value = mock_path_instance
+
+            # Call sync
+            sync(
+                db_path=db_path,
+                start_date='2024-01-01',
+                end_date='2024-03-31',
+                top_n=50,
+                interval='5m',
+                data_types=['spot', 'futures']
+            )
+
+            # Verify ingest_universe called for each month
+            assert mock_ingest_universe.call_count == 3
+            mock_ingest_universe.assert_any_call(db_path=db_path, date='2024-01-01', top_n=50)
+            mock_ingest_universe.assert_any_call(db_path=db_path, date='2024-02-01', top_n=50)
+            mock_ingest_universe.assert_any_call(db_path=db_path, date='2024-03-01', top_n=50)
+
+            # Verify get_symbols_from_universe called
+            mock_get_symbols.assert_called_once_with(db_path, '2024-01-01', '2024-03-31', 50)
+
+            # Verify ingest_binance_async called with extracted symbols
+            mock_ingest_binance.assert_called_once_with(
+                db_path=db_path,
+                symbols=['BTCUSDT', 'ETHUSDT', 'SOLUSDT'],
+                data_types=['spot', 'futures'],
+                start_date='2024-01-01',
+                end_date='2024-03-31',
+                interval='5m',
+                skip_existing=True,
+                max_concurrent=20,
+                failure_threshold=3
+            )
+
+
+def test_sync_handles_empty_universe():
+    """Test that sync() exits gracefully when no symbols are extracted."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = str(Path(tmpdir) / 'test.db')
+
+        # Mock functions
+        with patch('crypto_data.ingestion.ingest_universe') as mock_ingest_universe, \
+             patch('crypto_data.ingestion.get_symbols_from_universe') as mock_get_symbols, \
+             patch('crypto_data.ingestion.ingest_binance_async') as mock_ingest_binance:
+
+            # Setup mocks - empty universe
+            mock_get_symbols.return_value = []
+
+            # Call sync
+            sync(
+                db_path=db_path,
+                start_date='2024-01-01',
+                end_date='2024-01-31',
+                top_n=50,
+                interval='5m',
+                data_types=['spot']
+            )
+
+            # Verify ingest_universe was called
+            assert mock_ingest_universe.call_count == 1
+
+            # Verify get_symbols_from_universe was called
+            assert mock_get_symbols.call_count == 1
+
+            # Verify ingest_binance_async was NOT called (early return)
+            mock_ingest_binance.assert_not_called()
+
+
+def test_sync_generates_correct_month_list():
+    """Test that sync() generates correct monthly snapshots."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = str(Path(tmpdir) / 'test.db')
+
+        # Mock functions
+        with patch('crypto_data.ingestion.ingest_universe') as mock_ingest_universe, \
+             patch('crypto_data.ingestion.get_symbols_from_universe') as mock_get_symbols, \
+             patch('crypto_data.ingestion.ingest_binance_async') as mock_ingest_binance:
+
+            # Setup mocks
+            mock_get_symbols.return_value = ['BTCUSDT']
+
+            # Call sync with 12-month period
+            sync(
+                db_path=db_path,
+                start_date='2024-01-01',
+                end_date='2024-12-31',
+                top_n=100,
+                interval='5m',
+                data_types=['spot']
+            )
+
+            # Verify ingest_universe called 12 times (one per month)
+            assert mock_ingest_universe.call_count == 12
+
+            # Verify correct snapshot dates
+            expected_dates = [
+                '2024-01-01', '2024-02-01', '2024-03-01', '2024-04-01',
+                '2024-05-01', '2024-06-01', '2024-07-01', '2024-08-01',
+                '2024-09-01', '2024-10-01', '2024-11-01', '2024-12-01'
+            ]
+
+            for expected_date in expected_dates:
+                mock_ingest_universe.assert_any_call(db_path=db_path, date=expected_date, top_n=100)
+
+
+def test_sync_continues_on_universe_failure():
+    """Test that sync() continues even if some universe snapshots fail."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = str(Path(tmpdir) / 'test.db')
+
+        # Mock functions
+        with patch('crypto_data.ingestion.ingest_universe') as mock_ingest_universe, \
+             patch('crypto_data.ingestion.get_symbols_from_universe') as mock_get_symbols, \
+             patch('crypto_data.ingestion.ingest_binance_async') as mock_ingest_binance:
+
+            # Setup mocks - second snapshot fails
+            def ingest_side_effect(db_path, date, top_n):
+                if date == '2024-02-01':
+                    raise Exception("API error")
+
+            mock_ingest_universe.side_effect = ingest_side_effect
+            mock_get_symbols.return_value = ['BTCUSDT']
+
+            # Call sync
+            sync(
+                db_path=db_path,
+                start_date='2024-01-01',
+                end_date='2024-03-31',
+                top_n=50,
+                interval='5m',
+                data_types=['spot']
+            )
+
+            # Verify ingest_universe called for all 3 months (didn't stop on error)
+            assert mock_ingest_universe.call_count == 3
+
+            # Verify ingest_binance_async was still called (workflow continued)
+            mock_ingest_binance.assert_called_once()
+
+
+def test_sync_uses_default_data_types():
+    """Test that sync() uses default data_types if not specified."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = str(Path(tmpdir) / 'test.db')
+
+        # Mock functions
+        with patch('crypto_data.ingestion.ingest_universe'), \
+             patch('crypto_data.ingestion.get_symbols_from_universe') as mock_get_symbols, \
+             patch('crypto_data.ingestion.ingest_binance_async') as mock_ingest_binance:
+
+            mock_get_symbols.return_value = ['BTCUSDT']
+
+            # Call sync without data_types parameter
+            sync(
+                db_path=db_path,
+                start_date='2024-01-01',
+                end_date='2024-01-31',
+                top_n=50,
+                interval='5m'
+                # data_types not specified
+            )
+
+            # Verify ingest_binance_async called with default ['spot', 'futures']
+            call_args = mock_ingest_binance.call_args
+            assert call_args[1]['data_types'] == ['spot', 'futures']
+
+
+def test_sync_handles_year_boundary():
+    """Test that sync() correctly handles date ranges crossing year boundaries."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = str(Path(tmpdir) / 'test.db')
+
+        # Mock functions
+        with patch('crypto_data.ingestion.ingest_universe') as mock_ingest_universe, \
+             patch('crypto_data.ingestion.get_symbols_from_universe') as mock_get_symbols, \
+             patch('crypto_data.ingestion.ingest_binance_async'):
+
+            mock_get_symbols.return_value = ['BTCUSDT']
+
+            # Call sync with year boundary
+            sync(
+                db_path=db_path,
+                start_date='2023-11-01',
+                end_date='2024-02-28',
+                top_n=50,
+                interval='5m',
+                data_types=['spot']
+            )
+
+            # Verify ingest_universe called for 4 months
+            assert mock_ingest_universe.call_count == 4
+
+            # Verify correct dates (crossing year boundary)
+            expected_dates = ['2023-11-01', '2023-12-01', '2024-01-01', '2024-02-01']
+            for expected_date in expected_dates:
+                mock_ingest_universe.assert_any_call(db_path=db_path, date=expected_date, top_n=50)
+
+
+if __name__ == "__main__":
+    pytest.main([__file__, "-v"])

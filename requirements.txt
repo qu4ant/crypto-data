@@ -1,8 +1,7 @@
-requests>=2.31.0
-beautifulsoup4>=4.12.0
-PyYAML>=6.0
-pandas>=2.0.0
-numpy>=1.24.0
-duckdb>=0.9.0
-python-dotenv>=1.0.0
-pyarrow>=19.0.0
+# Core Dependencies
+requests>=2.31.0      # HTTP requests (CoinMarketCap API, Binance downloads)
+aiohttp>=3.9.0        # Async HTTP requests (parallel Binance downloads)
+PyYAML>=6.0           # Config file parsing (YAML)
+pandas>=2.0.0         # DataFrame operations (data ingestion)
+duckdb>=0.9.0         # Embedded database engine
+pyarrow>=19.0.0       # Parquet file support (used by DuckDB)

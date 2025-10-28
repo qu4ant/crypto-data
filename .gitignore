@@ -55,6 +55,7 @@ data/
 *.parquet
 *.csv
 *.zip
+*.db
 
 # Reports and outputs
 reports/
