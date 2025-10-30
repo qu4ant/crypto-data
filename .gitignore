@@ -63,6 +63,10 @@ test_output/
 *.html
 *.log
 
+#CLaude files 
+claude/
+CLAUDE.md
+
 # Jupyter
 .ipynb_checkpoints/
 *.ipynb
