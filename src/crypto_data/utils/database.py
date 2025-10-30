@@ -101,7 +101,7 @@ def import_to_duckdb(
                 lambda x: x / 1000000.0 if x >= 5e12 else x / 1000.0
             ),
             unit='s'
-        )
+        ).dt.ceil('1s')  # Round up to full seconds (03:59:59.999 → 04:00:00)
 
         # Rename/harmonize column names for futures vs spot
         if 'count' in df.columns:
