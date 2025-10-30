@@ -23,30 +23,6 @@ class BinanceDataVisionClientAsync:
     Uses aiohttp for concurrent HTTP requests to Binance's S3-backed repository.
     Designed for downloading multiple files in parallel (months for same symbol).
 
-    Example
-    -------
-    >>> import asyncio
-    >>> from pathlib import Path
-    >>>
-    >>> async def download_year():
-    ...     client = BinanceDataVisionClientAsync()
-    ...     await client.__aenter__()
-    ...
-    ...     # Download 12 months in parallel
-    ...     tasks = []
-    ...     for month in range(1, 13):
-    ...         month_str = f'2024-{month:02d}'
-    ...         output = Path(f'/tmp/BTCUSDT-5m-{month_str}.zip')
-    ...         tasks.append(
-    ...             client.download_klines('BTCUSDT', 'spot', month_str, '5m', output)
-    ...         )
-    ...
-    ...     results = await asyncio.gather(*tasks)
-    ...     await client.__aexit__(None, None, None)
-    ...
-    ...     print(f"Downloaded: {sum(results)} / {len(results)} files")
-    >>>
-    >>> asyncio.run(download_year())
     """
 
     # Data category URL paths

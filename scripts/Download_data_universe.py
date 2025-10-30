@@ -14,7 +14,6 @@ DEFAULT_EXCLUDE_TAGS = [
 DEFAULT_EXCLUDE_SYMBOLS = [
     'LUNA',  # Terra collapse (May 2022)
     'FTT',   # FTX Token collapse (Nov 2022)
-    'UST'    # TerraUSD algorithmic stablecoin failure
 ]
 
 setup_colored_logging()
@@ -31,8 +30,8 @@ def main():
         db_path='crypto_data.db',
         start_date='2022-01-01',
         end_date='2025-09-01',
-        top_n=10,  # Top X coins by market cap
-        interval='1h',  # interval : 1m, 5m, 15m, 30m, 1h, 4h, 1d
+        top_n=25,  # Top X coins by market cap
+        interval='4h',  # interval : 1m, 5m, 15m, 30m, 1h, 4h, 1d
         data_types=['spot', 'futures'],
         exclude_tags=DEFAULT_EXCLUDE_TAGS,
         exclude_symbols=DEFAULT_EXCLUDE_SYMBOLS
