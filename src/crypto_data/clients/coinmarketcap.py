@@ -71,8 +71,14 @@ class CoinMarketCapClient:
 
     async def __aenter__(self):
         """Async context manager entry."""
-        self._session = aiohttp.ClientSession()
-        return self
+        try:
+            self._session = aiohttp.ClientSession()
+            return self
+        except Exception:
+            # If session creation fails, ensure cleanup
+            if self._session:
+                await self._session.close()
+            raise
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit."""

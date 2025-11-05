@@ -64,9 +64,15 @@ class BinanceDataVisionClientAsync:
 
     async def __aenter__(self):
         """Context manager entry: create session."""
-        self.session = aiohttp.ClientSession(timeout=self.timeout)
-        self.semaphore = asyncio.Semaphore(self.max_concurrent)
-        return self
+        try:
+            self.session = aiohttp.ClientSession(timeout=self.timeout)
+            self.semaphore = asyncio.Semaphore(self.max_concurrent)
+            return self
+        except Exception:
+            # If session creation fails, ensure cleanup
+            if self.session:
+                await self.session.close()
+            raise
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit: close session."""

@@ -391,7 +391,6 @@ async def ingest_universe(
 
             # Delete existing data for this date, then insert new data (ATOMIC)
             # This ensures top_n changes work correctly (e.g., 100→25 removes the extra 75)
-            committed = False
             try:
                 conn.execute("BEGIN TRANSACTION")
 
@@ -406,18 +405,37 @@ async def ingest_universe(
                 else:
                     logger.debug(f"No data to insert for {date_str}")
 
-                conn.execute("COMMIT")
-                committed = True
-                success_count += 1
-
             except Exception as e:
-                if not committed:
+                # Transaction failed - attempt rollback
+                try:
                     conn.execute("ROLLBACK")
                     logger.debug(f"Transaction rolled back for {date_str}")
+                except Exception as rollback_error:
+                    # ROLLBACK failed - critical error!
+                    logger.critical(
+                        f"ROLLBACK failed for {date_str}: {rollback_error}\n"
+                        f"Original error: {e}\n"
+                        f"Database may be in inconsistent state!"
+                    )
+                    # Try to verify database state
+                    try:
+                        count = conn.execute(
+                            "SELECT COUNT(*) FROM crypto_universe WHERE date = ?",
+                            [date_str]
+                        ).fetchone()[0]
+                        logger.critical(f"Current row count for {date_str}: {count}")
+                    except:
+                        logger.critical("Cannot verify database state - connection may be lost")
+
                 logger.error(f"Failed to update universe for {date_str}: {e}")
                 fail_count += 1
                 # Continue with other months instead of raising
                 continue
+            else:
+                # No exception - commit transaction
+                conn.execute("COMMIT")
+                logger.debug(f"Transaction committed for {date_str}")
+                success_count += 1
 
     finally:
         db.close()
@@ -1126,18 +1144,17 @@ def ingest_binance_async(
 
                     # Process results: import to DuckDB with transaction
                     # IMPORTANT: Always store with original symbol (user-requested), not download_symbol
-                    committed = False
                     try:
                         conn.execute("BEGIN TRANSACTION")
                         _process_metrics_results(results, conn, stats, symbol)
-                        conn.execute("COMMIT")
-                        committed = True
                     except Exception as e:
-                        if not committed:
-                            conn.execute("ROLLBACK")
-                            logger.debug(f"Transaction rolled back for {symbol} {data_type}")
+                        conn.execute("ROLLBACK")
+                        logger.debug(f"Transaction rolled back for {symbol} {data_type}")
                         logger.error(f"Failed to import {symbol} {data_type}: {e}")
                         # Don't raise - continue with other symbols
+                    else:
+                        conn.execute("COMMIT")
+                        logger.debug(f"Transaction committed for {symbol} {data_type}")
 
                     # Auto-retry with 1000-prefix if all downloads failed with 404
                     # Only retry if we haven't already used a cached mapping
@@ -1167,18 +1184,17 @@ def ingest_binance_async(
                             logger.info(f"  ✓ Auto-discovered mapping: {symbol} → {prefixed_symbol}")
 
                             # Process retry results with transaction
-                            committed = False
                             try:
                                 conn.execute("BEGIN TRANSACTION")
                                 _process_metrics_results(retry_results, conn, stats, symbol)
-                                conn.execute("COMMIT")
-                                committed = True
                             except Exception as e:
-                                if not committed:
-                                    conn.execute("ROLLBACK")
-                                    logger.debug(f"Transaction rolled back for {symbol} {data_type} retry")
+                                conn.execute("ROLLBACK")
+                                logger.debug(f"Transaction rolled back for {symbol} {data_type} retry")
                                 logger.error(f"Failed to import {symbol} {data_type} retry: {e}")
                                 # Don't raise - continue with other symbols
+                            else:
+                                conn.execute("COMMIT")
+                                logger.debug(f"Transaction committed for {symbol} {data_type} retry")
 
                             # Update symbol reference for availability metadata
                             download_symbol = prefixed_symbol
@@ -1215,18 +1231,17 @@ def ingest_binance_async(
 
                     # Process results: import to DuckDB with transaction
                     # IMPORTANT: Always store with original symbol (user-requested), not download_symbol
-                    committed = False
                     try:
                         conn.execute("BEGIN TRANSACTION")
                         _process_funding_rates_results(results, conn, stats, symbol)
-                        conn.execute("COMMIT")
-                        committed = True
                     except Exception as e:
-                        if not committed:
-                            conn.execute("ROLLBACK")
-                            logger.debug(f"Transaction rolled back for {symbol} {data_type}")
+                        conn.execute("ROLLBACK")
+                        logger.debug(f"Transaction rolled back for {symbol} {data_type}")
                         logger.error(f"Failed to import {symbol} {data_type}: {e}")
                         # Don't raise - continue with other symbols
+                    else:
+                        conn.execute("COMMIT")
+                        logger.debug(f"Transaction committed for {symbol} {data_type}")
 
                     # Auto-retry with 1000-prefix if all downloads failed with 404
                     # Only retry if we haven't already used a cached mapping
@@ -1259,18 +1274,17 @@ def ingest_binance_async(
                             logger.info(f"  ✓ Auto-discovered mapping: {symbol} → {prefixed_symbol}")
 
                             # Process retry results with transaction
-                            committed = False
                             try:
                                 conn.execute("BEGIN TRANSACTION")
                                 _process_funding_rates_results(retry_results, conn, stats, symbol)
-                                conn.execute("COMMIT")
-                                committed = True
                             except Exception as e:
-                                if not committed:
-                                    conn.execute("ROLLBACK")
-                                    logger.debug(f"Transaction rolled back for {symbol} {data_type} retry")
+                                conn.execute("ROLLBACK")
+                                logger.debug(f"Transaction rolled back for {symbol} {data_type} retry")
                                 logger.error(f"Failed to import {symbol} {data_type} retry: {e}")
                                 # Don't raise - continue with other symbols
+                            else:
+                                conn.execute("COMMIT")
+                                logger.debug(f"Transaction committed for {symbol} {data_type} retry")
 
                             # Update symbol reference for availability metadata
                             download_symbol = prefixed_symbol
@@ -1309,18 +1323,17 @@ def ingest_binance_async(
                 # Process results: import to DuckDB using helper with transaction
                 # IMPORTANT: Always store with original symbol (user-requested), not download_symbol
                 # Transaction ensures atomicity: either ALL files imported or NONE
-                committed = False
                 try:
                     conn.execute("BEGIN TRANSACTION")
                     process_download_results(results, conn, stats, interval, symbol)
-                    conn.execute("COMMIT")
-                    committed = True
                 except Exception as e:
-                    if not committed:
-                        conn.execute("ROLLBACK")
-                        logger.debug(f"Transaction rolled back for {symbol} {data_type}")
+                    conn.execute("ROLLBACK")
+                    logger.debug(f"Transaction rolled back for {symbol} {data_type}")
                     logger.error(f"Failed to import {symbol} {data_type}: {e}")
                     # Don't raise - continue with other symbols
+                else:
+                    conn.execute("COMMIT")
+                    logger.debug(f"Transaction committed for {symbol} {data_type}")
 
                 # Auto-retry with 1000-prefix for futures if all downloads failed with 404
                 # Only retry if we haven't already used a cached mapping
@@ -1357,18 +1370,17 @@ def ingest_binance_async(
                         logger.info(f"  ✓ Auto-discovered mapping: {symbol} → {prefixed_symbol}")
 
                         # Process retry results using helper with transaction
-                        committed = False
                         try:
                             conn.execute("BEGIN TRANSACTION")
                             process_download_results(retry_results, conn, stats, interval, symbol)
-                            conn.execute("COMMIT")
-                            committed = True
                         except Exception as e:
-                            if not committed:
-                                conn.execute("ROLLBACK")
-                                logger.debug(f"Transaction rolled back for {symbol} {data_type} retry")
+                            conn.execute("ROLLBACK")
+                            logger.debug(f"Transaction rolled back for {symbol} {data_type} retry")
                             logger.error(f"Failed to import {symbol} {data_type} retry: {e}")
                             # Don't raise - continue with other symbols
+                        else:
+                            conn.execute("COMMIT")
+                            logger.debug(f"Transaction committed for {symbol} {data_type} retry")
 
                         # Update symbol reference for availability metadata
                         download_symbol = prefixed_symbol

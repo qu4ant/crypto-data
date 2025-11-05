@@ -12,6 +12,12 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+# Valid table names for SQL injection protection
+VALID_TABLES = {'spot', 'futures', 'open_interest', 'funding_rates', 'crypto_universe'}
+
+# Valid exchanges for data validation
+VALID_EXCHANGES = {'binance', 'bybit', 'kraken', 'coinbase'}
+
 
 def import_to_duckdb(
     conn,
@@ -65,6 +71,15 @@ def import_to_duckdb(
         Binance uses different tickers for spot vs futures.
     """
     table = data_type  # 'spot' or 'futures'
+
+    # Validate table name (SQL injection protection)
+    if table not in VALID_TABLES:
+        raise ValueError(f"Invalid table name '{table}'. Must be one of: {VALID_TABLES}")
+
+    # Validate exchange name
+    if exchange not in VALID_EXCHANGES:
+        raise ValueError(f"Invalid exchange '{exchange}'. Must be one of: {VALID_EXCHANGES}")
+
     logger.debug(f"Importing to {table} (exchange={exchange})")
 
     # Extract ZIP file
@@ -191,6 +206,15 @@ def import_metrics_to_duckdb(
         Exchange name (default: 'binance')
     """
     table = 'open_interest'
+
+    # Validate table name (SQL injection protection)
+    if table not in VALID_TABLES:
+        raise ValueError(f"Invalid table name '{table}'. Must be one of: {VALID_TABLES}")
+
+    # Validate exchange name
+    if exchange not in VALID_EXCHANGES:
+        raise ValueError(f"Invalid exchange '{exchange}'. Must be one of: {VALID_EXCHANGES}")
+
     logger.debug(f"Importing to {table} (exchange={exchange})")
 
     # Extract ZIP file
@@ -293,6 +317,15 @@ def import_funding_rates_to_duckdb(
         Exchange name (default: 'binance')
     """
     table = 'funding_rates'
+
+    # Validate table name (SQL injection protection)
+    if table not in VALID_TABLES:
+        raise ValueError(f"Invalid table name '{table}'. Must be one of: {VALID_TABLES}")
+
+    # Validate exchange name
+    if exchange not in VALID_EXCHANGES:
+        raise ValueError(f"Invalid exchange '{exchange}'. Must be one of: {VALID_EXCHANGES}")
+
     logger.debug(f"Importing to {table} (exchange={exchange})")
 
     # Extract ZIP file
@@ -397,6 +430,14 @@ def data_exists(conn, symbol: str, month: str, data_type: str, interval: str = N
         table = 'funding_rates'
     else:
         return False  # Unknown data type
+
+    # Validate table name (SQL injection protection)
+    if table not in VALID_TABLES:
+        raise ValueError(f"Invalid table name '{table}'. Must be one of: {VALID_TABLES}")
+
+    # Validate exchange name
+    if exchange not in VALID_EXCHANGES:
+        raise ValueError(f"Invalid exchange '{exchange}'. Must be one of: {VALID_EXCHANGES}")
 
     # Parse month to get date range
     year, month_num = month.split('-')
