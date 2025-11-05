@@ -142,22 +142,25 @@ class TestOHLCVStatisticalValidation:
 
     def test_extreme_price_jump_detected(self):
         """Test that extreme price jumps are detected"""
-        # Create data with extreme price jump
+        # Need many normal points + one huge jump for z-score > 5 sigma
+        # Create 50 incremental prices, then huge jump
+        num_points = 51
+        close_prices = list(range(50000, 50000 + 50)) + [5000000.0]  # 100x jump
+
         df = pd.DataFrame({
-            'exchange': ['binance'] * 10,
-            'symbol': ['BTCUSDT'] * 10,
-            'interval': ['5m'] * 10,
-            'timestamp': pd.date_range('2024-01-01', periods=10, freq='5T'),
-            'open': [50000.0] * 10,
-            'high': [50100.0] * 10,
-            'low': [49900.0] * 10,
-            'close': [50000.0, 50010.0, 50020.0, 50030.0, 100000.0,  # Huge jump
-                      100100.0, 100200.0, 100300.0, 100400.0, 100500.0],
-            'volume': [100.0] * 10,
-            'quote_volume': [5000000.0] * 10,
-            'trades_count': [500] * 10,
-            'taker_buy_base_volume': [50.0] * 10,
-            'taker_buy_quote_volume': [2500000.0] * 10
+            'exchange': ['binance'] * num_points,
+            'symbol': ['BTCUSDT'] * num_points,
+            'interval': ['5m'] * num_points,
+            'timestamp': pd.date_range('2024-01-01', periods=num_points, freq='5T'),
+            'open': [50000.0] * num_points,
+            'high': [50100.0] * num_points,
+            'low': [49900.0] * num_points,
+            'close': close_prices,
+            'volume': [100.0] * num_points,
+            'quote_volume': [5000000.0] * num_points,
+            'trades_count': [500] * num_points,
+            'taker_buy_base_volume': [50.0] * num_points,
+            'taker_buy_quote_volume': [2500000.0] * num_points
         })
 
         passed, warnings = validate_ohlcv_statistical(df)

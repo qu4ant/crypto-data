@@ -107,10 +107,11 @@ def valid_funding_rates_df():
 def funding_rates_extreme():
     """Funding rates DataFrame with extreme values (>1%)"""
     return pd.DataFrame({
-        'exchange': ['binance'] * 5,
-        'symbol': ['BTCUSDT'] * 5,
-        'timestamp': pd.date_range('2024-01-01', periods=5, freq='8H'),
-        'funding_rate': [0.0001, -0.0001, 0.015, -0.0003, 0.0001]  # 1.5% is extreme
+        'exchange': ['binance'] * 10,
+        'symbol': ['BTCUSDT'] * 10,
+        'timestamp': pd.date_range('2024-01-01', periods=10, freq='8H'),
+        'funding_rate': [0.0001, -0.0001, 0.0002, -0.0002, 0.0001,
+                         0.015, 0.014, 0.013, 0.012, 0.011]  # Multiple extreme values (last 5), std > 1%
     })
 
 

@@ -423,7 +423,7 @@ class TestIngestBinanceAsyncWithOpenInterest:
                     data_types=['open_interest'],
                     start_date='2025-11-01',
                     end_date='2025-11-02',
-                    max_concurrent=20
+                    max_concurrent_metrics=20
                 )
 
                 # Verify database was created
