@@ -82,15 +82,16 @@ class TestPriceContinuityCheck:
         df = pd.DataFrame({
             'close': [100.0, 101.0, 99.5, 100.5, 102.0]
         })
-        assert check_price_continuity(df, sigma=5.0) is True
+        assert check_price_continuity(df, sigma=5.0)
 
     def test_extreme_jump_fails(self):
         """Test that extreme price jump fails"""
+        # Need many normal points + one huge jump for z-score > 5 sigma
         df = pd.DataFrame({
-            'close': [100.0, 101.0, 500.0, 502.0, 505.0]  # Huge jump
+            'close': list(range(100, 150)) + [10000.0]  # 50 normal points, then 100x jump
         })
-        # Should fail (5x jump is way beyond 5 sigma)
-        assert check_price_continuity(df, sigma=5.0) is False
+        # Should fail (100x jump with tight distribution is way beyond 5 sigma)
+        assert not check_price_continuity(df, sigma=5.0)
 
     def test_single_row_passes(self):
         """Test that single row passes (no returns to check)"""
@@ -116,14 +117,14 @@ class TestVolumeOutliersCheck:
         df = pd.DataFrame({
             'volume': [100.0, 110.0, 95.0, 105.0, 98.0]
         })
-        assert check_volume_outliers(df, iqr_multiplier=3.0) is True
+        assert check_volume_outliers(df, iqr_multiplier=3.0)
 
     def test_extreme_outlier_fails(self):
         """Test that extreme outlier fails"""
         df = pd.DataFrame({
             'volume': [100.0, 110.0, 95.0, 10000.0, 98.0]  # Huge outlier
         })
-        assert check_volume_outliers(df, iqr_multiplier=3.0) is False
+        assert not check_volume_outliers(df, iqr_multiplier=3.0)
 
 
 @pytest.mark.schema
@@ -160,7 +161,7 @@ class TestRankChecks:
             'date': [datetime(2024, 1, 1)] * 3,
             'rank': [1, 2, 3]
         })
-        assert check_no_duplicate_ranks_per_date(df) is True
+        assert check_no_duplicate_ranks_per_date(df)
 
     def test_duplicate_ranks_fails(self):
         """Test that duplicate ranks fail"""
@@ -168,4 +169,4 @@ class TestRankChecks:
             'date': [datetime(2024, 1, 1)] * 3,
             'rank': [1, 1, 3]  # Duplicate rank 1
         })
-        assert check_no_duplicate_ranks_per_date(df) is False
+        assert not check_no_duplicate_ranks_per_date(df)
