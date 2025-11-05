@@ -296,5 +296,99 @@ def test_timestamp_with_header():
             db.close()
 
 
+def test_timestamp_rounding_to_full_seconds():
+    """Test that Binance timestamps ending in .999 are rounded up to full seconds."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = Path(tmpdir) / 'test.db'
+        zip_path_ms = Path(tmpdir) / 'ROUND-5m-2024-ms.zip'
+        zip_path_us = Path(tmpdir) / 'ROUND-5m-2025-us.zip'
+
+        # Test milliseconds: close_time ending in .999
+        # Note: timestamps parameter is open_time, close_time = open_time + 5min (300000ms)
+        # 2024-01-01 00:00:00 = 1704067200000 ms
+        # To get close_time = 00:04:59.999, we need open_time = 00:04:59.999 - 5min = 23:59:59.999 (Dec 31)
+        # 2024-01-01 00:04:59.999 (close_time) → should round to 00:05:00.000
+        # 2024-01-01 00:09:59.999 (close_time) → should round to 00:10:00.000
+        # These simulate real Binance data where close_time = 03:59:59.999, 07:59:59.999, etc.
+        timestamps_ms = [
+            1704067199999,  # open_time: 00:00:00 - 1ms → close_time: 00:04:59.999 → rounds to 00:05:00
+            1704067499999,  # open_time: 00:04:59.999 → close_time: 00:09:59.999 → rounds to 00:10:00
+        ]
+
+        # Test microseconds: close_time ending in .999999
+        # 2025-01-01 00:00:00 = 1735689600000000 μs
+        # Note: Function adds 300000000 μs (5 minutes) to open_time to get close_time
+        # 2025-01-01 00:14:59.999999 (close_time) → should round to 00:15:00.000
+        # 2025-01-01 00:19:59.999999 (close_time) → should round to 00:20:00.000
+        timestamps_us = [
+            1735690199999999,  # open_time: 00:09:59.999999 → close_time: 00:14:59.999999 → rounds to 00:15:00
+            1735690499999999,  # open_time: 00:14:59.999999 → close_time: 00:19:59.999999 → rounds to 00:20:00
+        ]
+
+        # Create test data for milliseconds
+        create_test_csv_zip_with_timestamps(zip_path_ms, 'ROUND', timestamps_ms)
+
+        # Import and verify milliseconds rounding
+        db = CryptoDatabase(str(db_path))
+        conn = db.conn
+
+        try:
+            import_to_duckdb(
+                conn=conn,
+                file_path=zip_path_ms,
+                symbol='ROUNDMS',
+                data_type='spot',
+                interval='5m'
+            )
+
+            result_ms = conn.execute("""
+                SELECT timestamp
+                FROM spot
+                WHERE symbol = 'ROUNDMS'
+                ORDER BY timestamp
+            """).fetchall()
+
+            assert len(result_ms) == 2
+
+            # Verify rounding: .999 → full second
+            assert result_ms[0][0] == datetime(2024, 1, 1, 0, 5, 0)
+            assert result_ms[1][0] == datetime(2024, 1, 1, 0, 10, 0)
+
+            # Verify no sub-second precision (microseconds should be 0)
+            assert result_ms[0][0].microsecond == 0
+            assert result_ms[1][0].microsecond == 0
+
+            # Create and test microseconds data
+            create_test_csv_zip_with_timestamps(zip_path_us, 'ROUND', timestamps_us)
+
+            import_to_duckdb(
+                conn=conn,
+                file_path=zip_path_us,
+                symbol='ROUNDUS',
+                data_type='spot',
+                interval='5m'
+            )
+
+            result_us = conn.execute("""
+                SELECT timestamp
+                FROM spot
+                WHERE symbol = 'ROUNDUS'
+                ORDER BY timestamp
+            """).fetchall()
+
+            assert len(result_us) == 2
+
+            # Verify rounding: .999999 → full second
+            assert result_us[0][0] == datetime(2025, 1, 1, 0, 15, 0)
+            assert result_us[1][0] == datetime(2025, 1, 1, 0, 20, 0)
+
+            # Verify no sub-second precision
+            assert result_us[0][0].microsecond == 0
+            assert result_us[1][0].microsecond == 0
+
+        finally:
+            db.close()
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

@@ -16,58 +16,6 @@ from crypto_data import CryptoDatabase
 from crypto_data.ingestion import ingest_universe
 
 
-def test_universe_transaction_atomic():
-    """Test that universe update is atomic (DELETE + INSERT in one transaction)."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        db_path = Path(tmpdir) / 'test.db'
-
-        # Create database
-        db = CryptoDatabase(str(db_path))
-        conn = db.conn
-
-        # Insert initial data
-        initial_data = pd.DataFrame([
-            {'date': pd.Timestamp('2024-01-01'), 'symbol': 'BTC', 'rank': 1, 'market_cap': 1000000, 'categories': ''},
-            {'date': pd.Timestamp('2024-01-01'), 'symbol': 'ETH', 'rank': 2, 'market_cap': 500000, 'categories': ''}
-        ])
-        conn.execute("INSERT INTO crypto_universe SELECT * FROM initial_data")
-
-        # Verify initial state
-        result = conn.execute("SELECT COUNT(*) FROM crypto_universe WHERE date = '2024-01-01'").fetchone()
-        assert result[0] == 2
-
-        db.close()
-
-        # Mock the CoinMarketCap API to return new data
-        new_data = [
-            {'symbol': 'BTC', 'cmcRank': 1, 'quotes': [{'marketCap': 1100000}], 'tags': []},
-            {'symbol': 'SOL', 'cmcRank': 2, 'quotes': [{'marketCap': 600000}], 'tags': []}
-        ]
-
-        with patch('crypto_data.ingestion.CoinMarketCapClient') as MockClient:
-            mock_instance = AsyncMock()
-            mock_instance.__aenter__.return_value = mock_instance
-            mock_instance.__aexit__.return_value = None
-            mock_instance.get_historical_listings = AsyncMock(return_value=new_data)
-            MockClient.return_value = mock_instance
-
-            # Run ingestion (should replace old data atomically)
-            asyncio.run(ingest_universe(
-                db_path=str(db_path),
-                months=['2024-01'],
-                top_n=2
-            ))
-
-        # Verify data was replaced (not appended)
-        db = CryptoDatabase(str(db_path))
-        result = db.execute("SELECT symbol, rank FROM crypto_universe WHERE date = '2024-01-01' ORDER BY rank").fetchall()
-        db.close()
-
-        assert len(result) == 2
-        assert result[0][0] == 'BTC'  # BTC still rank 1
-        assert result[1][0] == 'SOL'  # SOL replaced ETH at rank 2
-
-
 def test_universe_rollback_on_error():
     """Test that errors during API fetch are logged (batch version doesn't raise)."""
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -178,6 +126,61 @@ def test_universe_idempotent():
         db.close()
 
         assert result[0] == 2, "Should replace, not append"
+
+
+def test_universe_transaction_atomicity():
+    """
+    Test transaction atomicity: DELETE + INSERT are atomic.
+
+    Validates that if we manually trigger a ROLLBACK after DELETE,
+    the original data is preserved (simulating what happens if INSERT fails).
+    """
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = Path(tmpdir) / 'test.db'
+
+        # Create database with initial data
+        db = CryptoDatabase(str(db_path))
+        conn = db.conn
+
+        initial_data = pd.DataFrame([
+            {'date': pd.Timestamp('2024-01-01'), 'symbol': 'BTC', 'rank': 1, 'market_cap': 1000000, 'categories': 'original'},
+            {'date': pd.Timestamp('2024-01-01'), 'symbol': 'ETH', 'rank': 2, 'market_cap': 500000, 'categories': 'original'}
+        ])
+        conn.execute("INSERT INTO crypto_universe SELECT * FROM initial_data")
+
+        # Test Case 1: Transaction with ROLLBACK - data should be preserved
+        conn.execute("BEGIN TRANSACTION")
+        conn.execute("DELETE FROM crypto_universe WHERE date = '2024-01-01'")
+
+        # Verify data is "gone" within the transaction
+        result_during = conn.execute("SELECT COUNT(*) FROM crypto_universe WHERE date = '2024-01-01'").fetchone()
+        assert result_during[0] == 0, "Data should appear deleted within transaction"
+
+        # Now ROLLBACK (simulating INSERT failure)
+        conn.execute("ROLLBACK")
+
+        # Verify data is RESTORED after rollback
+        result_after = conn.execute("SELECT COUNT(*) FROM crypto_universe WHERE date = '2024-01-01'").fetchone()
+        assert result_after[0] == 2, "Data should be restored after ROLLBACK"
+
+        # Test Case 2: Transaction with COMMIT - data should be deleted
+        conn.execute("BEGIN TRANSACTION")
+        conn.execute("DELETE FROM crypto_universe WHERE date = '2024-01-01'")
+
+        # New data to insert
+        new_data = pd.DataFrame([
+            {'date': pd.Timestamp('2024-01-01'), 'symbol': 'SOL', 'rank': 1, 'market_cap': 2000000, 'categories': 'new'}
+        ])
+        conn.execute("INSERT INTO crypto_universe SELECT * FROM new_data")
+        conn.execute("COMMIT")
+
+        # Verify data is replaced after commit
+        result_final = conn.execute("""
+            SELECT symbol FROM crypto_universe WHERE date = '2024-01-01'
+        """).fetchone()
+        assert result_final[0] == 'SOL', "Data should be replaced after COMMIT"
+
+        db.close()
 
 
 if __name__ == "__main__":

@@ -4,7 +4,7 @@ Date Manipulation Utilities
 Provides utilities for date and time manipulation in the crypto-data package.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List
 
 
@@ -48,3 +48,38 @@ def generate_month_list(start: datetime, end: datetime) -> List[str]:
             current = current.replace(month=current.month + 1)
 
     return months
+
+
+def generate_day_list(start: datetime, end: datetime) -> List[str]:
+    """
+    Generate list of YYYY-MM-DD strings between start and end dates.
+
+    Parameters
+    ----------
+    start : datetime
+        Start date
+    end : datetime
+        End date
+
+    Returns
+    -------
+    List[str]
+        List of day strings in YYYY-MM-DD format
+
+    Example
+    -------
+    >>> from datetime import datetime
+    >>> generate_day_list(
+    ...     datetime(2024, 1, 15),
+    ...     datetime(2024, 1, 17)
+    ... )
+    ['2024-01-15', '2024-01-16', '2024-01-17']
+    """
+    days = []
+    current = start
+
+    while current <= end:
+        days.append(current.strftime("%Y-%m-%d"))
+        current += timedelta(days=1)
+
+    return days

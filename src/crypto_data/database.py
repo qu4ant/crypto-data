@@ -56,6 +56,8 @@ class CryptoDatabase:
         """Create all required tables and indexes."""
         self._create_spot()
         self._create_futures()
+        self._create_open_interest()
+        self._create_funding_rates()
         self._create_crypto_universe()
 
         logger.debug("All tables and indexes created")
@@ -117,6 +119,46 @@ class CryptoDatabase:
         """)
 
         logger.debug("Created futures table")
+
+    def _create_open_interest(self):
+        """Create open_interest table for futures open interest metrics (multi-exchange)."""
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS open_interest (
+                exchange VARCHAR NOT NULL,
+                symbol VARCHAR NOT NULL,
+                timestamp TIMESTAMP NOT NULL,
+                open_interest DOUBLE,
+                PRIMARY KEY (exchange, symbol, timestamp)
+            )
+        """)
+
+        # Create index for common queries
+        self.conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_open_interest_exchange_symbol_time
+            ON open_interest(exchange, symbol, timestamp)
+        """)
+
+        logger.debug("Created open_interest table")
+
+    def _create_funding_rates(self):
+        """Create funding_rates table for futures funding rate data (multi-exchange)."""
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS funding_rates (
+                exchange VARCHAR NOT NULL,
+                symbol VARCHAR NOT NULL,
+                timestamp TIMESTAMP NOT NULL,
+                funding_rate DOUBLE,
+                PRIMARY KEY (exchange, symbol, timestamp)
+            )
+        """)
+
+        # Create index for common queries
+        self.conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_funding_rates_exchange_symbol_time
+            ON funding_rates(exchange, symbol, timestamp)
+        """)
+
+        logger.debug("Created funding_rates table")
 
     def _create_crypto_universe(self):
         """Create crypto_universe table for CoinMarketCap rankings."""

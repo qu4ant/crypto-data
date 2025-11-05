@@ -65,7 +65,9 @@ def test_sync_orchestrates_full_workflow():
                 end_date='2024-03-31',
                 interval='5m',
                 skip_existing=True,
-                max_concurrent=20,
+                max_concurrent_klines=20,
+                max_concurrent_metrics=100,
+                max_concurrent_funding=50,
                 failure_threshold=3
             )
 

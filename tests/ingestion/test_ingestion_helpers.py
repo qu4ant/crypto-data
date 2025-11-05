@@ -302,9 +302,11 @@ def test_query_data_availability_executes_correct_query():
     query = mock_conn.execute.call_args[0][0]
     assert 'spot' in query
     assert 'futures' in query
+    assert 'open_interest' in query
+    assert 'funding_rates' in query
     assert 'UNION ALL' in query
-    assert 'MIN(DATE(timestamp))' in query
-    assert 'MAX(DATE(timestamp))' in query
+    assert 'MIN(timestamp::DATE)' in query
+    assert 'MAX(timestamp::DATE)' in query
 
 
 def test_query_data_availability_with_multiple_symbols():
@@ -315,14 +317,18 @@ def test_query_data_availability_with_multiple_symbols():
     symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT']
     query_data_availability(mock_conn, symbols, '5m')
 
-    # Verify placeholders: (symbols + interval) * 2 queries
-    # = (3 + 1) * 2 = 8 placeholders total
+    # Verify placeholders:
+    # spot: symbols + interval = 3 + 1 = 4
+    # futures: symbols + interval = 3 + 1 = 4
+    # open_interest: symbols = 3
+    # funding_rates: symbols = 3
+    # Total: 4 + 4 + 3 + 3 = 14 placeholders
     query = mock_conn.execute.call_args[0][0]
-    assert query.count('?') == (len(symbols) + 1) * 2
+    assert query.count('?') == (len(symbols) + 1) * 2 + len(symbols) * 2
 
     # Verify parameters passed correctly
     params = mock_conn.execute.call_args[0][1]
-    assert params == symbols + ['5m'] + symbols + ['5m']
+    assert params == symbols + ['5m'] + symbols + ['5m'] + symbols + symbols
 
 
 def test_query_data_availability_empty_result():
@@ -333,6 +339,96 @@ def test_query_data_availability_empty_result():
     result = query_data_availability(mock_conn, ['BTCUSDT'], '5m')
 
     assert result == []
+
+
+def test_query_data_availability_includes_all_four_data_types():
+    """Test that query includes spot, futures, open_interest, and funding_rates."""
+    mock_conn = MagicMock()
+    mock_conn.execute.return_value.fetchall.return_value = [
+        ('BTCUSDT', 'funding_rates', date(2024, 1, 1), date(2024, 12, 31)),
+        ('BTCUSDT', 'futures', date(2024, 1, 1), date(2024, 12, 31)),
+        ('BTCUSDT', 'open_interest', date(2024, 1, 1), date(2024, 12, 31)),
+        ('BTCUSDT', 'spot', date(2024, 1, 1), date(2024, 12, 31))
+    ]
+
+    result = query_data_availability(mock_conn, ['BTCUSDT'], '5m')
+
+    # Verify all 4 data types returned
+    data_types = {row[1] for row in result}
+    assert data_types == {'spot', 'futures', 'open_interest', 'funding_rates'}
+    assert len(result) == 4
+
+
+def test_query_data_availability_query_includes_all_tables():
+    """Test that SQL query includes all 4 tables."""
+    mock_conn = MagicMock()
+    mock_conn.execute.return_value.fetchall.return_value = []
+
+    query_data_availability(mock_conn, ['BTCUSDT'], '5m')
+
+    # Verify query contains all tables
+    query = mock_conn.execute.call_args[0][0]
+    assert 'FROM spot' in query
+    assert 'FROM futures' in query
+    assert 'FROM open_interest' in query
+    assert 'FROM funding_rates' in query
+    assert query.count('UNION ALL') == 3  # 4 queries = 3 UNION ALLs
+
+
+def test_query_data_availability_parameters_for_all_tables():
+    """Test that parameters are passed correctly for all 4 tables."""
+    mock_conn = MagicMock()
+    mock_conn.execute.return_value.fetchall.return_value = []
+
+    symbols = ['BTCUSDT', 'ETHUSDT']
+    query_data_availability(mock_conn, symbols, '5m')
+
+    # Parameters:
+    # spot: symbols + interval = ['BTCUSDT', 'ETHUSDT', '5m']
+    # futures: symbols + interval = ['BTCUSDT', 'ETHUSDT', '5m']
+    # open_interest: symbols (no interval) = ['BTCUSDT', 'ETHUSDT']
+    # funding_rates: symbols (no interval) = ['BTCUSDT', 'ETHUSDT']
+    params = mock_conn.execute.call_args[0][1]
+    expected = symbols + ['5m'] + symbols + ['5m'] + symbols + symbols
+    assert params == expected
+
+
+def test_query_data_availability_empty_symbols_list():
+    """Test that empty symbols list returns empty result without executing query."""
+    mock_conn = MagicMock()
+
+    result = query_data_availability(mock_conn, [], '5m')
+
+    assert result == []
+    # Verify query was NOT executed
+    mock_conn.execute.assert_not_called()
+
+
+def test_query_data_availability_partial_data_types():
+    """Test symbols with different data type combinations."""
+    mock_conn = MagicMock()
+    mock_conn.execute.return_value.fetchall.return_value = [
+        ('BTCUSDT', 'open_interest', date(2024, 1, 1), date(2024, 12, 31)),
+        ('BTCUSDT', 'spot', date(2024, 1, 1), date(2024, 12, 31)),
+        # BTCUSDT has no futures or funding_rates
+        ('ETHUSDT', 'funding_rates', date(2024, 1, 1), date(2024, 12, 31))
+        # ETHUSDT has ONLY funding_rates
+    ]
+
+    result = query_data_availability(mock_conn, ['BTCUSDT', 'ETHUSDT'], '5m')
+
+    # Verify correct symbols returned
+    symbols_found = {row[0] for row in result}
+    assert 'BTCUSDT' in symbols_found
+    assert 'ETHUSDT' in symbols_found
+
+    # Verify BTCUSDT has 2 data types
+    btc_types = {row[1] for row in result if row[0] == 'BTCUSDT'}
+    assert btc_types == {'spot', 'open_interest'}
+
+    # Verify ETHUSDT has only 1 data type
+    eth_types = {row[1] for row in result if row[0] == 'ETHUSDT'}
+    assert eth_types == {'funding_rates'}
 
 
 # =============================================================================

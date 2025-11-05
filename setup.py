@@ -31,6 +31,10 @@ setup(
             "flake8>=5.0.0",
             "mypy>=1.0.0",
             "requests-mock>=1.9.0",
+            # Data validation framework
+            "pandera[strategies]>=0.18.0",    # Core + testing strategies
+            "ibis-framework[duckdb]>=8.0.0",  # DuckDB validation without pandas
+            "scipy>=1.10.0",                  # Statistical tests
         ]
     },
 )

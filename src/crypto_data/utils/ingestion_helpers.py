@@ -17,7 +17,7 @@ from typing import Dict, List, Tuple, Optional
 from datetime import date
 
 from crypto_data.utils.database import import_to_duckdb
-from crypto_data.utils.formatting import format_file_size, format_availability_bar
+from crypto_data.utils.formatting import format_file_size, format_availability_bar, format_availability_bar_daily
 
 logger = logging.getLogger(__name__)
 
@@ -143,10 +143,10 @@ def query_data_availability(
     interval: str
 ) -> List[Tuple[str, str, date, date]]:
     """
-    Query availability summary from OHLCV tables.
+    Query availability summary from ALL data tables.
 
-    Executes UNION query across spot and futures tables (filtered by exchange='binance')
-    to get first/last dates for each symbol+data_type combination.
+    Executes UNION query across spot, futures, open_interest, and funding_rates tables
+    (filtered by exchange='binance') to get first/last dates for each symbol+data_type.
 
     Used by log_ingestion_summary() to display availability bars and coverage %.
 
@@ -157,29 +157,36 @@ def query_data_availability(
     symbols : List[str]
         List of symbols to query (e.g., ['BTCUSDT', 'ETHUSDT'])
     interval : str
-        Kline interval (e.g., '5m')
+        Kline interval (e.g., '5m') - only applies to spot/futures
 
     Returns
     -------
     List[Tuple[str, str, date, date]]
         [(symbol, data_type, first_date, last_date), ...]
         Sorted by (symbol, data_type)
+        data_type in: 'spot', 'futures', 'open_interest', 'funding_rates'
 
     Example
     -------
     >>> results = query_data_availability(conn, ['BTCUSDT', 'ETHUSDT'], '5m')
-    >>> # [('BTCUSDT', 'futures', date(2024,1,1), date(2024,12,31)),
+    >>> # [('BTCUSDT', 'funding_rates', date(2024,1,1), date(2024,12,31)),
+    >>> #  ('BTCUSDT', 'futures', date(2024,1,1), date(2024,12,31)),
+    >>> #  ('BTCUSDT', 'open_interest', date(2024,1,1), date(2024,12,31)),
     >>> #  ('BTCUSDT', 'spot', date(2024,1,1), date(2024,12,31)),
     >>> #  ('ETHUSDT', 'spot', date(2024,2,1), date(2024,11,30))]
     """
+    # Validate input
+    if not symbols:
+        return []
+
     placeholders = ','.join('?' * len(symbols))
 
     query = f"""
         SELECT
             symbol,
             'spot' as data_type,
-            MIN(DATE(timestamp)) as first_date,
-            MAX(DATE(timestamp)) as last_date
+            MIN(timestamp::DATE) as first_date,
+            MAX(timestamp::DATE) as last_date
         FROM spot
         WHERE exchange = 'binance' AND symbol IN ({placeholders}) AND interval = ?
         GROUP BY symbol
@@ -187,15 +194,37 @@ def query_data_availability(
         SELECT
             symbol,
             'futures' as data_type,
-            MIN(DATE(timestamp)) as first_date,
-            MAX(DATE(timestamp)) as last_date
+            MIN(timestamp::DATE) as first_date,
+            MAX(timestamp::DATE) as last_date
         FROM futures
         WHERE exchange = 'binance' AND symbol IN ({placeholders}) AND interval = ?
+        GROUP BY symbol
+        UNION ALL
+        SELECT
+            symbol,
+            'open_interest' as data_type,
+            MIN(timestamp::DATE) as first_date,
+            MAX(timestamp::DATE) as last_date
+        FROM open_interest
+        WHERE exchange = 'binance' AND symbol IN ({placeholders})
+        GROUP BY symbol
+        UNION ALL
+        SELECT
+            symbol,
+            'funding_rates' as data_type,
+            MIN(timestamp::DATE) as first_date,
+            MAX(timestamp::DATE) as last_date
+        FROM funding_rates
+        WHERE exchange = 'binance' AND symbol IN ({placeholders})
         GROUP BY symbol
         ORDER BY symbol, data_type
     """
 
-    result = conn.execute(query, symbols + [interval] + symbols + [interval]).fetchall()
+    # Parameters: symbols twice for spot+futures (with interval), symbols twice for OI+FR (no interval)
+    result = conn.execute(
+        query,
+        symbols + [interval] + symbols + [interval] + symbols + symbols
+    ).fetchall()
     return result
 
 
@@ -277,45 +306,69 @@ def log_ingestion_summary(
             if availability_result:
                 logger.info("")
                 logger.info(f"Data Availability ({start_date} → {end_date}):")
-                logger.info(f"  {'Symbol':<12} {'Type':<8} {'Coverage':<30}")
 
-                # Group results by symbol to detect missing market types
-                symbol_types = {}
+                # Group results by symbol
+                symbol_data = {}
                 for symbol, data_type, first_date, last_date in availability_result:
-                    if symbol not in symbol_types:
-                        symbol_types[symbol] = set()
-                    symbol_types[symbol].add(data_type)
+                    if symbol not in symbol_data:
+                        symbol_data[symbol] = {}
+                    symbol_data[symbol][data_type] = (first_date, last_date)
 
                 # ANSI color for warnings
                 YELLOW = '\033[33m'
                 RESET = '\033[0m'
 
-                sorted_results = sorted(availability_result, key=lambda x: (x[0], x[1]))
+                # All possible data types
+                ALL_DATA_TYPES = ['spot', 'futures', 'open_interest', 'funding_rates']
 
-                for symbol, data_type, first_date, last_date in sorted_results:
-                    bar, pct, months_covered, total, dates = format_availability_bar(
-                        first_date, last_date, start_date, end_date
-                    )
+                # Display hierarchically grouped by symbol
+                for idx, symbol in enumerate(sorted(symbol_data.keys())):
+                    # Symbol header with consistent indentation
+                    separator = "  "
+                    logger.info(f"{separator}───────────── {symbol} ─────────────")
 
-                    # Check if symbol has missing market type
-                    warning = ""
-                    if len(symbol_types[symbol]) == 1:  # Only one type available
-                        if 'spot' not in symbol_types[symbol]:
-                            warning = f" {YELLOW}⚠ SPOT MISSING{RESET}"
-                        elif 'futures' not in symbol_types[symbol]:
-                            warning = f" {YELLOW}⚠ FUTURES MISSING{RESET}"
+                    # Detect missing data types for this symbol
+                    available_types = set(symbol_data[symbol].keys())
+                    missing_types = set(ALL_DATA_TYPES) - available_types
 
-                    logger.info(f"  {symbol:<12} {data_type:<8} {bar} {pct:3d}% ({months_covered:2d}/{total}m){warning}")
+                    # Display each available data type with indentation
+                    for data_type in ALL_DATA_TYPES:
+                        if data_type in symbol_data[symbol]:
+                            first_date, last_date = symbol_data[symbol][data_type]
+
+                            # Use daily formatting for open_interest, monthly for others
+                            if data_type == 'open_interest':
+                                bar, pct, covered, total, dates = format_availability_bar_daily(
+                                    first_date, last_date, start_date, end_date
+                                )
+                                coverage_str = f"{pct:3d}% ({covered:3d}/{total}d)"
+                            else:
+                                bar, pct, covered, total, dates = format_availability_bar(
+                                    first_date, last_date, start_date, end_date
+                                )
+                                coverage_str = f"{pct:3d}% ({covered:2d}/{total}m)"
+
+                            # Add warning if ANY data type is missing for this symbol
+                            warning = ""
+                            if missing_types:
+                                missing_list = ', '.join(sorted(missing_types)).replace('_', ' ').upper()
+                                warning = f" {YELLOW}⚠ MISSING: {missing_list}{RESET}"
+
+                            # Only show warning on the first line for this symbol
+                            if data_type == min(available_types):
+                                logger.info(f"    {data_type:<15} {bar} {coverage_str} {dates}{warning}")
+                            else:
+                                logger.info(f"    {data_type:<15} {bar} {coverage_str} {dates}")
 
             db.close()
 
         except Exception as e:
-            logger.debug(f"Could not query availability: {e}")
+            logger.warning(f"Could not query availability: {e}")
 
     # Log database file size
     try:
         db_size = Path(db_path).stat().st_size
-        logger.info(f"Database size: {format_file_size(db_size)} ({db_size:,} bytes)")
+        logger.info(f"Database size: {format_file_size(db_size)}")
     except Exception as e:
         logger.debug(f"Could not get database size: {e}")
 
