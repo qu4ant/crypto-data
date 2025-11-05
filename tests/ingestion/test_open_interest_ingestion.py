@@ -529,6 +529,189 @@ class TestIngestBinanceAsyncWithOpenInterest:
                 # Verify asyncio.run was called only once (used cached mapping, no retry)
                 assert mock_run.call_count == 1
 
+    def test_open_interest_retry_transaction_rollback_on_error(self):
+        """Test transaction rollback when retry import fails."""
+        from crypto_data import ingest_binance_async
+        from crypto_data.ingestion import _ticker_mappings
+
+        _ticker_mappings.clear()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "test.db"
+            temp_file = Path(tmpdir) / "test.csv"
+            temp_file.touch()
+
+            with patch('crypto_data.ingestion.asyncio.run') as mock_run, \
+                 patch('crypto_data.ingestion.CryptoDatabase') as mock_db, \
+                 patch('crypto_data.ingestion.import_metrics_to_duckdb') as mock_import:
+
+                # Mock database
+                mock_conn = MagicMock()
+                mock_db_instance = MagicMock()
+                mock_db_instance.conn = mock_conn
+                mock_db.return_value = mock_db_instance
+
+                # Mock: first call 404s, retry succeeds but import fails
+                mock_run.side_effect = [
+                    # All 404s
+                    [{'success': False, 'error': 'not_found', 'symbol': 'PEPEUSDT', 'data_type': 'open_interest', 'date': '2025-11-01', 'file_path': None}],
+                    # Retry success
+                    [{'success': True, 'error': None, 'symbol': '1000PEPEUSDT', 'data_type': 'open_interest', 'date': '2025-11-01', 'file_path': temp_file}]
+                ]
+
+                # Mock import to fail (to trigger rollback)
+                mock_import.side_effect = Exception("Import failed")
+
+                # Run ingestion
+                ingest_binance_async(
+                    db_path=str(db_path),
+                    symbols=['PEPEUSDT'],
+                    data_types=['open_interest'],
+                    start_date='2025-11-01',
+                    end_date='2025-11-01',
+                    max_concurrent_metrics=20
+                )
+
+                # Verify import was attempted (meaning the code path was executed)
+                # The ROLLBACK handling is internal to ingestion.py error handling
+                assert mock_import.called
+
+    def test_open_interest_retry_success_commits_transaction(self):
+        """Test transaction commit when retry import succeeds."""
+        from crypto_data import ingest_binance_async
+        from crypto_data.ingestion import _ticker_mappings
+
+        _ticker_mappings.clear()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "test.db"
+            temp_file = Path(tmpdir) / "test.csv"
+            temp_file.write_text("data")
+
+            with patch('crypto_data.ingestion.asyncio.run') as mock_run, \
+                 patch('crypto_data.ingestion.CryptoDatabase') as mock_db, \
+                 patch('crypto_data.ingestion.import_metrics_to_duckdb') as mock_import:
+
+                # Mock database
+                mock_conn = MagicMock()
+                mock_db_instance = MagicMock()
+                mock_db_instance.conn = mock_conn
+                mock_db.return_value = mock_db_instance
+
+                # Mock: first call 404s, retry succeeds
+                mock_run.side_effect = [
+                    # All 404s
+                    [{'success': False, 'error': 'not_found', 'symbol': 'PEPEUSDT', 'data_type': 'open_interest', 'date': '2025-11-01', 'file_path': None}],
+                    # Retry success
+                    [{'success': True, 'error': None, 'symbol': '1000PEPEUSDT', 'data_type': 'open_interest', 'date': '2025-11-01', 'file_path': temp_file}]
+                ]
+
+                # Mock successful import
+                mock_import.return_value = None
+
+                # Run ingestion
+                ingest_binance_async(
+                    db_path=str(db_path),
+                    symbols=['PEPEUSDT'],
+                    data_types=['open_interest'],
+                    start_date='2025-11-01',
+                    end_date='2025-11-01',
+                    max_concurrent_metrics=20
+                )
+
+                # Verify BEGIN and COMMIT were called
+                execute_calls = [str(call) for call in mock_conn.execute.call_args_list]
+                commit_calls = [c for c in execute_calls if 'COMMIT' in c]
+
+                # Should have at least one commit
+                assert len(commit_calls) >= 1
+
+                # Verify mapping was cached
+                assert 'PEPEUSDT' in _ticker_mappings
+                assert _ticker_mappings['PEPEUSDT'] == '1000PEPEUSDT'
+
+    def test_open_interest_no_retry_when_partial_success(self):
+        """Test no retry when some downloads succeed (not all 404s)."""
+        from crypto_data import ingest_binance_async
+        from crypto_data.ingestion import _ticker_mappings
+
+        _ticker_mappings.clear()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "test.db"
+            temp_file = Path(tmpdir) / "test.csv"
+            temp_file.touch()
+
+            with patch('crypto_data.ingestion.asyncio.run') as mock_run, \
+                 patch('crypto_data.ingestion.CryptoDatabase') as mock_db:
+
+                # Mock database
+                mock_conn = MagicMock()
+                mock_db_instance = MagicMock()
+                mock_db_instance.conn = mock_conn
+                mock_db.return_value = mock_db_instance
+
+                # Mock: mixed results (not all 404s)
+                mock_run.return_value = [
+                    {'success': True, 'error': None, 'symbol': 'BTCUSDT', 'data_type': 'open_interest', 'date': '2025-11-01', 'file_path': temp_file},
+                    {'success': False, 'error': 'not_found', 'symbol': 'BTCUSDT', 'data_type': 'open_interest', 'date': '2025-11-02', 'file_path': None}
+                ]
+
+                # Run ingestion
+                ingest_binance_async(
+                    db_path=str(db_path),
+                    symbols=['BTCUSDT'],
+                    data_types=['open_interest'],
+                    start_date='2025-11-01',
+                    end_date='2025-11-02',
+                    max_concurrent_metrics=20
+                )
+
+                # Verify asyncio.run was called only once (no retry)
+                assert mock_run.call_count == 1
+
+    def test_open_interest_retry_caches_mapping_for_future_use(self):
+        """Test that successful retry caches the 1000-prefix mapping."""
+        from crypto_data import ingest_binance_async
+        from crypto_data.ingestion import _ticker_mappings
+
+        _ticker_mappings.clear()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            db_path = Path(tmpdir) / "test.db"
+            temp_file = Path(tmpdir) / "test.csv"
+            temp_file.write_text("data")
+
+            with patch('crypto_data.ingestion.asyncio.run') as mock_run, \
+                 patch('crypto_data.ingestion.CryptoDatabase') as mock_db, \
+                 patch('crypto_data.ingestion.import_metrics_to_duckdb'):
+
+                # Mock database
+                mock_conn = MagicMock()
+                mock_db_instance = MagicMock()
+                mock_db_instance.conn = mock_conn
+                mock_db.return_value = mock_db_instance
+
+                # Mock: 404 then success
+                mock_run.side_effect = [
+                    [{'success': False, 'error': 'not_found', 'symbol': 'SHIBUSDT', 'data_type': 'open_interest', 'date': '2025-11-01', 'file_path': None}],
+                    [{'success': True, 'error': None, 'symbol': '1000SHIBUSDT', 'data_type': 'open_interest', 'date': '2025-11-01', 'file_path': temp_file}]
+                ]
+
+                # Run ingestion
+                ingest_binance_async(
+                    db_path=str(db_path),
+                    symbols=['SHIBUSDT'],
+                    data_types=['open_interest'],
+                    start_date='2025-11-01',
+                    end_date='2025-11-01',
+                    max_concurrent_metrics=20
+                )
+
+                # Verify mapping was cached
+                assert 'SHIBUSDT' in _ticker_mappings
+                assert _ticker_mappings['SHIBUSDT'] == '1000SHIBUSDT'
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

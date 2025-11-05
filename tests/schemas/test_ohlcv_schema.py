@@ -166,3 +166,36 @@ class TestOHLCVStatisticalValidation:
         passed, warnings = validate_ohlcv_statistical(df)
         # Should detect outlier (warning, not error)
         assert passed is False or len(warnings) > 0
+
+
+@pytest.mark.schema
+class TestValidateOHLCVDataframe:
+    """Tests for validate_ohlcv_dataframe() helper function"""
+
+    def test_strict_mode_returns_validated_df(self, valid_ohlcv_df):
+        """Test strict=True returns validated DataFrame"""
+        result = validate_ohlcv_dataframe(valid_ohlcv_df, strict=True)
+
+        # Result should be a DataFrame
+        assert isinstance(result, pd.DataFrame)
+        assert len(result) == len(valid_ohlcv_df)
+
+    def test_strict_mode_raises_on_error(self, invalid_ohlcv_high_low):
+        """Test strict=True raises SchemaError on invalid data"""
+        with pytest.raises(pa.errors.SchemaError):
+            validate_ohlcv_dataframe(invalid_ohlcv_high_low, strict=True)
+
+    def test_lazy_mode_returns_errors_object(self, invalid_ohlcv_high_low):
+        """Test strict=False returns SchemaErrors object on failure"""
+        result = validate_ohlcv_dataframe(invalid_ohlcv_high_low, strict=False)
+
+        # Result should be a SchemaErrors object (for inspection)
+        assert isinstance(result, pa.errors.SchemaErrors)
+
+    def test_lazy_mode_returns_df_on_success(self, valid_ohlcv_df):
+        """Test strict=False returns DataFrame on valid data"""
+        result = validate_ohlcv_dataframe(valid_ohlcv_df, strict=False)
+
+        # Result should be a DataFrame on success
+        assert isinstance(result, pd.DataFrame)
+        assert len(result) == len(valid_ohlcv_df)

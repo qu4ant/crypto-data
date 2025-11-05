@@ -9,13 +9,16 @@ Tests the async download and import workflow for funding rates data:
 """
 
 import pytest
+import asyncio
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import datetime
 
 from crypto_data.ingestion import (
     _process_funding_rates_results,
+    _download_single_month_funding_rates,
+    _download_symbol_funding_rates_async,
     initialize_ingestion_stats
 )
 
@@ -189,6 +192,291 @@ class TestProcessFundingRatesResults:
                 assert stats['downloaded'] == 2
                 assert stats['not_found'] == 1
                 assert stats['failed'] == 0
+
+
+# =============================================================================
+# Tests for _download_single_month_funding_rates()
+# =============================================================================
+
+class TestDownloadSingleMonthFundingRates:
+    """Test _download_single_month_funding_rates() async function."""
+
+    @pytest.mark.asyncio
+    async def test_successful_download_returns_success_dict(self):
+        """Test successful download returns correct result dict."""
+        # Mock client
+        mock_client = AsyncMock()
+        mock_client.download_funding_rates = AsyncMock(return_value=True)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            temp_path = Path(tmpdir)
+            expected_file = temp_path / "BTCUSDT-fundingRate-2024-01.zip"
+
+            result = await _download_single_month_funding_rates(
+                client=mock_client,
+                symbol='BTCUSDT',
+                month='2024-01',
+                temp_path=temp_path,
+                progress_info={'total': 1}
+            )
+
+            # Verify result
+            assert result['success'] is True
+            assert result['symbol'] == 'BTCUSDT'
+            assert result['data_type'] == 'funding_rates'
+            assert result['month'] == '2024-01'
+            assert result['file_path'] == expected_file
+            assert result['error'] is None
+
+            # Verify client was called correctly
+            mock_client.download_funding_rates.assert_called_once_with(
+                symbol='BTCUSDT',
+                month='2024-01',
+                output_path=expected_file
+            )
+
+    @pytest.mark.asyncio
+    async def test_404_returns_not_found_error(self):
+        """Test 404 response returns not_found error."""
+        # Mock client returning False (404)
+        mock_client = AsyncMock()
+        mock_client.download_funding_rates = AsyncMock(return_value=False)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            temp_path = Path(tmpdir)
+
+            result = await _download_single_month_funding_rates(
+                client=mock_client,
+                symbol='BTCUSDT',
+                month='2024-01',
+                temp_path=temp_path,
+                progress_info={'total': 1}
+            )
+
+            # Verify result indicates not found
+            assert result['success'] is False
+            assert result['symbol'] == 'BTCUSDT'
+            assert result['error'] == 'not_found'
+            assert result['file_path'] is None
+
+    @pytest.mark.asyncio
+    async def test_exception_returns_error_dict(self):
+        """Test exception during download returns error dict."""
+        # Mock client raising exception
+        mock_client = AsyncMock()
+        mock_client.download_funding_rates = AsyncMock(
+            side_effect=Exception("Network error")
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            temp_path = Path(tmpdir)
+
+            result = await _download_single_month_funding_rates(
+                client=mock_client,
+                symbol='BTCUSDT',
+                month='2024-01',
+                temp_path=temp_path,
+                progress_info={'total': 1}
+            )
+
+            # Verify result indicates error
+            assert result['success'] is False
+            assert result['symbol'] == 'BTCUSDT'
+            assert result['error'] == 'Network error'
+            assert result['file_path'] is None
+
+
+# =============================================================================
+# Tests for _download_symbol_funding_rates_async()
+# =============================================================================
+
+class TestDownloadSymbolFundingRatesAsync:
+    """Test _download_symbol_funding_rates_async() parallel download coordinator."""
+
+    @pytest.mark.asyncio
+    async def test_parallel_downloads_multiple_months(self):
+        """Test that multiple months are downloaded in parallel."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            temp_path = Path(tmpdir)
+
+            # Mock data_exists to not skip any months
+            with patch('crypto_data.ingestion.data_exists', return_value=False):
+                # Mock the client and its download method
+                with patch('crypto_data.ingestion.BinanceDataVisionClientAsync') as mock_client_class:
+                    mock_client = AsyncMock()
+                    mock_client.download_funding_rates = AsyncMock(return_value=True)
+                    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                    mock_client.__aexit__ = AsyncMock(return_value=None)
+                    mock_client_class.return_value = mock_client
+
+                    # Mock connection
+                    mock_conn = MagicMock()
+                    stats = initialize_ingestion_stats()
+
+                    # Download 3 months
+                    months = ['2024-01', '2024-02', '2024-03']
+                    results = await _download_symbol_funding_rates_async(
+                        conn=mock_conn,
+                        symbol='BTCUSDT',
+                        months=months,
+                        temp_path=temp_path,
+                        stats=stats,
+                        skip_existing=True,
+                        max_concurrent=5
+                    )
+
+                    # Verify all 3 months were downloaded
+                    assert len(results) == 3
+                    assert mock_client.download_funding_rates.call_count == 3
+
+                    # Verify all results are success
+                    for result in results:
+                        assert result['success'] is True
+                        assert result['data_type'] == 'funding_rates'
+
+    @pytest.mark.asyncio
+    async def test_skip_existing_months(self):
+        """Test that existing months are skipped when skip_existing=True."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            temp_path = Path(tmpdir)
+
+            # Mock data_exists to return True for 2024-01, False for others
+            def mock_data_exists(conn, symbol, month, data_type, **kwargs):
+                return month == '2024-01'
+
+            with patch('crypto_data.ingestion.data_exists', side_effect=mock_data_exists):
+                with patch('crypto_data.ingestion.BinanceDataVisionClientAsync') as mock_client_class:
+                    mock_client = AsyncMock()
+                    mock_client.download_funding_rates = AsyncMock(return_value=True)
+                    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                    mock_client.__aexit__ = AsyncMock(return_value=None)
+                    mock_client_class.return_value = mock_client
+
+                    mock_conn = MagicMock()
+                    stats = initialize_ingestion_stats()
+
+                    months = ['2024-01', '2024-02', '2024-03']
+                    results = await _download_symbol_funding_rates_async(
+                        conn=mock_conn,
+                        symbol='BTCUSDT',
+                        months=months,
+                        temp_path=temp_path,
+                        stats=stats,
+                        skip_existing=True,
+                        max_concurrent=5
+                    )
+
+                    # Verify only 2 months were downloaded (2024-01 skipped)
+                    assert len(results) == 2
+                    assert mock_client.download_funding_rates.call_count == 2
+
+                    # Verify stats
+                    assert stats['skipped'] == 1
+
+    @pytest.mark.asyncio
+    async def test_all_months_skipped_returns_empty(self):
+        """Test that empty list returned when all months exist."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            temp_path = Path(tmpdir)
+
+            # Mock data_exists to return True for all
+            with patch('crypto_data.ingestion.data_exists', return_value=True):
+                mock_conn = MagicMock()
+                stats = initialize_ingestion_stats()
+
+                months = ['2024-01', '2024-02']
+                results = await _download_symbol_funding_rates_async(
+                    conn=mock_conn,
+                    symbol='BTCUSDT',
+                    months=months,
+                    temp_path=temp_path,
+                    stats=stats,
+                    skip_existing=True,
+                    max_concurrent=5
+                )
+
+                # Verify empty results
+                assert len(results) == 0
+                assert stats['skipped'] == 2
+
+    @pytest.mark.asyncio
+    async def test_exception_converted_to_error_result(self):
+        """Test that exceptions during download are converted to error results."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            temp_path = Path(tmpdir)
+
+            with patch('crypto_data.ingestion.data_exists', return_value=False):
+                with patch('crypto_data.ingestion.BinanceDataVisionClientAsync') as mock_client_class:
+                    mock_client = AsyncMock()
+                    # First call succeeds, second raises exception
+                    mock_client.download_funding_rates = AsyncMock(
+                        side_effect=[True, Exception("Network error")]
+                    )
+                    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                    mock_client.__aexit__ = AsyncMock(return_value=None)
+                    mock_client_class.return_value = mock_client
+
+                    mock_conn = MagicMock()
+                    stats = initialize_ingestion_stats()
+
+                    months = ['2024-01', '2024-02']
+                    results = await _download_symbol_funding_rates_async(
+                        conn=mock_conn,
+                        symbol='BTCUSDT',
+                        months=months,
+                        temp_path=temp_path,
+                        stats=stats,
+                        skip_existing=True,
+                        max_concurrent=5
+                    )
+
+                    # Verify results: one success, one error
+                    assert len(results) == 2
+                    success_results = [r for r in results if r['success']]
+                    error_results = [r for r in results if not r['success']]
+
+                    assert len(success_results) == 1
+                    assert len(error_results) == 1
+                    assert 'Network error' in str(error_results[0]['error'])
+
+    @pytest.mark.asyncio
+    async def test_mixed_success_and_404_results(self):
+        """Test handling of mixed success and 404 results."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            temp_path = Path(tmpdir)
+
+            with patch('crypto_data.ingestion.data_exists', return_value=False):
+                with patch('crypto_data.ingestion.BinanceDataVisionClientAsync') as mock_client_class:
+                    mock_client = AsyncMock()
+                    # True (success), False (404), True (success)
+                    mock_client.download_funding_rates = AsyncMock(
+                        side_effect=[True, False, True]
+                    )
+                    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+                    mock_client.__aexit__ = AsyncMock(return_value=None)
+                    mock_client_class.return_value = mock_client
+
+                    mock_conn = MagicMock()
+                    stats = initialize_ingestion_stats()
+
+                    months = ['2024-01', '2024-02', '2024-03']
+                    results = await _download_symbol_funding_rates_async(
+                        conn=mock_conn,
+                        symbol='BTCUSDT',
+                        months=months,
+                        temp_path=temp_path,
+                        stats=stats,
+                        skip_existing=True,
+                        max_concurrent=5
+                    )
+
+                    # Verify results
+                    assert len(results) == 3
+                    success_count = sum(1 for r in results if r['success'])
+                    not_found_count = sum(1 for r in results if r['error'] == 'not_found')
+
+                    assert success_count == 2
+                    assert not_found_count == 1
 
 
 # =============================================================================
