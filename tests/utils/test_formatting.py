@@ -8,7 +8,7 @@ for display and progress reporting in the crypto-data package.
 import pytest
 from datetime import datetime, date
 
-from crypto_data.utils.formatting import format_file_size, format_availability_bar
+from crypto_data.utils.formatting import format_file_size, format_availability_bar, format_availability_bar_daily
 
 
 # ============================================================================
@@ -227,6 +227,192 @@ def test_availability_year_boundary():
     assert total_months == 24
     assert months_cov == 4
     assert pct == 16  # 4/24 ≈ 16%
+
+
+# ============================================================================
+# Tests for format_availability_bar_daily()
+# ============================================================================
+
+def test_availability_daily_full_coverage():
+    """Test daily bar when data covers entire requested period."""
+    bar, pct, days_cov, total_days, date_range = format_availability_bar_daily(
+        first_date_str='2024-01-01',
+        last_date_str='2024-12-31',
+        requested_start='2024-01-01',
+        requested_end='2024-12-31',
+        bar_width=24
+    )
+
+    assert pct == 100
+    assert days_cov == 366  # 2024 is a leap year
+    assert total_days == 366
+    assert '█' in bar  # Should have filled blocks
+    assert '░' not in bar or bar.count('░') == 0  # No empty blocks
+
+
+def test_availability_daily_partial_coverage():
+    """Test daily bar when data covers part of requested period."""
+    # Data: Jan 15 - Jan 25 (11 days)
+    # Requested: Jan 1 - Jan 31 (31 days)
+    bar, pct, days_cov, total_days, date_range = format_availability_bar_daily(
+        first_date_str='2024-01-15',
+        last_date_str='2024-01-25',
+        requested_start='2024-01-01',
+        requested_end='2024-01-31',
+        bar_width=24
+    )
+
+    assert total_days == 31
+    assert days_cov == 11
+    assert pct == 35  # 11/31 ≈ 35%
+    assert '█' in bar  # Should have some filled blocks
+    assert '░' in bar  # Should have empty blocks before/after
+
+
+def test_availability_daily_single_day():
+    """Test daily bar for single day coverage."""
+    bar, pct, days_cov, total_days, date_range = format_availability_bar_daily(
+        first_date_str='2024-06-15',
+        last_date_str='2024-06-15',
+        requested_start='2024-06-01',
+        requested_end='2024-06-30',
+        bar_width=24
+    )
+
+    assert total_days == 30
+    assert days_cov == 1
+    assert pct == 3  # 1/30 ≈ 3%
+    assert '█' in bar  # Should have at least one filled block
+
+
+def test_availability_daily_no_overlap():
+    """Test daily bar when data doesn't overlap with requested period."""
+    # Data: 2025
+    # Requested: 2024
+    bar, pct, days_cov, total_days, date_range = format_availability_bar_daily(
+        first_date_str='2025-01-01',
+        last_date_str='2025-12-31',
+        requested_start='2024-01-01',
+        requested_end='2024-12-31',
+        bar_width=24
+    )
+
+    assert pct == 0
+    assert days_cov == 0
+    assert total_days == 366  # 2024 is leap year
+    # Bar should be all empty
+    assert bar.count('░') + bar.count('[') + bar.count(']') >= 24
+
+
+def test_availability_daily_percentage_calculation():
+    """Test that daily percentage is calculated correctly."""
+    # 183 days coverage out of 366 days (half of 2024) ≈ 50%
+    bar, pct, days_cov, total_days, date_range = format_availability_bar_daily(
+        first_date_str='2024-01-01',
+        last_date_str='2024-06-30',
+        requested_start='2024-01-01',
+        requested_end='2024-12-31',
+        bar_width=24
+    )
+
+    assert total_days == 366
+    assert days_cov == 182  # Jan 1 to June 30
+    assert pct == 49  # 182/366 ≈ 49%
+
+
+def test_availability_daily_with_datetime_objects():
+    """Test that daily function accepts datetime objects."""
+    bar, pct, days_cov, total_days, date_range = format_availability_bar_daily(
+        first_date_str=datetime(2024, 1, 1),
+        last_date_str=datetime(2024, 12, 31),
+        requested_start=datetime(2024, 1, 1),
+        requested_end=datetime(2024, 12, 31),
+        bar_width=24
+    )
+
+    assert pct == 100
+    assert days_cov == 366
+    assert total_days == 366
+
+
+def test_availability_daily_with_date_objects():
+    """Test that daily function accepts date objects."""
+    bar, pct, days_cov, total_days, date_range = format_availability_bar_daily(
+        first_date_str=date(2024, 1, 1),
+        last_date_str=date(2024, 12, 31),
+        requested_start=date(2024, 1, 1),
+        requested_end=date(2024, 12, 31),
+        bar_width=24
+    )
+
+    assert pct == 100
+    assert days_cov == 366
+    assert total_days == 366
+
+
+def test_availability_daily_date_format():
+    """Test that date range string is formatted correctly for daily bars."""
+    bar, pct, days_cov, total_days, date_range = format_availability_bar_daily(
+        first_date_str='2024-05-15',
+        last_date_str='2024-08-20',
+        requested_start='2024-01-01',
+        requested_end='2024-12-31',
+        bar_width=24
+    )
+
+    # Date format should be like "Mai'24→Aoû'24"
+    assert '→' in date_range or '->' in date_range
+    assert "'24" in date_range  # Year abbreviation
+    assert 'Mai' in date_range or 'Aoû' in date_range  # French month names
+
+
+def test_availability_daily_same_start_and_end():
+    """Test daily bar when start equals end (single day period)."""
+    bar, pct, days_cov, total_days, date_range = format_availability_bar_daily(
+        first_date_str='2024-06-15',
+        last_date_str='2024-06-15',
+        requested_start='2024-06-15',
+        requested_end='2024-06-15',
+        bar_width=24
+    )
+
+    assert total_days == 1
+    assert days_cov == 1
+    assert pct == 100
+    assert '█' in bar  # Should have filled blocks
+
+
+def test_availability_daily_invalid_date_range():
+    """Test daily bar with invalid date range (end before start)."""
+    bar, pct, days_cov, total_days, date_range = format_availability_bar_daily(
+        first_date_str='2024-06-15',
+        last_date_str='2024-06-20',
+        requested_start='2024-12-31',
+        requested_end='2024-01-01',  # End before start
+        bar_width=24
+    )
+
+    assert pct == 0
+    assert days_cov == 0
+    assert '░' in bar  # Should show empty bar
+    assert date_range == "Invalid"
+
+
+def test_availability_daily_leap_year_coverage():
+    """Test daily coverage calculation for leap year."""
+    # Feb 28 to Mar 1 in leap year 2024 = 3 days (Feb 28, Feb 29, Mar 1)
+    bar, pct, days_cov, total_days, date_range = format_availability_bar_daily(
+        first_date_str='2024-02-28',
+        last_date_str='2024-03-01',
+        requested_start='2024-02-28',
+        requested_end='2024-03-01',
+        bar_width=24
+    )
+
+    # Feb 28, 29 (leap day), Mar 1 = 3 days
+    assert total_days == 3
+    assert days_cov == 3
+    assert pct == 100
 
 
 if __name__ == "__main__":

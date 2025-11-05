@@ -707,6 +707,11 @@ async def test_gap_detection_disabled_when_threshold_zero(temp_db):
 
 def test_1000prefix_retry_on_all_404s(temp_db):
     """Test that 1000-prefix retry is triggered when all futures downloads 404."""
+    from crypto_data.ingestion import _ticker_mappings
+
+    # Clear cache to ensure clean test state
+    _ticker_mappings.clear()
+
     with patch('crypto_data.ingestion.asyncio.run') as mock_run, \
          patch('crypto_data.ingestion.process_download_results'), \
          patch('crypto_data.ingestion.initialize_ingestion_stats') as mock_stats, \

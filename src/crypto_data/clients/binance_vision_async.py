@@ -28,7 +28,9 @@ class BinanceDataVisionClientAsync:
     # Data category URL paths
     DATA_CATEGORIES = {
         'spot': 'data/spot/monthly/klines',
-        'futures': 'data/futures/um/monthly/klines'
+        'futures': 'data/futures/um/monthly/klines',
+        'open_interest': 'data/futures/um/daily/metrics',
+        'funding_rates': 'data/futures/um/monthly/fundingRate'
     }
 
     def __init__(
@@ -153,6 +155,164 @@ class BinanceDataVisionClientAsync:
                     content = await response.read()
 
                     # Save to file (synchronous write is fine, it's fast)
+                    output_path.write_bytes(content)
+                    logger.debug(f"  Downloaded: {len(content)} bytes")
+
+                    return True
+
+            except aiohttp.ClientError as e:
+                logger.error(f"  Download error: {e}")
+                raise
+
+    async def download_metrics(
+        self,
+        symbol: str,
+        date: str,
+        output_path: Path
+    ) -> bool:
+        """
+        Download open interest metrics data from Binance Data Vision asynchronously.
+
+        Uses semaphore to limit concurrent downloads and prevent overwhelming server.
+
+        Parameters
+        ----------
+        symbol : str
+            Trading pair symbol (e.g., 'BTCUSDT', 'ETHUSDT')
+        date : str
+            Date in YYYY-MM-DD format (e.g., '2024-01-15')
+        output_path : Path
+            Path where the CSV file should be saved
+
+        Returns
+        -------
+        bool
+            True if download successful, False if file not found (404)
+
+        Raises
+        ------
+        aiohttp.ClientError
+            For network errors (timeout, connection issues, etc.)
+        aiohttp.ClientResponseError
+            For HTTP errors other than 404 (e.g., 500, 503)
+
+        Example
+        -------
+        >>> async def download():
+        ...     async with BinanceDataVisionClientAsync() as client:
+        ...         output = Path('/tmp/BTCUSDT-metrics-2024-01-15.csv')
+        ...         success = await client.download_metrics(
+        ...             'BTCUSDT', '2024-01-15', output
+        ...         )
+        ...         return success
+        >>>
+        >>> success = asyncio.run(download())
+        """
+        if not self.session:
+            raise RuntimeError("Client session not initialized. Use 'async with' context manager.")
+
+        # Construct URL
+        category = self.DATA_CATEGORIES['open_interest']
+        filename = f"{symbol}-metrics-{date}.zip"
+        url = f"{self.base_url}{category}/{symbol}/{filename}"
+
+        logger.debug(f"Downloading: {url}")
+
+        # Use semaphore to limit concurrent downloads
+        async with self.semaphore:
+            try:
+                async with self.session.get(url) as response:
+                    # Handle 404 gracefully (data not available)
+                    if response.status == 404:
+                        logger.debug(f"  File not found (404)")
+                        return False
+
+                    # Raise for other HTTP errors
+                    response.raise_for_status()
+
+                    # Read content
+                    content = await response.read()
+
+                    # Save to file
+                    output_path.write_bytes(content)
+                    logger.debug(f"  Downloaded: {len(content)} bytes")
+
+                    return True
+
+            except aiohttp.ClientError as e:
+                logger.error(f"  Download error: {e}")
+                raise
+
+    async def download_funding_rates(
+        self,
+        symbol: str,
+        month: str,
+        output_path: Path
+    ) -> bool:
+        """
+        Download funding rate data from Binance Data Vision asynchronously.
+
+        Uses semaphore to limit concurrent downloads and prevent overwhelming server.
+
+        Parameters
+        ----------
+        symbol : str
+            Trading pair symbol (e.g., 'BTCUSDT', 'ETHUSDT')
+        month : str
+            Month in YYYY-MM format (e.g., '2024-01')
+        output_path : Path
+            Path where the ZIP file should be saved
+
+        Returns
+        -------
+        bool
+            True if download successful, False if file not found (404)
+
+        Raises
+        ------
+        aiohttp.ClientError
+            For network errors (timeout, connection issues, etc.)
+        aiohttp.ClientResponseError
+            For HTTP errors other than 404 (e.g., 500, 503)
+
+        Example
+        -------
+        >>> async def download():
+        ...     async with BinanceDataVisionClientAsync() as client:
+        ...         output = Path('/tmp/BTCUSDT-fundingRate-2024-01.zip')
+        ...         success = await client.download_funding_rates(
+        ...             'BTCUSDT', '2024-01', output
+        ...         )
+        ...         return success
+        >>>
+        >>> success = asyncio.run(download())
+        """
+        if not self.session:
+            raise RuntimeError("Client session not initialized. Use 'async with' context manager.")
+
+        # Construct URL
+        category = self.DATA_CATEGORIES['funding_rates']
+        filename = f"{symbol}-fundingRate-{month}.zip"
+        url = f"{self.base_url}{category}/{symbol}/{filename}"
+
+        logger.debug(f"Downloading: {url}")
+
+        # Use semaphore to limit concurrent downloads
+        async with self.semaphore:
+            try:
+                async with self.session.get(url) as response:
+                    # Handle 404 gracefully (data not available)
+                    if response.status == 404:
+                        logger.debug(f"  File not found (404)")
+                        return False
+
+                    # Raise for other HTTP errors
+                    response.raise_for_status()
+
+                    # Read content
+                    content = await response.read()
+
+                    # Save to file
                     output_path.write_bytes(content)
                     logger.debug(f"  Downloaded: {len(content)} bytes")
 

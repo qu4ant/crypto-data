@@ -28,6 +28,23 @@ def import_to_duckdb(
     Uses Pandas to handle duplicates (e.g., daylight saving time issues).
     INSERT OR REPLACE handles re-imports automatically.
 
+    IMPORTANT: Transaction Safety
+    ------------------------------
+    This function performs INSERT operations and MUST be called within an
+    explicit transaction context (BEGIN TRANSACTION / COMMIT / ROLLBACK).
+    The caller is responsible for transaction management to ensure atomicity.
+
+    Example usage:
+        conn.execute("BEGIN TRANSACTION")
+        try:
+            import_to_duckdb(conn, file_path, symbol, data_type, interval)
+            conn.execute("COMMIT")
+        except Exception as e:
+            conn.execute("ROLLBACK")
+            raise
+
+    See ingestion.py lines 699-709 for production usage pattern.
+
     Parameters
     ----------
     conn : duckdb.DuckDBPyConnection
@@ -147,7 +164,206 @@ def import_to_duckdb(
             csv_path.unlink()
 
 
-def data_exists(conn, symbol: str, month: str, data_type: str, interval: str, exchange: str = 'binance') -> bool:
+def import_metrics_to_duckdb(
+    conn,
+    file_path: Path,
+    symbol: str,
+    exchange: str = 'binance'
+):
+    """
+    Import open interest metrics from ZIP file into DuckDB.
+
+    IMPORTANT: Transaction Safety
+    ------------------------------
+    This function performs INSERT operations and MUST be called within an
+    explicit transaction context (BEGIN TRANSACTION / COMMIT / ROLLBACK).
+    The caller is responsible for transaction management to ensure atomicity.
+
+    Parameters
+    ----------
+    conn : duckdb.DuckDBPyConnection
+        Database connection
+    file_path : Path
+        Path to ZIP file containing metrics CSV data
+    symbol : str
+        Trading pair symbol (e.g., 'BTCUSDT')
+    exchange : str, optional
+        Exchange name (default: 'binance')
+    """
+    table = 'open_interest'
+    logger.debug(f"Importing to {table} (exchange={exchange})")
+
+    # Extract ZIP file
+    with zipfile.ZipFile(file_path, 'r') as zip_ref:
+        # Get the CSV file name (should be only one file in the ZIP)
+        csv_files = [f for f in zip_ref.namelist() if f.endswith('.csv')]
+
+        if not csv_files:
+            raise ValueError(f"No CSV file found in ZIP: {file_path}")
+
+        csv_name = csv_files[0]
+
+        # Extract to temp directory
+        temp_dir = file_path.parent
+        csv_path = temp_dir / csv_name
+        zip_ref.extract(csv_name, temp_dir)
+
+    try:
+        # Read CSV with pandas (metrics always have headers)
+        df = pd.read_csv(csv_path)
+
+        # Validate required columns
+        required_cols = ['create_time', 'symbol', 'sum_open_interest']
+        if not all(col in df.columns for col in required_cols):
+            raise ValueError(f"CSV missing required columns. Expected: {required_cols}, Found: {df.columns.tolist()}")
+
+        # Add exchange column
+        df['exchange'] = exchange
+
+        # Convert timestamp string to datetime
+        df['timestamp'] = pd.to_datetime(df['create_time'])
+
+        # Rename columns to match database schema
+        df.rename(columns={
+            'sum_open_interest': 'open_interest'
+        }, inplace=True)
+
+        # Select only columns we want to store
+        final_columns = ['exchange', 'symbol', 'timestamp', 'open_interest']
+        df = df[final_columns]
+
+        # Filter out rows where open_interest is zero (erroneous data)
+        original_len_before_filter = len(df)
+        df = df[df['open_interest'] != 0]
+        if len(df) < original_len_before_filter:
+            logger.debug(f"  Filtered out {original_len_before_filter - len(df)} rows with zero values")
+
+        # Drop duplicates
+        original_len = len(df)
+        df = df.drop_duplicates(subset=['exchange', 'symbol', 'timestamp'], keep='first')
+        if len(df) < original_len:
+            logger.debug(f"  Removed {original_len - len(df)} duplicate timestamps")
+
+        # Insert into DuckDB
+        try:
+            conn.execute(f"INSERT INTO {table} SELECT * FROM df")
+            logger.debug(f"  Import successful: {len(df)} rows")
+        except Exception as insert_error:
+            # Skip silently if duplicate (data already there)
+            if "Duplicate key" in str(insert_error):
+                logger.debug(f"Skipped duplicate data for {symbol} {table}")
+            else:
+                # Other error, propagate
+                raise
+
+    except Exception as e:
+        logger.error(f"  Import failed: {e}")
+        raise
+
+    finally:
+        # Delete extracted CSV file
+        if csv_path.exists():
+            csv_path.unlink()
+
+
+def import_funding_rates_to_duckdb(
+    conn,
+    file_path: Path,
+    symbol: str,
+    exchange: str = 'binance'
+):
+    """
+    Import funding rate data from ZIP file into DuckDB.
+
+    IMPORTANT: Transaction Safety
+    ------------------------------
+    This function performs INSERT operations and MUST be called within an
+    explicit transaction context (BEGIN TRANSACTION / COMMIT / ROLLBACK).
+    The caller is responsible for transaction management to ensure atomicity.
+
+    Parameters
+    ----------
+    conn : duckdb.DuckDBPyConnection
+        Database connection
+    file_path : Path
+        Path to ZIP file containing funding rate CSV data
+    symbol : str
+        Trading pair symbol (e.g., 'BTCUSDT')
+    exchange : str, optional
+        Exchange name (default: 'binance')
+    """
+    table = 'funding_rates'
+    logger.debug(f"Importing to {table} (exchange={exchange})")
+
+    # Extract ZIP file
+    with zipfile.ZipFile(file_path, 'r') as zip_ref:
+        # Get the CSV file name (should be only one file in the ZIP)
+        csv_files = [f for f in zip_ref.namelist() if f.endswith('.csv')]
+
+        if not csv_files:
+            raise ValueError(f"No CSV file found in ZIP: {file_path}")
+
+        csv_name = csv_files[0]
+
+        # Extract to temp directory
+        temp_dir = file_path.parent
+        csv_path = temp_dir / csv_name
+        zip_ref.extract(csv_name, temp_dir)
+
+    try:
+        # Read CSV with pandas (funding rates always have headers)
+        df = pd.read_csv(csv_path)
+
+        # Validate required columns
+        required_cols = ['calc_time', 'last_funding_rate']
+        if not all(col in df.columns for col in required_cols):
+            raise ValueError(f"CSV missing required columns. Expected: {required_cols}, Found: {df.columns.tolist()}")
+
+        # Add exchange column
+        df['exchange'] = exchange
+        df['symbol'] = symbol
+
+        # Convert timestamp (milliseconds to datetime)
+        df['timestamp'] = pd.to_datetime(df['calc_time'], unit='ms')
+
+        # Rename columns to match database schema
+        df.rename(columns={
+            'last_funding_rate': 'funding_rate'
+        }, inplace=True)
+
+        # Select only columns we want to store (minimal: 2 fields)
+        final_columns = ['exchange', 'symbol', 'timestamp', 'funding_rate']
+        df = df[final_columns]
+
+        # Drop duplicates
+        original_len = len(df)
+        df = df.drop_duplicates(subset=['exchange', 'symbol', 'timestamp'], keep='first')
+        if len(df) < original_len:
+            logger.debug(f"  Removed {original_len - len(df)} duplicate timestamps")
+
+        # Insert into DuckDB
+        try:
+            conn.execute(f"INSERT INTO {table} SELECT * FROM df")
+            logger.debug(f"  Import successful: {len(df)} rows")
+        except Exception as insert_error:
+            # Skip silently if duplicate (data already there)
+            if "Duplicate key" in str(insert_error):
+                logger.debug(f"Skipped duplicate data for {symbol} {table}")
+            else:
+                # Other error, propagate
+                raise
+
+    except Exception as e:
+        logger.error(f"  Import failed: {e}")
+        raise
+
+    finally:
+        # Delete extracted CSV file
+        if csv_path.exists():
+            csv_path.unlink()
+
+
+def data_exists(conn, symbol: str, month: str, data_type: str, interval: str = None, exchange: str = 'binance') -> bool:
     """
     Check if data already exists and is complete for given symbol/month/interval.
 
@@ -163,9 +379,9 @@ def data_exists(conn, symbol: str, month: str, data_type: str, interval: str, ex
     month : str
         Month in YYYY-MM format
     data_type : str
-        Data type ('spot' or 'futures')
-    interval : str
-        Kline interval (e.g., '5m', '1h')
+        Data type ('spot', 'futures', 'funding_rates')
+    interval : str, optional
+        Kline interval (e.g., '5m', '1h'). Required for spot/futures, not used for funding_rates.
     exchange : str, optional
         Exchange name (default: 'binance')
 
@@ -174,7 +390,13 @@ def data_exists(conn, symbol: str, month: str, data_type: str, interval: str, ex
     bool
         True if data exists and is complete, False otherwise
     """
-    table = data_type  # 'spot' or 'futures'
+    # Determine table name
+    if data_type in ['spot', 'futures']:
+        table = data_type
+    elif data_type == 'funding_rates':
+        table = 'funding_rates'
+    else:
+        return False  # Unknown data type
 
     # Parse month to get date range
     year, month_num = month.split('-')
@@ -186,15 +408,26 @@ def data_exists(conn, symbol: str, month: str, data_type: str, interval: str, ex
     else:
         end_date = f"{year}-{int(month_num) + 1:02d}-01"
 
-    # Get MAX timestamp for this month
-    result = conn.execute(f"""
-        SELECT MAX(timestamp) FROM {table}
-        WHERE exchange = ?
-            AND symbol = ?
-            AND interval = ?
-            AND timestamp >= ?
-            AND timestamp < ?
-    """, [exchange, symbol, interval, start_date, end_date]).fetchone()
+    # Build query based on data type
+    if data_type in ['spot', 'futures']:
+        # Klines have interval column
+        result = conn.execute(f"""
+            SELECT MAX(timestamp) FROM {table}
+            WHERE exchange = ?
+                AND symbol = ?
+                AND interval = ?
+                AND timestamp >= ?
+                AND timestamp < ?
+        """, [exchange, symbol, interval, start_date, end_date]).fetchone()
+    else:
+        # Funding rates don't have interval column
+        result = conn.execute(f"""
+            SELECT MAX(timestamp) FROM {table}
+            WHERE exchange = ?
+                AND symbol = ?
+                AND timestamp >= ?
+                AND timestamp < ?
+        """, [exchange, symbol, start_date, end_date]).fetchone()
 
     if not result or not result[0]:
         # No data for this month

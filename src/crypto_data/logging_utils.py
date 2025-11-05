@@ -117,7 +117,7 @@ class ColoredFormatter(logging.Formatter):
             record.msg = f"{self.BRIGHT_BLACK}{message}{self.RESET}"
 
         # Filtered/Removed indicators
-        elif "Filtered" in message or "Removed" in message or "Excluding" in message:
+        elif "Filtered" in message or "Removed" in message or "Excluding" in message or "Excluded" in message:
             record.msg = f"{self.YELLOW}{message}{self.RESET}"
 
         # Arrow indicators (→, ↳)
