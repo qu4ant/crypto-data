@@ -63,7 +63,7 @@ def process_download_results(
     3. Delete temporary files after import
     4. Log progress at DEBUG level
 
-    Used by both sync and async ingestion workflows to eliminate code duplication.
+    Used by both populate_database and async ingestion workflows to eliminate code duplication.
 
     Parameters
     ----------

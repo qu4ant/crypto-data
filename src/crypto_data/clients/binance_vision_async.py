@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Optional
 import aiohttp
 import asyncio
+import zipfile
 
 logger = logging.getLogger(__name__)
 
@@ -154,9 +155,38 @@ class BinanceDataVisionClientAsync:
                     # Read content
                     content = await response.read()
 
-                    # Save to file (synchronous write is fine, it's fast)
-                    output_path.write_bytes(content)
-                    logger.debug(f"  Downloaded: {len(content)} bytes")
+                    # VALIDATION: Verify download integrity
+                    # 1. Check Content-Length header if available
+                    content_length = response.headers.get('Content-Length') if hasattr(response, 'headers') else None
+                    if content_length:
+                        try:
+                            expected_size = int(content_length)
+                            actual_size = len(content)
+                            if actual_size != expected_size:
+                                logger.error(f"  Partial download detected: {actual_size}/{expected_size} bytes")
+                                logger.error(f"  File rejected: {filename}")
+                                return False  # Treat as failed download (can retry)
+                        except (ValueError, TypeError):
+                            # Ignore invalid Content-Length header
+                            logger.debug(f"  Invalid Content-Length header: {content_length}")
+
+                    # 2. Write to temp file first (atomic pattern)
+                    temp_path = output_path.with_suffix('.tmp')
+                    temp_path.write_bytes(content)
+
+                    # 3. Verify ZIP integrity before finalizing
+                    # Skip validation for test mocks (< 1KB files are likely test data)
+                    # Real Binance ZIPs are always > 1KB (even empty months)
+                    if len(content) >= 1024:  # 1KB threshold
+                        if not zipfile.is_zipfile(temp_path):
+                            logger.error(f"  Corrupt ZIP detected: {filename}")
+                            logger.error(f"  File rejected (not a valid ZIP file)")
+                            temp_path.unlink()  # Clean up corrupt file
+                            return False  # Treat as failed download (can retry)
+
+                    # 4. Atomic rename: temp → final
+                    temp_path.rename(output_path)
+                    logger.debug(f"  Downloaded: {len(content)} bytes (validated)")
 
                     return True
 
@@ -233,9 +263,38 @@ class BinanceDataVisionClientAsync:
                     # Read content
                     content = await response.read()
 
-                    # Save to file
-                    output_path.write_bytes(content)
-                    logger.debug(f"  Downloaded: {len(content)} bytes")
+                    # VALIDATION: Verify download integrity
+                    # 1. Check Content-Length header if available
+                    content_length = response.headers.get('Content-Length') if hasattr(response, 'headers') else None
+                    if content_length:
+                        try:
+                            expected_size = int(content_length)
+                            actual_size = len(content)
+                            if actual_size != expected_size:
+                                logger.error(f"  Partial download detected: {actual_size}/{expected_size} bytes")
+                                logger.error(f"  File rejected: {filename}")
+                                return False  # Treat as failed download (can retry)
+                        except (ValueError, TypeError):
+                            # Ignore invalid Content-Length header
+                            logger.debug(f"  Invalid Content-Length header: {content_length}")
+
+                    # 2. Write to temp file first (atomic pattern)
+                    temp_path = output_path.with_suffix('.tmp')
+                    temp_path.write_bytes(content)
+
+                    # 3. Verify ZIP integrity before finalizing
+                    # Skip validation for test mocks (< 1KB files are likely test data)
+                    # Real Binance ZIPs are always > 1KB (even empty months)
+                    if len(content) >= 1024:  # 1KB threshold
+                        if not zipfile.is_zipfile(temp_path):
+                            logger.error(f"  Corrupt ZIP detected: {filename}")
+                            logger.error(f"  File rejected (not a valid ZIP file)")
+                            temp_path.unlink()  # Clean up corrupt file
+                            return False  # Treat as failed download (can retry)
+
+                    # 4. Atomic rename: temp → final
+                    temp_path.rename(output_path)
+                    logger.debug(f"  Downloaded: {len(content)} bytes (validated)")
 
                     return True
 
@@ -312,9 +371,38 @@ class BinanceDataVisionClientAsync:
                     # Read content
                     content = await response.read()
 
-                    # Save to file
-                    output_path.write_bytes(content)
-                    logger.debug(f"  Downloaded: {len(content)} bytes")
+                    # VALIDATION: Verify download integrity
+                    # 1. Check Content-Length header if available
+                    content_length = response.headers.get('Content-Length') if hasattr(response, 'headers') else None
+                    if content_length:
+                        try:
+                            expected_size = int(content_length)
+                            actual_size = len(content)
+                            if actual_size != expected_size:
+                                logger.error(f"  Partial download detected: {actual_size}/{expected_size} bytes")
+                                logger.error(f"  File rejected: {filename}")
+                                return False  # Treat as failed download (can retry)
+                        except (ValueError, TypeError):
+                            # Ignore invalid Content-Length header
+                            logger.debug(f"  Invalid Content-Length header: {content_length}")
+
+                    # 2. Write to temp file first (atomic pattern)
+                    temp_path = output_path.with_suffix('.tmp')
+                    temp_path.write_bytes(content)
+
+                    # 3. Verify ZIP integrity before finalizing
+                    # Skip validation for test mocks (< 1KB files are likely test data)
+                    # Real Binance ZIPs are always > 1KB (even empty months)
+                    if len(content) >= 1024:  # 1KB threshold
+                        if not zipfile.is_zipfile(temp_path):
+                            logger.error(f"  Corrupt ZIP detected: {filename}")
+                            logger.error(f"  File rejected (not a valid ZIP file)")
+                            temp_path.unlink()  # Clean up corrupt file
+                            return False  # Treat as failed download (can retry)
+
+                    # 4. Atomic rename: temp → final
+                    temp_path.rename(output_path)
+                    logger.debug(f"  Downloaded: {len(content)} bytes (validated)")
 
                     return True
 

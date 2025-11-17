@@ -7,6 +7,8 @@ Compatible with both Unix/Linux/macOS and Windows terminals.
 
 import logging
 import sys
+from pathlib import Path
+from datetime import datetime
 
 
 class ColoredFormatter(logging.Formatter):
@@ -47,7 +49,7 @@ class ColoredFormatter(logging.Formatter):
         'CRITICAL': BOLD + RED,
     }
 
-    def __init__(self, fmt=None, datefmt=None, use_color=True):
+    def __init__(self, fmt=None, datefmt=None, use_color=True, force_color=False):
         """
         Initialize colored formatter.
 
@@ -59,11 +61,16 @@ class ColoredFormatter(logging.Formatter):
             Date format string
         use_color : bool, optional
             Enable/disable colors (default: True, auto-detected)
+        force_color : bool, optional
+            Force colors even if TTY detection fails (default: False, useful for file logging)
         """
         super().__init__(fmt, datefmt)
 
-        # Auto-detect if terminal supports colors
-        self.use_color = use_color and self._supports_color()
+        # Auto-detect if terminal supports colors, or force if requested
+        if force_color:
+            self.use_color = use_color
+        else:
+            self.use_color = use_color and self._supports_color()
 
     def _supports_color(self):
         """Check if terminal supports ANSI colors."""
@@ -109,7 +116,7 @@ class ColoredFormatter(logging.Formatter):
             record.msg = f"{self.BRIGHT_GREEN}{message}{self.RESET}"
 
         # Progress indicators
-        elif "Processing" in message or message.startswith("["):
+        elif "Downloading" in message or message.startswith("["):
             record.msg = f"{self.BRIGHT_CYAN}{message}{self.RESET}"
 
         # Skip indicators
@@ -135,7 +142,10 @@ class ColoredFormatter(logging.Formatter):
 
 def setup_colored_logging(level=logging.INFO, fmt=None, datefmt=None):
     """
-    Configure root logger with colored output.
+    Configure root logger with colored output to both console and file.
+
+    Automatically saves logs to './logs/' directory with timestamped filenames.
+    Both console and file outputs include ANSI color codes.
 
     Parameters
     ----------
@@ -146,10 +156,15 @@ def setup_colored_logging(level=logging.INFO, fmt=None, datefmt=None):
     datefmt : str, optional
         Date format string (default: '%Y-%m-%d %H:%M:%S')
 
+    Returns
+    -------
+    str
+        Path to the log file
+
     Example
     -------
     >>> from crypto_data.logging_utils import setup_colored_logging
-    >>> setup_colored_logging()
+    >>> log_file = setup_colored_logging()
     >>> logger = logging.getLogger(__name__)
     >>> logger.info("This is colored!")
     """
@@ -159,8 +174,13 @@ def setup_colored_logging(level=logging.INFO, fmt=None, datefmt=None):
     if datefmt is None:
         datefmt = '%Y-%m-%d %H:%M:%S'
 
-    # Create colored formatter
-    formatter = ColoredFormatter(fmt=fmt, datefmt=datefmt)
+    # Create logs directory
+    logs_dir = Path('logs')
+    logs_dir.mkdir(exist_ok=True)
+
+    # Generate timestamped log filename
+    timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
+    log_file = logs_dir / f'crypto_data_{timestamp}.log'
 
     # Configure root logger
     root_logger = logging.getLogger()
@@ -170,10 +190,28 @@ def setup_colored_logging(level=logging.INFO, fmt=None, datefmt=None):
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
 
+    # Create colored formatter for console (auto-detect TTY)
+    console_formatter = ColoredFormatter(fmt=fmt, datefmt=datefmt)
+
+    # Create colored formatter for file (force colors, no TTY detection)
+    file_formatter = ColoredFormatter(fmt=fmt, datefmt=datefmt, use_color=True, force_color=True)
+
     # Add console handler with colored formatter
     console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(formatter)
+    console_handler.setFormatter(console_formatter)
     root_logger.addHandler(console_handler)
+
+    # Add file handler with colored formatter
+    file_handler = logging.FileHandler(log_file, mode='w', encoding='utf-8')
+    file_handler.setFormatter(file_formatter)
+    root_logger.addHandler(file_handler)
+
+    # Log the file path (will appear in both console and file)
+    log_path = str(log_file)
+    root_logger.info(f"Logging to file: {log_path}")
+    root_logger.info("")
+
+    return log_path
 
 
 # Convenience function for scripts

@@ -69,9 +69,9 @@ class TestOHLCVSchema:
             OHLCV_SCHEMA.validate(df)
 
     def test_invalid_exchange_fails(self, valid_ohlcv_df):
-        """Test that invalid exchange name is caught"""
+        """Test that invalid exchange name is caught (uppercase, special chars)"""
         df = valid_ohlcv_df.copy()
-        df['exchange'] = 'unknown_exchange'
+        df['exchange'] = 'INVALID!@#'  # Uppercase + special characters (not allowed)
 
         with pytest.raises(pa.errors.SchemaError):
             OHLCV_SCHEMA.validate(df)

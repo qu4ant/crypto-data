@@ -9,6 +9,14 @@ import zipfile
 from pathlib import Path
 from typing import Optional
 import pandas as pd
+import pandera as pa
+
+# Import Pandera validation functions
+from crypto_data.schemas import (
+    validate_ohlcv_dataframe,
+    validate_open_interest_dataframe,
+    validate_funding_rates_dataframe
+)
 
 logger = logging.getLogger(__name__)
 
@@ -141,6 +149,20 @@ def import_to_duckdb(
         if len(df) < original_len:
             logger.debug(f"  Removed {original_len - len(df)} duplicate timestamps")
 
+        # VALIDATION: Validate data quality BEFORE import (Pandera schema check)
+        # This prevents importing corrupted or invalid data into the database
+        try:
+            validate_ohlcv_dataframe(df, strict=True)  # Strict mode: reject invalid data
+            logger.debug(f"  Data validation passed: {len(df)} rows")
+        except pa.errors.SchemaError as e:
+            # Data quality validation failed - reject this file
+            logger.error(f"  ❌ Data validation FAILED for {storage_symbol} {table} {interval}")
+            logger.error(f"  Validation errors: {e}")
+            logger.error(f"  File rejected: {file_path.name}")
+            logger.error(f"  Suggestion: Check data source or contact support if persistent")
+            # Raise exception to trigger transaction rollback
+            raise ValueError(f"Data validation failed: Invalid OHLCV data (OHLC relationships, negative prices, etc.)") from e
+
         # Insert into DuckDB
         try:
             conn.execute(f"INSERT INTO {table} SELECT * FROM df")
@@ -244,6 +266,20 @@ def import_metrics_to_duckdb(
         if len(df) < original_len:
             logger.debug(f"  Removed {original_len - len(df)} duplicate timestamps")
 
+        # VALIDATION: Validate data quality BEFORE import (Pandera schema check)
+        # This prevents importing corrupted or invalid data into the database
+        try:
+            validate_open_interest_dataframe(df, strict=True)  # Strict mode: reject invalid data
+            logger.debug(f"  Data validation passed: {len(df)} rows")
+        except pa.errors.SchemaError as e:
+            # Data quality validation failed - reject this file
+            logger.error(f"  ❌ Data validation FAILED for {symbol} {table}")
+            logger.error(f"  Validation errors: {e}")
+            logger.error(f"  File rejected: {file_path.name}")
+            logger.error(f"  Suggestion: Check data source or contact support if persistent")
+            # Raise exception to trigger transaction rollback
+            raise ValueError(f"Data validation failed: Invalid open interest data (negative values, outliers, etc.)") from e
+
         # Insert into DuckDB
         try:
             conn.execute(f"INSERT INTO {table} SELECT * FROM df")
@@ -340,6 +376,20 @@ def import_funding_rates_to_duckdb(
         df = df.drop_duplicates(subset=['exchange', 'symbol', 'timestamp'], keep='first')
         if len(df) < original_len:
             logger.debug(f"  Removed {original_len - len(df)} duplicate timestamps")
+
+        # VALIDATION: Validate data quality BEFORE import (Pandera schema check)
+        # This prevents importing corrupted or invalid data into the database
+        try:
+            validate_funding_rates_dataframe(df, strict=True)  # Strict mode: reject invalid data
+            logger.debug(f"  Data validation passed: {len(df)} rows")
+        except pa.errors.SchemaError as e:
+            # Data quality validation failed - reject this file
+            logger.error(f"  ❌ Data validation FAILED for {symbol} {table}")
+            logger.error(f"  Validation errors: {e}")
+            logger.error(f"  File rejected: {file_path.name}")
+            logger.error(f"  Suggestion: Check data source or contact support if persistent")
+            # Raise exception to trigger transaction rollback
+            raise ValueError(f"Data validation failed: Invalid funding rate data (extreme values, etc.)") from e
 
         # Insert into DuckDB
         try:

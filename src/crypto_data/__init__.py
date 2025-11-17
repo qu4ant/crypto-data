@@ -19,7 +19,7 @@ Public API:
     - CryptoDatabase: Database schema management
     - ingest_universe(): Async download and import CoinMarketCap rankings (parallel)
     - ingest_binance_async(): Download and import Binance data (parallel, 5-10x faster)
-    - sync(): Complete workflow (universe → binance, uses parallel downloads)
+    - populate_database(): Complete workflow (universe → binance, uses parallel downloads)
     - setup_colored_logging(), get_logger(): Logging utilities
     - Pandera schemas: OHLCV_SCHEMA, OPEN_INTEREST_SCHEMA, FUNDING_RATES_SCHEMA, UNIVERSE_SCHEMA
     - Validation functions: validate_ohlcv_dataframe, validate_open_interest_dataframe, etc.
@@ -29,7 +29,7 @@ implementation details and not part of the public API.
 """
 
 from .database import CryptoDatabase
-from .ingestion import ingest_universe, sync, ingest_binance_async
+from .ingestion import ingest_universe, populate_database, ingest_binance_async
 from .logging_utils import setup_colored_logging, get_logger
 from .utils.symbols import get_symbols_from_universe
 
@@ -61,7 +61,7 @@ __all__ = [
     "CryptoDatabase",
     "ingest_binance_async",
     "ingest_universe",
-    "sync",
+    "populate_database",
     "get_symbols_from_universe",
 
     # Logging

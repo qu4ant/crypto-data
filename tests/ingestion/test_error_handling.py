@@ -19,7 +19,7 @@ from crypto_data.database import CryptoDatabase
 from crypto_data.ingestion import (
     ingest_universe,
     ingest_binance_async,
-    sync,
+    populate_database,
     _ticker_mappings,
     _ticker_mappings_lock,
     _validate_and_parse_dates
@@ -307,13 +307,13 @@ class TestDateValidationIntegration:
             )
         assert "must be before or equal to" in str(exc_info.value)
 
-    def test_sync_validates_dates(self, tmp_path):
-        """Test that sync function validates dates."""
+    def test_populate_database_validates_dates(self, tmp_path):
+        """Test that populate_database function validates dates."""
         db_path = str(tmp_path / "test.db")
 
         # Invalid date format
         with pytest.raises(ValueError) as exc_info:
-            sync(
+            populate_database(
                 db_path=db_path,
                 start_date='invalid-date',
                 end_date='2024-12-31',
@@ -323,10 +323,118 @@ class TestDateValidationIntegration:
 
         # Start after end
         with pytest.raises(ValueError) as exc_info:
-            sync(
+            populate_database(
                 db_path=db_path,
                 start_date='2024-12-31',
                 end_date='2024-01-01',
                 top_n=10
             )
         assert "must be before or equal to" in str(exc_info.value)
+
+
+# =============================================================================
+# ADDITIONAL ERROR HANDLING TESTS (Coverage Improvements)
+# =============================================================================
+
+class TestDownloadFailureLogging:
+    """Test error logging for download failures (improves coverage lines 106-107, 165-166)."""
+
+    def test_metrics_download_failure_logged(self):
+        """Test that metrics download failures are logged correctly."""
+        from crypto_data.ingestion import _process_metrics_results, initialize_ingestion_stats
+
+        results = [
+            {
+                'success': False,
+                'symbol': 'BTCUSDT',
+                'data_type': 'open_interest',
+                'date': '2024-01-01',
+                'file_path': None,
+                'error': 'Connection timeout'  # Non-404 error
+            }
+        ]
+
+        mock_conn = MagicMock()
+        stats = initialize_ingestion_stats()
+
+        # This should hit the error logging path (lines 106-107)
+        _process_metrics_results(results, mock_conn, stats, 'BTCUSDT')
+
+        # Verify stats updated for failed download
+        assert stats['failed'] == 1
+        assert stats['downloaded'] == 0
+        assert stats['not_found'] == 0
+
+    def test_funding_rates_download_failure_logged(self):
+        """Test that funding rates download failures are logged correctly."""
+        from crypto_data.ingestion import _process_funding_rates_results, initialize_ingestion_stats
+
+        results = [
+            {
+                'success': False,
+                'symbol': 'BTCUSDT',
+                'data_type': 'funding_rates',
+                'month': '2024-01',
+                'file_path': None,
+                'error': 'Network error'  # Non-404 error
+            }
+        ]
+
+        mock_conn = MagicMock()
+        stats = initialize_ingestion_stats()
+
+        # This should hit the error logging path (lines 165-166)
+        _process_funding_rates_results(results, mock_conn, stats, 'BTCUSDT')
+
+        # Verify stats updated for failed download
+        assert stats['failed'] == 1
+        assert stats['downloaded'] == 0
+        assert stats['not_found'] == 0
+
+    def test_mixed_results_logging(self):
+        """Test logging when there are mixed success/failure results."""
+        from crypto_data.ingestion import _process_metrics_results, initialize_ingestion_stats
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            temp_file = Path(tmpdir) / "test.zip"
+            temp_file.touch()
+
+            results = [
+                {
+                    'success': True,
+                    'symbol': 'BTCUSDT',
+                    'data_type': 'open_interest',
+                    'date': '2024-01-01',
+                    'file_path': temp_file,
+                    'error': None
+                },
+                {
+                    'success': False,
+                    'symbol': 'BTCUSDT',
+                    'data_type': 'open_interest',
+                    'date': '2024-01-02',
+                    'file_path': None,
+                    'error': 'not_found'
+                },
+                {
+                    'success': False,
+                    'symbol': 'BTCUSDT',
+                    'data_type': 'open_interest',
+                    'date': '2024-01-03',
+                    'file_path': None,
+                    'error': 'Connection error'
+                }
+            ]
+
+            mock_conn = MagicMock()
+            stats = initialize_ingestion_stats()
+
+            with patch('crypto_data.ingestion.import_metrics_to_duckdb'):
+                _process_metrics_results(results, mock_conn, stats, 'BTCUSDT')
+
+            # Verify all error types counted correctly
+            assert stats['downloaded'] == 1
+            assert stats['not_found'] == 1
+            assert stats['failed'] == 1

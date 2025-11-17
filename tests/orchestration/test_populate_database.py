@@ -1,7 +1,7 @@
 """
-Tests for sync() orchestration function.
+Tests for populate_database() orchestration function.
 
-Tests that sync() correctly orchestrates the complete workflow:
+Tests that populate_database() correctly orchestrates the complete workflow:
 universe ingestion → symbol extraction → Binance data ingestion.
 
 Uses mocks to avoid external API calls and file I/O.
@@ -12,11 +12,11 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch, MagicMock, AsyncMock, call
 
-from crypto_data.ingestion import sync
+from crypto_data.ingestion import populate_database
 
 
-def test_sync_orchestrates_full_workflow():
-    """Test that sync() calls all components in correct order."""
+def test_populate_database_orchestrates_full_workflow():
+    """Test that populate_database() calls all components in correct order."""
     with tempfile.TemporaryDirectory() as tmpdir:
         db_path = str(Path(tmpdir) / 'test.db')
 
@@ -40,8 +40,8 @@ def test_sync_orchestrates_full_workflow():
             mock_path_instance.stat.return_value.st_size = 1024 * 1024  # 1 MB
             mock_path.return_value = mock_path_instance
 
-            # Call sync
-            sync(
+            # Call populate_database
+            populate_database(
                 db_path=db_path,
                 start_date='2024-01-01',
                 end_date='2024-03-31',
@@ -72,8 +72,8 @@ def test_sync_orchestrates_full_workflow():
             )
 
 
-def test_sync_handles_empty_universe():
-    """Test that sync() exits gracefully when no symbols are extracted."""
+def test_populate_database_handles_empty_universe():
+    """Test that populate_database() exits gracefully when no symbols are extracted."""
     with tempfile.TemporaryDirectory() as tmpdir:
         db_path = str(Path(tmpdir) / 'test.db')
 
@@ -85,8 +85,8 @@ def test_sync_handles_empty_universe():
             # Setup mocks - empty universe
             mock_get_symbols.return_value = []
 
-            # Call sync
-            sync(
+            # Call populate_database
+            populate_database(
                 db_path=db_path,
                 start_date='2024-01-01',
                 end_date='2024-01-31',
@@ -105,8 +105,8 @@ def test_sync_handles_empty_universe():
             mock_ingest_binance.assert_not_called()
 
 
-def test_sync_generates_correct_month_list():
-    """Test that sync() generates correct monthly snapshots (batch mode)."""
+def test_populate_database_generates_correct_month_list():
+    """Test that populate_database() generates correct monthly snapshots (batch mode)."""
     with tempfile.TemporaryDirectory() as tmpdir:
         db_path = str(Path(tmpdir) / 'test.db')
 
@@ -119,7 +119,7 @@ def test_sync_generates_correct_month_list():
             mock_get_symbols.return_value = ['BTCUSDT']
 
             # Call sync with 12-month period
-            sync(
+            populate_database(
                 db_path=db_path,
                 start_date='2024-01-01',
                 end_date='2024-12-31',
@@ -132,8 +132,8 @@ def test_sync_generates_correct_month_list():
             mock_ingest_universe.assert_called_once()
 
 
-def test_sync_continues_on_universe_failure():
-    """Test that sync() continues even if universe ingestion has errors (batch mode logs and continues)."""
+def test_populate_database_continues_on_universe_failure():
+    """Test that populate_database() continues even if universe ingestion has errors (batch mode logs and continues)."""
     with tempfile.TemporaryDirectory() as tmpdir:
         db_path = str(Path(tmpdir) / 'test.db')
 
@@ -146,7 +146,7 @@ def test_sync_continues_on_universe_failure():
             mock_get_symbols.return_value = ['BTCUSDT']
 
             # Call sync (batch version doesn't raise on errors, logs them)
-            sync(
+            populate_database(
                 db_path=db_path,
                 start_date='2024-01-01',
                 end_date='2024-03-31',
@@ -162,8 +162,8 @@ def test_sync_continues_on_universe_failure():
             mock_ingest_binance.assert_called_once()
 
 
-def test_sync_uses_default_data_types():
-    """Test that sync() uses default data_types if not specified."""
+def test_populate_database_uses_default_data_types():
+    """Test that populate_database() uses default data_types if not specified."""
     with tempfile.TemporaryDirectory() as tmpdir:
         db_path = str(Path(tmpdir) / 'test.db')
 
@@ -175,7 +175,7 @@ def test_sync_uses_default_data_types():
             mock_get_symbols.return_value = ['BTCUSDT']
 
             # Call sync without data_types parameter
-            sync(
+            populate_database(
                 db_path=db_path,
                 start_date='2024-01-01',
                 end_date='2024-01-31',
@@ -189,8 +189,8 @@ def test_sync_uses_default_data_types():
             assert call_args[1]['data_types'] == ['spot', 'futures']
 
 
-def test_sync_handles_year_boundary():
-    """Test that sync() correctly handles date ranges crossing year boundaries."""
+def test_populate_database_handles_year_boundary():
+    """Test that populate_database() correctly handles date ranges crossing year boundaries."""
     with tempfile.TemporaryDirectory() as tmpdir:
         db_path = str(Path(tmpdir) / 'test.db')
 
@@ -202,7 +202,7 @@ def test_sync_handles_year_boundary():
             mock_get_symbols.return_value = ['BTCUSDT']
 
             # Call sync with year boundary
-            sync(
+            populate_database(
                 db_path=db_path,
                 start_date='2023-11-01',
                 end_date='2024-02-28',

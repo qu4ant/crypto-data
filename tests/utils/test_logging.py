@@ -8,7 +8,11 @@ which provide colored console output for better log readability.
 import pytest
 import logging
 import sys
+import re
 from io import StringIO
+from pathlib import Path
+import tempfile
+import os
 
 from crypto_data.logging_utils import ColoredFormatter, setup_colored_logging, get_logger
 
@@ -22,10 +26,9 @@ def test_colored_formatter_adds_color_codes():
     # Create formatter with colors enabled (force use_color)
     formatter = ColoredFormatter(
         fmt='%(levelname)s - %(message)s',
-        use_color=True
+        use_color=True,
+        force_color=True
     )
-    # Override auto-detection for testing
-    formatter.use_color = True
 
     # Create a log record
     record = logging.LogRecord(
@@ -78,10 +81,9 @@ def test_colored_formatter_handles_different_levels():
     """Test that ColoredFormatter applies different colors for different log levels."""
     formatter = ColoredFormatter(
         fmt='%(levelname)s - %(message)s',
-        use_color=True
+        use_color=True,
+        force_color=True
     )
-    # Override auto-detection for testing
-    formatter.use_color = True
 
     levels_and_messages = [
         (logging.DEBUG, 'Debug message'),
@@ -117,10 +119,9 @@ def test_colored_formatter_highlights_headers():
     """Test that ColoredFormatter highlights header messages with ===."""
     formatter = ColoredFormatter(
         fmt='%(message)s',
-        use_color=True
+        use_color=True,
+        force_color=True
     )
-    # Override auto-detection for testing
-    formatter.use_color = True
 
     record = logging.LogRecord(
         name='test',
@@ -143,10 +144,9 @@ def test_colored_formatter_highlights_success():
     """Test that ColoredFormatter highlights success messages."""
     formatter = ColoredFormatter(
         fmt='%(message)s',
-        use_color=True
+        use_color=True,
+        force_color=True
     )
-    # Override auto-detection for testing
-    formatter.use_color = True
 
     success_messages = [
         '✓ Success!',
@@ -175,13 +175,11 @@ def test_colored_formatter_highlights_progress():
     """Test that ColoredFormatter highlights progress indicators."""
     formatter = ColoredFormatter(
         fmt='%(message)s',
-        use_color=True
+        use_color=True,
+        force_color=True
     )
-    # Override auto-detection for testing
-    formatter.use_color = True
 
     progress_messages = [
-        'Processing data...',
         '[1/10] Downloading files'
     ]
 
@@ -206,10 +204,9 @@ def test_colored_formatter_highlights_skipped():
     """Test that ColoredFormatter highlights skipped messages."""
     formatter = ColoredFormatter(
         fmt='%(message)s',
-        use_color=True
+        use_color=True,
+        force_color=True
     )
-    # Override auto-detection for testing
-    formatter.use_color = True
 
     record = logging.LogRecord(
         name='test',
@@ -257,58 +254,85 @@ def test_colored_formatter_preserves_levelname():
 
 def test_setup_colored_logging_configures_root():
     """Test that setup_colored_logging() configures root logger."""
-    # Clear existing handlers
-    root = logging.getLogger()
-    for handler in root.handlers[:]:
-        root.removeHandler(handler)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmpdir)
 
-    # Setup colored logging
-    setup_colored_logging(level=logging.DEBUG)
+            # Clear existing handlers
+            root = logging.getLogger()
+            for handler in root.handlers[:]:
+                root.removeHandler(handler)
 
-    # Root logger should have handlers
-    assert len(root.handlers) > 0
+            # Setup colored logging
+            setup_colored_logging(level=logging.DEBUG)
 
-    # Root logger should have correct level
-    assert root.level == logging.DEBUG
+            # Root logger should have 2 handlers (console + file)
+            assert len(root.handlers) == 2
 
-    # Handler should have ColoredFormatter
-    handler = root.handlers[0]
-    assert isinstance(handler.formatter, ColoredFormatter)
+            # Root logger should have correct level
+            assert root.level == logging.DEBUG
+
+            # Both handlers should have ColoredFormatter
+            for handler in root.handlers:
+                assert isinstance(handler.formatter, ColoredFormatter)
+
+        finally:
+            os.chdir(original_dir)
 
 
 def test_setup_colored_logging_replaces_existing_handlers():
     """Test that setup_colored_logging() replaces existing handlers."""
-    root = logging.getLogger()
+    with tempfile.TemporaryDirectory() as tmpdir:
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmpdir)
 
-    # Add a dummy handler
-    dummy_handler = logging.StreamHandler()
-    root.addHandler(dummy_handler)
-    initial_count = len(root.handlers)
+            root = logging.getLogger()
 
-    # Setup colored logging
-    setup_colored_logging()
+            # Add a dummy handler
+            dummy_handler = logging.StreamHandler()
+            root.addHandler(dummy_handler)
 
-    # Should have exactly 1 handler (old one replaced)
-    assert len(root.handlers) == 1
-    assert root.handlers[0] != dummy_handler
+            # Setup colored logging
+            setup_colored_logging()
+
+            # Should have exactly 2 handlers (console + file, old one replaced)
+            assert len(root.handlers) == 2
+
+            # Dummy handler should not be in the list
+            assert dummy_handler not in root.handlers
+
+        finally:
+            os.chdir(original_dir)
 
 
 def test_setup_colored_logging_accepts_custom_format():
     """Test that setup_colored_logging() accepts custom format strings."""
-    setup_colored_logging(
-        fmt='%(name)s - %(levelname)s - %(message)s',
-        datefmt='%H:%M:%S'
-    )
+    with tempfile.TemporaryDirectory() as tmpdir:
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmpdir)
 
-    root = logging.getLogger()
-    handler = root.handlers[0]
-    formatter = handler.formatter
+            setup_colored_logging(
+                fmt='%(name)s - %(levelname)s - %(message)s',
+                datefmt='%H:%M:%S'
+            )
 
-    # Formatter should be ColoredFormatter
-    assert isinstance(formatter, ColoredFormatter)
+            root = logging.getLogger()
 
-    # Custom format should be applied
-    assert '%(name)s' in formatter._fmt
+            # Both handlers should have the custom format
+            for handler in root.handlers:
+                formatter = handler.formatter
+
+                # Formatter should be ColoredFormatter
+                assert isinstance(formatter, ColoredFormatter)
+
+                # Custom format should be applied
+                assert '%(name)s' in formatter._fmt
+
+        finally:
+            os.chdir(original_dir)
 
 
 # ============================================================================
@@ -325,25 +349,41 @@ def test_get_logger_returns_configured_logger():
 
 def test_get_logger_configures_root():
     """Test that get_logger() calls setup_colored_logging()."""
-    # Clear root handlers
-    root = logging.getLogger()
-    for handler in root.handlers[:]:
-        root.removeHandler(handler)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmpdir)
 
-    # Get logger
-    logger = get_logger('test_logger', level=logging.WARNING)
+            # Clear root handlers
+            root = logging.getLogger()
+            for handler in root.handlers[:]:
+                root.removeHandler(handler)
 
-    # Root logger should be configured
-    assert len(root.handlers) > 0
-    assert root.level == logging.WARNING
+            # Get logger
+            logger = get_logger('test_logger', level=logging.WARNING)
+
+            # Root logger should be configured with 2 handlers (console + file)
+            assert len(root.handlers) == 2
+            assert root.level == logging.WARNING
+
+        finally:
+            os.chdir(original_dir)
 
 
 def test_get_logger_accepts_custom_level():
     """Test that get_logger() accepts custom log level."""
-    logger = get_logger('test_logger', level=logging.DEBUG)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmpdir)
 
-    root = logging.getLogger()
-    assert root.level == logging.DEBUG
+            logger = get_logger('test_logger', level=logging.DEBUG)
+
+            root = logging.getLogger()
+            assert root.level == logging.DEBUG
+
+        finally:
+            os.chdir(original_dir)
 
 
 # ============================================================================
@@ -352,24 +392,295 @@ def test_get_logger_accepts_custom_level():
 
 def test_logging_integration(capsys):
     """Test complete logging workflow with actual output."""
-    # Setup logging
-    setup_colored_logging(level=logging.INFO)
+    with tempfile.TemporaryDirectory() as tmpdir:
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmpdir)
 
-    # Get logger
-    logger = logging.getLogger('integration_test')
+            # Setup logging
+            setup_colored_logging(level=logging.INFO)
 
-    # Log messages at different levels
-    logger.info('Info message')
-    logger.warning('Warning message')
-    logger.error('Error message')
+            # Get logger
+            logger = logging.getLogger('integration_test')
 
-    # Capture output
-    captured = capsys.readouterr()
+            # Log messages at different levels
+            logger.info('Info message')
+            logger.warning('Warning message')
+            logger.error('Error message')
 
-    # All messages should appear in stdout
-    assert 'Info message' in captured.out
-    assert 'Warning message' in captured.out
-    assert 'Error message' in captured.out
+            # Capture output
+            captured = capsys.readouterr()
+
+            # All messages should appear in stdout
+            assert 'Info message' in captured.out
+            assert 'Warning message' in captured.out
+            assert 'Error message' in captured.out
+
+        finally:
+            os.chdir(original_dir)
+
+
+# ============================================================================
+# Tests for File Logging (New in v3.x)
+# ============================================================================
+
+def test_setup_colored_logging_creates_log_directory():
+    """Test that setup_colored_logging() creates logs directory."""
+    # Use a temporary directory
+    with tempfile.TemporaryDirectory() as tmpdir:
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmpdir)
+
+            # Setup logging (should create logs/ directory)
+            log_file = setup_colored_logging()
+
+            # Logs directory should exist
+            logs_dir = Path('logs')
+            assert logs_dir.exists()
+            assert logs_dir.is_dir()
+
+            # Log file should exist
+            assert Path(log_file).exists()
+
+        finally:
+            os.chdir(original_dir)
+
+
+def test_setup_colored_logging_returns_log_file_path():
+    """Test that setup_colored_logging() returns the log file path."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmpdir)
+
+            log_file = setup_colored_logging()
+
+            # Should return a string
+            assert isinstance(log_file, str)
+
+            # Should be a valid path
+            assert 'logs' in log_file
+            assert log_file.endswith('.log')
+
+            # Should match the expected pattern: logs/crypto_data_YYYY-MM-DD_HH-MM-SS.log
+            pattern = r'logs[/\\]crypto_data_\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.log'
+            assert re.match(pattern, log_file), f"Log file path '{log_file}' doesn't match expected pattern"
+
+        finally:
+            os.chdir(original_dir)
+
+
+def test_setup_colored_logging_creates_timestamped_file():
+    """Test that log file has timestamped name."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmpdir)
+
+            log_file = setup_colored_logging()
+
+            # Extract filename
+            filename = Path(log_file).name
+
+            # Should start with crypto_data_
+            assert filename.startswith('crypto_data_')
+
+            # Should end with .log
+            assert filename.endswith('.log')
+
+            # Should contain timestamp pattern: YYYY-MM-DD_HH-MM-SS
+            # Extract timestamp part (between crypto_data_ and .log)
+            timestamp = filename.replace('crypto_data_', '').replace('.log', '')
+
+            # Validate timestamp format
+            pattern = r'\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}'
+            assert re.match(pattern, timestamp), f"Timestamp '{timestamp}' doesn't match expected pattern"
+
+        finally:
+            os.chdir(original_dir)
+
+
+def test_file_logging_receives_log_messages():
+    """Test that log messages are written to file."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmpdir)
+
+            # Setup logging
+            log_file = setup_colored_logging(level=logging.INFO)
+
+            # Log test messages
+            logger = logging.getLogger('test_file_logging')
+            logger.info('Test info message')
+            logger.warning('Test warning message')
+            logger.error('Test error message')
+
+            # Force flush
+            for handler in logging.getLogger().handlers:
+                handler.flush()
+
+            # Read log file
+            with open(log_file, 'r', encoding='utf-8') as f:
+                log_content = f.read()
+
+            # All messages should be in the file
+            assert 'Test info message' in log_content
+            assert 'Test warning message' in log_content
+            assert 'Test error message' in log_content
+
+        finally:
+            os.chdir(original_dir)
+
+
+def test_file_logging_contains_ansi_color_codes():
+    """Test that log file contains ANSI color codes."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmpdir)
+
+            # Setup logging
+            log_file = setup_colored_logging(level=logging.INFO)
+
+            # Log a message
+            logger = logging.getLogger('test_ansi')
+            logger.info('Colored message')
+
+            # Force flush
+            for handler in logging.getLogger().handlers:
+                handler.flush()
+
+            # Read log file
+            with open(log_file, 'r', encoding='utf-8') as f:
+                log_content = f.read()
+
+            # Should contain ANSI escape codes
+            assert '\033[' in log_content, "Log file should contain ANSI color codes"
+
+        finally:
+            os.chdir(original_dir)
+
+
+def test_file_logging_and_console_receive_same_messages(capsys):
+    """Test that both console and file receive the same log messages."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmpdir)
+
+            # Setup logging
+            log_file = setup_colored_logging(level=logging.INFO)
+
+            # Log test messages
+            logger = logging.getLogger('test_dual_logging')
+            logger.info('Dual logging test')
+            logger.warning('Warning in dual mode')
+
+            # Force flush
+            for handler in logging.getLogger().handlers:
+                handler.flush()
+
+            # Capture console output
+            captured = capsys.readouterr()
+
+            # Read log file
+            with open(log_file, 'r', encoding='utf-8') as f:
+                log_content = f.read()
+
+            # Both should contain the messages
+            assert 'Dual logging test' in captured.out
+            assert 'Dual logging test' in log_content
+            assert 'Warning in dual mode' in captured.out
+            assert 'Warning in dual mode' in log_content
+
+        finally:
+            os.chdir(original_dir)
+
+
+def test_setup_colored_logging_logs_file_path(capsys):
+    """Test that setup_colored_logging() logs the file path."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmpdir)
+
+            # Setup logging
+            log_file = setup_colored_logging()
+
+            # Capture output
+            captured = capsys.readouterr()
+
+            # Should log the file path
+            assert 'Logging to file:' in captured.out
+            assert log_file in captured.out
+
+        finally:
+            os.chdir(original_dir)
+
+
+def test_multiple_logging_setups_create_different_files():
+    """Test that multiple setup calls create different timestamped files."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmpdir)
+
+            # First setup
+            log_file1 = setup_colored_logging()
+
+            # Wait a bit to ensure different timestamp
+            import time
+            time.sleep(1)
+
+            # Second setup
+            log_file2 = setup_colored_logging()
+
+            # Should be different files
+            assert log_file1 != log_file2
+
+            # Both should exist
+            assert Path(log_file1).exists()
+            assert Path(log_file2).exists()
+
+        finally:
+            os.chdir(original_dir)
+
+
+def test_file_handler_has_correct_properties():
+    """Test that file handler is configured correctly."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmpdir)
+
+            # Setup logging
+            log_file = setup_colored_logging()
+
+            # Get root logger
+            root = logging.getLogger()
+
+            # Should have 2 handlers (console + file)
+            assert len(root.handlers) == 2
+
+            # Find file handler
+            file_handler = None
+            for handler in root.handlers:
+                if isinstance(handler, logging.FileHandler):
+                    file_handler = handler
+                    break
+
+            assert file_handler is not None, "Should have a FileHandler"
+
+            # File handler should use ColoredFormatter
+            assert isinstance(file_handler.formatter, ColoredFormatter)
+
+            # File handler should be writing to the correct file
+            assert file_handler.baseFilename == str(Path(log_file).resolve())
+
+        finally:
+            os.chdir(original_dir)
 
 
 if __name__ == "__main__":

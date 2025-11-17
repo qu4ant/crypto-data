@@ -6,7 +6,7 @@ Handles all data ingestion for CoinMarketCap and Binance (sync and async).
 Functions:
     - ingest_universe(): CoinMarketCap universe rankings
     - ingest_binance_async(): Binance OHLCV data (async parallel downloads)
-    - sync(): Complete workflow (universe → binance)
+    - populate_database(): Complete workflow (universe → binance)
 
 Internal helpers:
     - _fetch_snapshot(): Fetch CoinMarketCap snapshot
@@ -1036,7 +1036,7 @@ def ingest_binance_async(
     end_date : str
         End date in YYYY-MM-DD format
     interval : str
-        Kline interval (default: '5m')
+        Kline interval (5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M) (default: '5m')
     skip_existing : bool
         Skip if data already exists in database (default: True)
     max_concurrent_klines : int
@@ -1107,9 +1107,9 @@ def ingest_binance_async(
 
                     # Log if using cached mapping
                     if download_symbol != symbol:
-                        logger.info(f"Processing {symbol} {data_type} (using cached mapping: {download_symbol})...")
+                        logger.info(f"Downloading {symbol} {data_type} (using cached mapping: {download_symbol})...")
                     else:
-                        logger.info(f"Processing {symbol} {data_type}...")
+                        logger.info(f"Downloading {symbol} {data_type}...")
 
                     # Generate day list instead of month list
                     days = generate_day_list(start, end)
@@ -1195,9 +1195,9 @@ def ingest_binance_async(
 
                     # Log if using cached mapping
                     if download_symbol != symbol:
-                        logger.info(f"Processing {symbol} {data_type} (using cached mapping: {download_symbol})...")
+                        logger.info(f"Downloading {symbol} {data_type} (using cached mapping: {download_symbol})...")
                     else:
-                        logger.info(f"Processing {symbol} {data_type}...")
+                        logger.info(f"Downloading {symbol} {data_type}...")
 
                     # Funding rates use monthly files (not daily like open_interest)
                     # Download all months in parallel (async)
@@ -1286,9 +1286,9 @@ def ingest_binance_async(
 
                 # Log if using cached mapping
                 if download_symbol != symbol:
-                    logger.info(f"Processing {symbol} {data_type} (using cached mapping: {download_symbol})...")
+                    logger.info(f"Downloading {symbol} {data_type} (using cached mapping: {download_symbol})...")
                 else:
-                    logger.info(f"Processing {symbol} {data_type}...")
+                    logger.info(f"Downloading {symbol} {data_type}...")
 
                 # Download all months in parallel (async)
                 results = asyncio.run(
@@ -1390,10 +1390,10 @@ def ingest_binance_async(
 
 
 # =============================================================================
-# UNIFIED SYNC FUNCTION
+# UNIFIED DATABASE POPULATION FUNCTION
 # =============================================================================
 
-def sync(
+def populate_database(
     db_path: str,
     start_date: str,
     end_date: str,
@@ -1423,7 +1423,7 @@ def sync(
     top_n : int
         Number of top coins by market cap
     interval : str
-        Kline interval (default: '5m')
+        Kline interval (5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M) (default: '5m')
     data_types : List[str], optional
         Data types to download (default: ['spot', 'futures'])
         Options: 'spot', 'futures', 'open_interest', 'funding_rates'
@@ -1436,7 +1436,7 @@ def sync(
 
     Example
     -------
-    >>> sync(
+    >>> populate_database(
     ...     db_path='crypto_data.db',
     ...     start_date='2024-01-01',
     ...     end_date='2024-12-31',
@@ -1451,7 +1451,7 @@ def sync(
         data_types = ['spot', 'futures']
 
     logger.info("=" * 60)
-    logger.info("Starting Complete Sync")
+    logger.info("Starting Database Population")
     logger.info("=" * 60)
     logger.info(f"  Database: {db_path}")
     logger.info(f"  Period: {start_date} → {end_date}")
@@ -1510,7 +1510,7 @@ def sync(
 
     logger.info("")
     logger.info("=" * 60)
-    logger.info("✓ Complete Sync Finished!")
+    logger.info("✓ Database Population Finished!")
 
     # Display exclusion summary (yellow by default due to "Excluded" keyword)
     if exclusions and (exclusions['by_tag'] or exclusions['by_symbol']):

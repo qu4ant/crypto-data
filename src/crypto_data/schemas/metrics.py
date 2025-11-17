@@ -25,11 +25,11 @@ OPEN_INTEREST_SCHEMA = DataFrameSchema(
         'exchange': Column(
             str,
             checks=[
-                Check.isin(['binance']),  # Currently only Binance supported
-                Check.str_length(min_value=1)
+                Check.str_length(min_value=1, max_value=50),  # Any exchange name
+                Check.str_matches(r'^[a-z0-9_-]+$')  # Lowercase alphanumeric + underscore/hyphen
             ],
             nullable=False,
-            description="Exchange name (currently 'binance')"
+            description="Exchange name (e.g., 'binance', 'bybit', 'kraken')"
         ),
         'symbol': Column(
             str,

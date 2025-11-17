@@ -17,7 +17,7 @@ Developer guidance for Claude Code when working with this repository.
 ### Main Components
 
 **Public API** (`src/crypto_data/__init__.py`):
-- `sync(db_path, start_date, end_date, top_n, interval, data_types, exclude_tags, exclude_symbols)` - End-to-end workflow
+- `populate_database(db_path, start_date, end_date, top_n, interval, data_types, exclude_tags, exclude_symbols)` - End-to-end workflow
 - `ingest_universe(db_path, months, top_n, exclude_tags, exclude_symbols)` - **Async** CoinMarketCap rankings to DuckDB (parallel downloads)
 - `ingest_binance_async(db_path, symbols, ...)` - Binance OHLCV to DuckDB (async, 20 concurrent downloads)
 - `CryptoDatabase` - Schema management, stats, context manager
@@ -29,7 +29,7 @@ Developer guidance for Claude Code when working with this repository.
 - `BinanceDataVisionClientAsync` - Async HTTP downloads with aiohttp
 
 **Scripts**:
-- `scripts/Download_data_universe.py` - Example script using sync() function
+- `scripts/Download_data_universe.py` - Example script using populate_database() function
 
 **Data Types**:
 - Binance: Spot/Futures Klines (OHLCV), default 5m interval
@@ -73,39 +73,185 @@ Developer guidance for Claude Code when working with this repository.
 - Alternative INTERSECTION strategy not implemented (would miss market dynamics)
 
 **Explicit Parameters Only**: Universe filtering follows "explicit is better than implicit"
-- `sync()` and `ingest_universe()` require `exclude_tags` and `exclude_symbols` as direct parameters
+- `populate_database()` and `ingest_universe()` require `exclude_tags` and `exclude_symbols` as direct parameters
 - No config files, no hidden dependencies - everything is explicit and testable
 - Benefits: Better testability, dependency injection, autodocumented API, zero hidden config
 - Default: empty lists (no exclusions) if not provided
 - Note: `ingest_universe()` is async - use `asyncio.run()` or await it within async context
 
+## Known Limitations
+
+### Technical Constraints
+
+**Single-Writer Limitation** (DuckDB constraint)
+- Only ONE process can write to database at a time
+- Concurrent reads: unlimited ✅
+- Concurrent writes: will raise "database is locked" error ❌
+- **Solution**: Run one ingestion process at a time
+- **Future**: Consider PostgreSQL for multi-writer scenarios
+
+**No Checkpoint/Resume**
+- If ingestion interrupted (Ctrl+C, crash), no automatic resume
+- Must restart from beginning (but skip_existing=True prevents re-download)
+- **Workaround**: Divide large ingestions into monthly batches
+- **Future**: Could add checkpoint file tracking completed symbols
+
+**No Disk Space Checks**
+- Package doesn't verify available disk space before download
+- Large downloads (5m interval, 100+ symbols) need 50-100GB
+- **Risk**: Process may fail mid-download if disk fills up
+- **Mitigation**: User should monitor disk space manually
+
+**No Retry Logic for Failed Downloads**
+- Partial downloads/corrupt ZIPs return False (not imported)
+- Requires manual re-run of ingestion
+- **Workaround**: Re-run populate_database() - skip_existing will only retry failed files
+- **Future**: Could add configurable retry count (currently: detect + reject)
+
+### Data Integrity Protections (v4.0.0+)
+
+**Pre-Import Validation** ✅
+- Pandera schema validation BEFORE database insertion
+- Validates: OHLC relationships, non-negative prices/volumes, data types
+- Rejects invalid data with clear error messages
+- Transaction rollback on validation failure
+
+**Download Validation** ✅
+- Content-Length header check (partial download detection)
+- ZIP integrity verification (zipfile.is_zipfile())
+- Atomic write pattern (temp file → validation → rename)
+- Auto-cleanup of corrupted temp files
+
+**What's NOT Validated**
+- Timestamp gaps within imported data (gaps between months only)
+- Cross-exchange data consistency (future feature)
+- Market cap accuracy (trusts CoinMarketCap API)
+
+### API Rate Limits
+
+**CoinMarketCap Free Tier**
+- 333 API calls per day
+- Universe ingestion: 1 call per month
+- Recommendation: Don't ingest > 300 months in one day
+- **Solution**: Use paid API key for large historical datasets
+
+**Binance Data Vision**
+- No official rate limits (S3-backed)
+- Recommended: max_concurrent=20 for klines, 100 for metrics
+- Too many concurrent requests may trigger throttling (retry 503 errors)
+
+### Edge Cases Handled
+
+✅ **Auto-handled**:
+- 1000-prefix tokens (PEPE, SHIB, BONK): auto-retry with prefix on 404
+- Timestamp format changes (ms vs μs): auto-detection
+- CSV header inconsistencies: auto-detection
+- Delisting detection: stop after N consecutive 404s (configurable)
+- Duplicate timestamps: automatic deduplication
+- Daylight saving duplicates: handled via pandas
+
+❌ **Not handled** (user must handle):
+- Rebrands (MATIC→POL): separate symbols, user must UNION
+- Exchange maintenance windows: user must retry later
+- Network failures during download: user must re-run
+- Running out of disk space: user must free space
+
+### Performance Considerations
+
+**Memory Usage**
+- Pandas DataFrames loaded in memory during import
+- Large CSV files (5m interval, 1 month) can be 50-100MB
+- Recommendation: 8GB+ RAM for smooth operation
+
+**Download Concurrency**
+- Default: 20 concurrent klines, 100 concurrent metrics
+- Too high: may hit network limits or rate limiting
+- Too low: slower downloads
+- Tunable via `max_concurrent_klines`, `max_concurrent_metrics`
+
+**Database Size**
+- 5m interval, top 100, 1 year: ~30GB
+- 1h interval, top 100, 1 year: ~5GB
+- Recommendation: 50GB+ free space for safety margin
+
+## Logging
+
+**Automatic File Logging (v3.x+)**
+
+All ingestion processes automatically log to timestamped files in `./logs/` directory:
+- **Location**: `logs/crypto_data_YYYY-MM-DD_HH-MM-SS.log`
+- **Format**: Includes ANSI color codes (viewable with `less -R` or similar)
+- **Content**: Complete ingestion summary, progress bars, data availability reports
+- **Retention**: Files are never deleted automatically - manage manually
+
+**Setup**:
+```python
+from crypto_data import setup_colored_logging
+
+# Automatic file + console logging
+log_file = setup_colored_logging()  # Returns path to log file
+print(f"Logs saved to: {log_file}")
+```
+
+**Features**:
+- Dual output: Console (with TTY detection) + File (always colored)
+- Timestamped filenames prevent overwrites
+- Auto-creates `logs/` directory if missing
+- Logs contain full ingestion summary from `log_ingestion_summary()`
+
+**Viewing Colored Logs**:
+```bash
+# View with colors preserved
+less -R logs/crypto_data_2025-11-06_18-10-45.log
+
+# Strip colors for plain text
+cat logs/crypto_data_2025-11-06_18-10-45.log | sed 's/\x1b\[[0-9;]*m//g' > plain.log
+
+# Search logs
+grep "ERROR" logs/*.log
+```
+
+**Log Content Example**:
+```
+2025-11-06 18:10:45 - INFO - Logging to file: logs/crypto_data_2025-11-06_18-10-45.log
+2025-11-06 18:10:45 - INFO - ============================================================
+2025-11-06 18:10:45 - INFO - Ingestion Summary:
+2025-11-06 18:10:45 - INFO -   Downloaded: 98496
+2025-11-06 18:10:45 - INFO -   Skipped (existing): 156
+2025-11-06 18:10:45 - INFO -   Failed: 0
+2025-11-06 18:10:45 - INFO -   Not found: 61426
+2025-11-06 18:10:45 - INFO - Data Availability (2022-01-01 → 2025-10-01):
+...
+```
+
 ## Common Commands
 
 **Example Script**:
 ```bash
-python scripts/Download_data_universe.py  # Runs complete sync workflow
+python scripts/Download_data_universe.py  # Runs complete database population workflow
 ```
 
 **Python API**:
 ```python
-from crypto_data import sync, ingest_universe, ingest_binance_async, setup_colored_logging
+from crypto_data import populate_database, ingest_universe, ingest_binance_async, setup_colored_logging
 
-setup_colored_logging()  # Optional but recommended
+# Setup logging (auto-creates logs/crypto_data_YYYY-MM-DD_HH-MM-SS.log)
+log_file = setup_colored_logging()
 
 # Complete workflow (one function call) - Explicit parameters
-sync(
+populate_database(
     db_path='crypto_data.db',
     start_date='2024-01-01',
     end_date='2024-12-31',
     top_n=100,
-    interval='5m',
+    interval='5m',  # Options: 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M
     data_types=['spot', 'futures'],
     exclude_tags=['stablecoin', 'wrapped-tokens', 'privacy'],
     exclude_symbols=['LUNA', 'FTT', 'UST']
 )
 
 # Without exclusions (default = empty lists)
-sync(
+populate_database(
     db_path='crypto_data.db',
     start_date='2024-01-01',
     end_date='2024-12-31',
@@ -130,6 +276,7 @@ asyncio.run(ingest_universe(
 symbols = get_symbols_from_universe('crypto_data.db', '2024-01-01', '2024-12-31', 100)
 
 # 3. Ingest Binance data (async)
+# interval options: 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M
 ingest_binance_async('crypto_data.db', symbols, '2024-01-01', '2024-12-31', interval='5m')
 ```
 
@@ -232,7 +379,7 @@ tests/: 6 test modules (database, universe, binance, 1000-prefix, timestamps, he
 
 ## Workflow & Data Flow
 
-**sync() function** (end-to-end):
+**populate_database() function** (end-to-end):
 1. **Universe**: Generate month list → Call `ingest_universe(months=[...])` (async, parallel downloads) → Atomic transaction (DELETE + INSERT per month)
 2. **Symbol Extraction**: `get_symbols_from_universe()` - UNION strategy, adds USDT suffix
 3. **Binance**: Async downloads (20 concurrent) → Auto-detect timestamp format (ms vs μs) → Auto-detect CSV headers → Import to DuckDB

@@ -1,31 +1,35 @@
 # 📊 Crypto Data
 
-**Infrastructure de données pour la cryptomonnaie** - Téléchargement automatique des données OHLCV multi-exchanges et classements de marché.
+> **[Français](README.fr.md)** | **English**
+
+**Cryptocurrency Data Infrastructure** - Automated multi-exchange OHLCV data and market rankings downloader.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
 [![Version](https://img.shields.io/badge/version-4.0.0-green.svg)](https://github.com/qu4ant/crypto-data)
+[![codecov](https://codecov.io/gh/qu4ant/crypto-data/branch/main/graph/badge.svg)](https://codecov.io/gh/qu4ant/crypto-data)
+[![Tests](https://github.com/qu4ant/crypto-data/workflows/Tests/badge.svg)](https://github.com/qu4ant/crypto-data/actions)
 
 ---
 
-## 🎯 Vue d'ensemble
+## 🎯 Overview
 
-**Crypto Data** est un pipeline d'ingestion qui télécharge automatiquement les données de marché crypto et les stocke dans une base de données DuckDB locale.
+**Crypto Data** is an ingestion pipeline that automatically downloads cryptocurrency market data and stores it in a local DuckDB database.
 
-✨ **Philosophie** : Ce package fait **UNE chose** - peupler une base de données. Vous interrogez ensuite directement la base avec SQL.
+✨ **Philosophy**: This package does **ONE thing** - populate a database. You then query the database directly with SQL.
 
-### Fonctionnalités principales
+### Key Features
 
-- 📈 **Données OHLCV** : Téléchargement depuis Binance Data Vision (spot + futures)
-- 🌍 **Classements univers** : Top N cryptos par capitalisation via CoinMarketCap
-- 🚀 **Téléchargements asynchrones** : 20 téléchargements parallèles pour vitesse maximale
-- 🔄 **Gestion automatique** : Détection de format, retry intelligent, gestion des tokens 1000-prefix
-- 💾 **DuckDB** : Base de données embarquée, requêtes SQL rapides
-- 🏗️ **Multi-exchange ready** : Schéma v4.0.0 préparé pour Bybit, Kraken, etc.
+- 📈 **OHLCV Data**: Downloads from Binance Data Vision (spot + futures)
+- 🌍 **Universe Rankings**: Top N cryptocurrencies by market cap via CoinMarketCap
+- 🚀 **Async Downloads**: 20 parallel downloads for maximum speed
+- 🔄 **Auto-Management**: Format detection, intelligent retry, 1000-prefix token handling
+- 💾 **DuckDB**: Embedded database, fast SQL queries
+- 🏗️ **Multi-exchange ready**: Schema v4.0.0 prepared for Bybit, Kraken, etc.
 
 ---
 
-## 🔄 Schéma Input/Output
+## 🔄 Input/Output Schema
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -33,22 +37,22 @@
 ├─────────────────────────────────────────────────────────────┤
 │                                                              │
 │  📊 CoinMarketCap API                                       │
-│  └─> Classements top N par capitalisation                  │
-│      (résout le biais du survivant)                        │
+│  └─> Top N rankings by market cap                          │
+│      (solves survivorship bias)                            │
 │                                                              │
 │  📈 Binance Data Vision                                     │
-│  └─> Données OHLCV historiques                             │
-│      (spot + futures, intervalles 5m/1h/4h/1d)             │
+│  └─> Historical OHLCV data                                  │
+│      (spot + futures, 5m/1h/4h/1d intervals)               │
 │                                                              │
 └─────────────────────────────────────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────────┐
 │                   CRYPTO-DATA PIPELINE                       │
 │                                                              │
-│  ⚙️  Téléchargement asynchrone (20 threads)                 │
-│  ⚙️  Auto-détection format timestamps                       │
-│  ⚙️  Gestion 1000-prefix (PEPE, SHIB, BONK)                │
-│  ⚙️  Transaction atomique par symbole                       │
+│  ⚙️  Async downloads (20 threads)                           │
+│  ⚙️  Auto-detect timestamp formats                          │
+│  ⚙️  Handle 1000-prefix (PEPE, SHIB, BONK)                 │
+│  ⚙️  Atomic transaction per symbol                          │
 │                                                              │
 └─────────────────────────────────────────────────────────────┘
                             ↓
@@ -59,11 +63,11 @@
 │  💾 crypto_data.db (DuckDB)                                 │
 │                                                              │
 │  Tables:                                                     │
-│  • crypto_universe  → Classements historiques               │
-│  • spot             → Prix OHLCV spot                       │
-│  • futures          → Prix OHLCV futures                    │
+│  • crypto_universe  → Historical rankings                   │
+│  • spot             → OHLCV spot prices                     │
+│  • futures          → OHLCV futures prices                  │
 │                                                              │
-│  📝 Vous interrogez avec SQL:                               │
+│  📝 Query with SQL:                                         │
 │                                                              │
 │  SELECT symbol, close, volume                               │
 │  FROM spot                                                   │
@@ -77,86 +81,100 @@
 
 ---
 
-## ⚠️ Pourquoi ce projet? Le biais du survivant
+## ⚠️ Why This Project? Survivorship Bias
 
-### Le problème
+### The Problem
 
-Imaginez que vous analysez les cryptos en **ne prenant que les top 100 d'aujourd'hui**. Votre analyse ignore complètement les cryptos qui étaient dans le top 100 avant mais ont disparu :
+Imagine analyzing cryptos by **only taking today's top 100**. Your analysis completely ignores cryptocurrencies that were in the top 100 before but disappeared:
 
-- **FTX Token (FTT)** : #25 en 2022, effondrement en novembre 2022
-- **Terra LUNA** : #10 en 2022, crash catastrophique en mai 2022
-- **Bitconnect (BCC)** : Top crypto, scam révélé en 2018
+- **FTX Token (FTT)**: #25 in 2022, collapsed November 2022
+- **Terra LUNA**: #10 in 2022, catastrophic crash May 2022
+- **Bitconnect (BCC)**: Top crypto, scam revealed in 2018
 
-Si vous n'incluez pas ces cryptos dans votre backtest, vos résultats seront **artificiellement optimistes** - c'est le **biais du survivant**.
+If you don't include these cryptos in your backtest, your results will be **artificially optimistic** - this is **survivorship bias**.
 
-### La solution : CoinMarketCap + Stratégie UNION
+### The Solution: CoinMarketCap + UNION Strategy
 
-✅ **crypto-data** résout ce problème en :
+✅ **crypto-data** solves this problem by:
 
-1. **Téléchargeant les classements historiques** via CoinMarketCap chaque mois
-2. **Utilisant une stratégie UNION** : récupère TOUS les symboles qui ont été dans le top N **à n'importe quel moment** de la période
+1. **Downloading historical rankings** via CoinMarketCap each month
+2. **Using a UNION strategy**: retrieves ALL symbols that were in the top N **at any point** during the period
 
-**Exemple concret** :
+**Concrete Example**:
 ```python
-# Top 100 sur 12 mois
+# Top 100 over 12 months
 get_symbols_from_universe(
     db_path='crypto_data.db',
     start_date='2024-01-01',
     end_date='2024-12-31',
     top_n=100
 )
-# Résultat : ~120-150 symboles
-# (100 actuels + entrées/sorties du top 100)
+# Result: ~120-150 symbols
+# (100 current + entries/exits from top 100)
 ```
 
-Vous capturez ainsi **toute la dynamique du marché** : entrées, sorties, échecs, delistings.
+You thus capture **the full market dynamics**: entries, exits, failures, delistings.
 
 ---
 
 ## 🚀 Installation
 
+### Install from GitHub (Recommended)
+
 ```bash
-pip install crypto-data
+# Install latest version from main branch
+pip install git+https://github.com/qu4ant/crypto-data.git
+
+# Or install specific release version
+pip install git+https://github.com/qu4ant/crypto-data.git@v4.0.0
 ```
 
-### Installation pour développeurs
+### Install from Source
 
 ```bash
+# Clone and install in development mode
 git clone https://github.com/qu4ant/crypto-data.git
 cd crypto-data
+pip install -e .
+
+# For development with testing tools
 pip install -e ".[dev]"
 ```
 
-**Dépendances** : Python 3.8+, duckdb, aiohttp, pandas, requests
+### PyPI Installation
+
+> **Coming Soon**: `pip install crypto-data` will be available once published to PyPI
+
+**Requirements**: Python 3.8+, duckdb, aiohttp, pandas, pyarrow
 
 ---
 
-## 💻 Démarrage rapide
+## 💻 Quick Start
 
-### Option 1 : Workflow complet avec `sync()`
+### Option 1: Complete Workflow with `populate_database()`
 
-La fonction `sync()` fait tout en un appel : télécharge l'univers + données OHLCV.
+The `populate_database()` function does everything in one call: downloads universe + OHLCV data.
 
 ```python
-from crypto_data import sync, setup_colored_logging
+from crypto_data import populate_database, setup_colored_logging
 
-# Logs colorés (optionnel mais recommandé)
+# Colored logs (optional but recommended)
 setup_colored_logging()
 
-# Téléchargement complet
-sync(
+# Complete download
+populate_database(
     db_path='crypto_data.db',
     start_date='2024-01-01',
     end_date='2024-12-31',
-    top_n=100,                    # Top 100 par capitalisation
-    interval='1h',                # 5m, 1h, 4h, 1d
+    top_n=100,                    # Top 100 by market cap
+    interval='1h',                # Options: 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M
     data_types=['spot', 'futures'],
-    exclude_tags=['stablecoin', 'wrapped-tokens'],  # Filtres optionnels
+    exclude_tags=['stablecoin', 'wrapped-tokens'],  # Optional filters
     exclude_symbols=['LUNA', 'FTT', 'UST']
 )
 ```
 
-### Option 2 : Étape par étape
+### Option 2: Step-by-Step
 
 ```python
 import asyncio
@@ -169,16 +187,16 @@ from crypto_data import (
 
 setup_colored_logging()
 
-# 1. Télécharger classements CoinMarketCap (async, téléchargements parallèles)
+# 1. Download CoinMarketCap rankings (async, parallel downloads)
 asyncio.run(ingest_universe(
     db_path='crypto_data.db',
-    months=['2024-01', '2024-02', '2024-03'],  # Liste de mois à télécharger
+    months=['2024-01', '2024-02', '2024-03'],  # List of months to download
     top_n=100,
     exclude_tags=['stablecoin'],
     exclude_symbols=[]
 ))
 
-# 2. Extraire symboles avec stratégie UNION
+# 2. Extract symbols with UNION strategy
 symbols = get_symbols_from_universe(
     db_path='crypto_data.db',
     start_date='2024-01-01',
@@ -186,24 +204,24 @@ symbols = get_symbols_from_universe(
     top_n=100
 )
 
-# 3. Télécharger données Binance (asynchrone)
+# 3. Download Binance data (async)
 ingest_binance_async(
     db_path='crypto_data.db',
     symbols=symbols,
     start_date='2024-01-01',
     end_date='2024-12-31',
     data_types=['spot', 'futures'],
-    interval='1h'
+    interval='1h'  # Options: 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M
 )
 ```
 
 ---
 
-## 📊 Exemples de requêtes SQL
+## 📊 SQL Query Examples
 
-Une fois les données téléchargées, interrogez directement avec SQL (DuckDB, pandas, Jupyter...).
+Once data is downloaded, query directly with SQL (DuckDB, pandas, Jupyter...).
 
-### 1. Liste des symboles disponibles
+### 1. List Available Symbols
 
 ```sql
 SELECT DISTINCT symbol, COUNT(*) as nb_rows
@@ -214,7 +232,7 @@ GROUP BY symbol
 ORDER BY nb_rows DESC;
 ```
 
-### 2. Historique de prix Bitcoin
+### 2. Bitcoin Price History
 
 ```sql
 SELECT
@@ -232,7 +250,7 @@ WHERE exchange = 'binance'
 ORDER BY timestamp;
 ```
 
-### 3. Joindre univers + prix (capitalisation)
+### 3. Join Universe + Prices (Market Cap)
 
 ```sql
 SELECT
@@ -252,11 +270,11 @@ WHERE s.exchange = 'binance'
 ORDER BY u.date, u.rank;
 ```
 
-### 4. Analyse de volume par exchange (futur)
+### 4. Volume Analysis by Exchange (Future)
 
 ```sql
--- Aujourd'hui : seulement Binance
--- Futur : comparer Binance vs Bybit vs Kraken
+-- Today: Binance only
+-- Future: compare Binance vs Bybit vs Kraken
 SELECT
     exchange,
     symbol,
@@ -268,7 +286,7 @@ GROUP BY exchange, symbol, interval
 ORDER BY total_volume DESC;
 ```
 
-### 5. Top 10 cryptos par volume (24h)
+### 5. Top 10 Cryptos by Volume (24h)
 
 ```sql
 SELECT
@@ -286,146 +304,287 @@ LIMIT 10;
 
 ---
 
-## 🗄️ Schéma de base de données (v4.0.0)
+## 🗄️ Database Schema (v4.0.0)
 
-Un seul fichier : `crypto_data.db`
+Single file: `crypto_data.db`
 
-### Table `crypto_universe` - Classements historiques
+### Table `crypto_universe` - Historical Rankings
 
-Stocke les classements CoinMarketCap (top N par capitalisation).
+Stores CoinMarketCap rankings (top N by market cap).
 
-| Colonne      | Type      | Description                                      |
-|--------------|-----------|--------------------------------------------------|
-| `date`       | DATE      | Date du classement (mensuel)                     |
-| `symbol`     | VARCHAR   | Symbole base (BTC, ETH, pas BTCUSDT)             |
-| `rank`       | INTEGER   | Classement par capitalisation                    |
-| `market_cap` | DOUBLE    | Capitalisation en USD                            |
-| `categories` | VARCHAR   | Tags CoinMarketCap (stablecoin, DeFi, etc.)      |
+| Column      | Type      | Description                                      |
+|------------|-----------|--------------------------------------------------|
+| `date`       | DATE      | Ranking date (monthly)                          |
+| `symbol`     | VARCHAR   | Base symbol (BTC, ETH, not BTCUSDT)             |
+| `rank`       | INTEGER   | Market cap ranking                              |
+| `market_cap` | DOUBLE    | Market cap in USD                               |
+| `categories` | VARCHAR   | CoinMarketCap tags (stablecoin, DeFi, etc.)     |
 
-**Clé primaire** : `(date, symbol)`
-**Index** : `(date, rank)`
+**Primary key**: `(date, symbol)`
+**Index**: `(date, rank)`
 
-### Tables `spot` et `futures` - Données OHLCV
+### Tables `spot` and `futures` - OHLCV Data
 
-Données de prix historiques multi-exchanges (actuellement Binance uniquement).
+Historical price data multi-exchange (currently Binance only).
 
-| Colonne           | Type      | Description                                   |
-|-------------------|-----------|-----------------------------------------------|
-| `exchange`        | VARCHAR   | Exchange ('binance', futur: 'bybit', etc.)    |
-| `symbol`          | VARCHAR   | Paire de trading (BTCUSDT, ETHUSDT, etc.)     |
-| `interval`        | VARCHAR   | Intervalle (5m, 1h, 4h, 1d)                   |
-| `timestamp`       | TIMESTAMP | Timestamp de la bougie                        |
-| `open`            | DOUBLE    | Prix d'ouverture                              |
-| `high`            | DOUBLE    | Prix maximum                                  |
-| `low`             | DOUBLE    | Prix minimum                                  |
-| `close`           | DOUBLE    | Prix de clôture                               |
-| `volume`          | DOUBLE    | Volume en base asset                          |
-| `quote_volume`    | DOUBLE    | Volume en quote asset (USDT)                  |
-| `trades_count`    | INTEGER   | Nombre de trades                              |
-| `taker_buy_*`     | DOUBLE    | Volumes d'achat taker                         |
+| Column           | Type      | Description                                   |
+|------------------|-----------|-----------------------------------------------|
+| `exchange`        | VARCHAR   | Exchange ('binance', future: 'bybit', etc.)  |
+| `symbol`          | VARCHAR   | Trading pair (BTCUSDT, ETHUSDT, etc.)        |
+| `interval`        | VARCHAR   | Interval (5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M) |
+| `timestamp`       | TIMESTAMP | Candle timestamp                             |
+| `open`            | DOUBLE    | Open price                                   |
+| `high`            | DOUBLE    | High price                                   |
+| `low`             | DOUBLE    | Low price                                    |
+| `close`           | DOUBLE    | Close price                                  |
+| `volume`          | DOUBLE    | Volume in base asset                         |
+| `quote_volume`    | DOUBLE    | Volume in quote asset (USDT)                 |
+| `trades_count`    | INTEGER   | Number of trades                             |
+| `taker_buy_*`     | DOUBLE    | Taker buy volumes                            |
 
-**Clé primaire** : `(exchange, symbol, interval, timestamp)`
-**Index** : `(exchange, symbol, interval, timestamp)`
-
----
-
-## 🔧 Fonctionnalités avancées
-
-### 🤖 Gestion automatique intelligente
-
-Le pipeline gère automatiquement plusieurs problèmes de données :
-
-#### 1. **Formats de timestamps variables**
-- 2024 : millisecondes (13 chiffres)
-- 2025 : microsecondes (16 chiffres)
-- ✅ Détection automatique et conversion
-
-#### 2. **En-têtes CSV inconsistants**
-- Certains fichiers ont des en-têtes, d'autres non
-- ✅ Détection automatique par analyse de la première ligne
-
-#### 3. **Tokens 1000-prefix (PEPE, SHIB, BONK)**
-- Futures : `1000PEPEUSDT`, Spot : `PEPEUSDT`
-- ✅ Retry automatique avec prefix, normalisation dans la base
-
-#### 4. **Détection de delisting**
-- FTT delisté en novembre 2022
-- ✅ Arrêt après 3 échecs consécutifs (seuil configurable)
-
-### 🎯 Décisions de design
-
-**Multi-exchange v4.0.0** : Schéma prêt pour Bybit, Kraken, Coinbase
-- Colonne `exchange` dans la clé primaire
-- Analyses cross-exchange, détection d'arbitrage, redondance
-
-**Rebrands = symboles séparés** : MATIC→POL, RNDR→RENDER traités différemment
-- Raison : interruptions de trading, fichiers séparés, liquidité différente
-- Solution : requêtes UNION pour combiner les périodes
-
-**Stratégie UNION** : capture TOUS les symboles du top N sur la période
-- ~120-150 symboles pour top 100 sur 12 mois
-- Évite le biais du survivant
-
-**Paramètres explicites** : Pas de fichiers config cachés
-- `exclude_tags` et `exclude_symbols` explicites dans chaque appel
-- Meilleure testabilité, zéro dépendance cachée
+**Primary key**: `(exchange, symbol, interval, timestamp)`
+**Index**: `(exchange, symbol, interval, timestamp)`
 
 ---
 
-## 📚 Documentation supplémentaire
+## 🔧 Advanced Features
 
-- 📖 [CLAUDE.md](CLAUDE.md) - Documentation technique complète pour développeurs
-- 📓 [Jupyter Notebook](exemples/explore_crypto_data.ipynb) - Exemples de requêtes et visualisations
-- 🐛 [GitHub Issues](https://github.com/qu4ant/crypto-data/issues) - Rapporter un bug
+### 🤖 Intelligent Auto-Management
+
+The pipeline automatically handles several data issues:
+
+#### 1. **Variable Timestamp Formats**
+- 2024: milliseconds (13 digits)
+- 2025: microseconds (16 digits)
+- ✅ Automatic detection and conversion
+
+#### 2. **Inconsistent CSV Headers**
+- Some files have headers, others don't
+- ✅ Automatic detection by analyzing first line
+
+#### 3. **1000-Prefix Tokens (PEPE, SHIB, BONK)**
+- Futures: `1000PEPEUSDT`, Spot: `PEPEUSDT`
+- ✅ Automatic retry with prefix, normalized in database
+
+#### 4. **Delisting Detection**
+- FTT delisted November 2022
+- ✅ Stops after 3 consecutive failures (configurable threshold)
+
+### 🎯 Design Decisions
+
+**Multi-Exchange v4.0.0**: Schema ready for Bybit, Kraken, Coinbase
+- `exchange` column in primary key
+- Cross-exchange analysis, arbitrage detection, redundancy
+
+**Rebrands = Separate Symbols**: MATIC→POL, RNDR→RENDER treated differently
+- Reason: trading interruptions, separate files, different liquidity
+- Solution: UNION queries to combine periods
+
+**UNION Strategy**: captures ALL symbols in top N over the period
+- ~120-150 symbols for top 100 over 12 months
+- Avoids survivorship bias
+
+**Explicit Parameters**: No hidden config files
+- `exclude_tags` and `exclude_symbols` explicit in each call
+- Better testability, zero hidden dependencies
+
+---
+
+## ⚠️ Known Limitations
+
+### Technical Constraints
+
+**Single-Writer Only**: DuckDB supports only one write process at a time
+- ✅ Unlimited concurrent reads OK
+- ❌ Running multiple `populate_database()` in parallel → lock error
+- **Solution**: Run one instance at a time
+
+**Minimum Disk Space**: ~50GB recommended for top 100 over 1 year
+- 5m interval: ~30GB (105k candles/month × 100 symbols)
+- 1h interval: ~5GB
+- Temp files during download: +10-20GB additional
+- **Solution**: Use larger interval (1h/4h instead of 5m) or reduce `top_n`
+
+**API Rate Limits**: CoinMarketCap free tier = 333 calls/day
+- Universe ingestion: 1 call per month
+- 12 months = 12 calls → OK
+- **Limitation**: Don't run > 300 months in 1 day
+- **Solution**: Use paid API key for massive historical datasets
+
+### Re-run Behavior (Idempotency)
+
+✅ **Safe**: Re-running multiple times is safe and idempotent
+
+- **Universe**: DELETE + INSERT atomic per month (clean update)
+- **Binance**: Automatic skip if data exists (`skip_existing=True` by default)
+- **Transactions**: Atomic per symbol (all-or-nothing, automatic rollback on error)
+
+⚠️ **Interruption**: If process killed mid-run (Ctrl+C, crash)
+
+- Already committed data: preserved (safe)
+- Data in progress: automatic rollback (safe)
+- **Limitation**: No resume/checkpoint → restart from scratch
+- **Workaround**: Divide into smaller monthly batches
+
+### Data Validation
+
+✅ **Corruption Protection**: Automatic validation since v4.0.0
+
+- **Pre-import validation**: Pandera schema check BEFORE insertion (OHLC relationships, negative prices, etc.)
+- **Download validation**: Content-Length check + ZIP integrity verification
+- **Rejected files**: Logged with clear message (no silent import of invalid data)
+
+❌ **No Automatic Retry**: Failed downloads require manual re-run
+
+- Partial downloads/corrupt ZIPs → Returns False (not imported)
+- **Solution**: Re-run `populate_database()` or `ingest_binance_async()` → skip existing + retry failed
+
+---
+
+## 🔧 Troubleshooting
+
+### Error: "Database is locked"
+
+**Cause:** Multiple processes attempting to write simultaneously
+**Solution:**
+```bash
+# Check only one instance is running
+ps aux | grep python | grep crypto
+
+# Kill conflicting processes if necessary
+kill <PID>
+```
+
+### Error: "No space left on device"
+
+**Cause:** Insufficient disk space (temp files + database)
+**Solution:**
+```python
+# Option 1: Free up space
+df -h  # Check available space
+
+# Option 2: Use larger interval
+populate_database(interval='1h')  # Instead of '5m'
+
+# Option 3: Reduce top_n
+populate_database(top_n=50)  # Instead of 100
+```
+
+### Error: "429 Too Many Requests" (CoinMarketCap)
+
+**Cause:** API rate limit exceeded (333 calls/day free tier)
+**Solution:**
+```python
+# Wait 24h OR reduce number of months
+ingest_universe(
+    months=['2024-01', '2024-02'],  # Instead of 12+ months
+    top_n=100
+)
+```
+
+### Missing Data for Some Symbols
+
+**Cause:** Delisting detected (`failure_threshold=3` by default)
+**Normal behavior:** Stops after 3 consecutive missing months (e.g., FTT after Nov 2022)
+
+```python
+# To force complete download (ignore gaps)
+ingest_binance_async(
+    db_path='crypto_data.db',
+    symbols=['FTTUSDT'],
+    data_types=['spot'],
+    failure_threshold=0  # Disable gap detection
+)
+```
+
+### Error: "Data validation FAILED"
+
+**Cause:** Corrupt source file (OHLC violation, negative prices, invalid ZIP)
+**Solution:**
+```bash
+# 1. Check logs for details
+# Example: "high < low" or "negative price"
+
+# 2. Re-download (may be temporary)
+python scripts/Download_data_universe.py
+
+# 3. If persistent, report on GitHub Issues
+# https://github.com/qu4ant/crypto-data/issues
+```
+
+### Slow Performance (Downloads)
+
+**Cause:** Slow network or too much concurrency
+**Solution:**
+```python
+# Reduce concurrency (default: 20 klines, 100 metrics)
+ingest_binance_async(
+    max_concurrent_klines=10,  # Instead of 20
+    max_concurrent_metrics=50   # Instead of 100
+)
+```
+
+---
+
+## 📚 Additional Documentation
+
+- 📖 [CLAUDE.md](CLAUDE.md) - Complete technical documentation for developers
+- 📓 [Jupyter Notebook](exemples/explore_crypto_data.ipynb) - Query examples and visualizations
+- 🐛 [GitHub Issues](https://github.com/qu4ant/crypto-data/issues) - Report a bug
+- 🤝 [CONTRIBUTING.md](CONTRIBUTING.md) - Contribution guidelines
 
 ---
 
 ## 🧪 Tests
 
 ```bash
-# Tous les tests
+# All tests
 pytest tests/ -v
 
-# Tests basiques uniquement
+# Basic tests only
 pytest tests/database/test_database_basic.py -v
 
-# Avec couverture
+# With coverage
 pytest tests/ --cov=crypto_data --cov-report=html
 ```
 
+**Test Results**: 347 tests passing, 88.44% coverage
+
 ---
 
-## 📝 Licence
+## 📝 License
 
 **MIT License** - Copyright (c) 2025 Crypto Data Contributors
 
-Voir [LICENSE](LICENSE) pour les détails.
+See [LICENSE](LICENSE) for details.
 
 ---
 
-## 🤝 Contribution
+## 🤝 Contributing
 
-Les contributions sont les bienvenues! Pour contribuer :
+Contributions are welcome! To contribute:
 
-1. Fork le projet
-2. Créez une branche feature (`git checkout -b feature/AmazingFeature`)
-3. Commit vos changements (`git commit -m 'Add AmazingFeature'`)
-4. Push vers la branche (`git push origin feature/AmazingFeature`)
-5. Ouvrez une Pull Request
+1. Fork the project
+2. Create a feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
 
-**Philosophie** : Simplicité > Fonctionnalités. Ce package fait **une chose** : ingestion de données. Pas de loaders/readers/query helpers.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 
----
-
-## ⚡ Pourquoi crypto-data?
-
-✅ **Simple** : Une fonction pour tout télécharger
-✅ **Rapide** : 20 téléchargements parallèles
-✅ **Fiable** : Retry automatique, gestion d'erreurs intelligente
-✅ **Sans biais** : Stratégie UNION capture tous les symboles historiques
-✅ **SQL-first** : Requêtes directes, pas d'abstraction inutile
-✅ **Multi-exchange ready** : Schéma v4.0.0 préparé pour l'avenir
+**Philosophy**: Simplicity > Features. This package does **one thing**: data ingestion. No loaders/readers/query helpers.
 
 ---
 
-**Développé avec ❤️ pour la communauté quant/crypto**
+## ⚡ Why crypto-data?
+
+✅ **Simple**: One function to download everything
+✅ **Fast**: 20 parallel downloads
+✅ **Reliable**: Automatic retry, intelligent error handling
+✅ **Unbiased**: UNION strategy captures all historical symbols
+✅ **SQL-first**: Direct queries, no unnecessary abstraction
+✅ **Multi-exchange ready**: Schema v4.0.0 prepared for the future
+
+---
+
+**Developed with ❤️ for the quant/crypto community**
