@@ -46,6 +46,8 @@ Developer guidance for Claude Code when working with this repository.
    - Columns: date, symbol, rank, market_cap, categories
    - Symbols are base assets (BTC not BTCUSDT), interval-independent
    - Exchange-agnostic (rankings are global)
+   - **Timestamp interpretation**: A date like `2024-01-01 00:00:00.000` means the coin was in top N for the ENTIRE month of January 2024 (monthly snapshot taken on the 1st)
+   - **Update frequency**: Snapshots are taken on the 1st of each month ONLY (no daily/weekly updates). To backfill 12 months, you need 12 API calls
 
 2. `spot`, `futures` - OHLCV data (MULTI-EXCHANGE)
    - **Primary key**: `(exchange, symbol, interval, timestamp)` - exchange is now part of PK
@@ -53,6 +55,7 @@ Developer guidance for Claude Code when working with this repository.
    - **New column**: `exchange VARCHAR NOT NULL` - 'binance', 'bybit', 'kraken', etc.
    - Other columns: symbol, interval, timestamp, open, high, low, close, volume, quote_volume, trades_count, taker_buy_*
    - Interval stored as column (5m, 1h, 4h, 1d in same table)
+   - **Multi-interval support**: You can store multiple intervals (5m, 1h, 4h, etc.) in the same database simultaneously. Each interval is a separate row with different primary key. Query by filtering `WHERE interval = '5m'`
    - **Current status**: Only Binance implemented (exchange='binance')
 
 ## Design Decisions
@@ -71,6 +74,8 @@ Developer guidance for Claude Code when working with this repository.
 - Returns ~120-150 symbols for top 100 over 12 months (captures entries/exits)
 - Avoids survivorship bias, captures failed/delisted coins
 - Alternative INTERSECTION strategy not implemented (would miss market dynamics)
+- **Backtesting note**: Coins with data gaps at the end (delisted) should be kept in backtests even if they only appear in the training set - this reflects real market conditions and prevents survivorship bias
+- **Important implication**: A symbol may be downloaded even if it wasn't in top N at the start_date. Example: requesting top 50 from 2024-01-01 to 2024-12-31 will download TON even though it only entered top 50 in June 2024. This is intentional - you get the complete universe evolution over the period
 
 **Explicit Parameters Only**: Universe filtering follows "explicit is better than implicit"
 - `populate_database()` and `ingest_universe()` require `exclude_tags` and `exclude_symbols` as direct parameters
@@ -397,12 +402,24 @@ tests/: 6 test modules (database, universe, binance, 1000-prefix, timestamps, he
 - **Auto-retry**: 429→60s, 500/503→5s, max 3 retries
 - **Session cache**: `_ticker_mappings` caches 1000-prefix mappings
 - **Visual progress**: Progress bars show data availability with coverage %
+- **Important**: Progress bars show Binance data availability, NOT when the coin entered top N rankings. Example: TON entered top 50 in June 2024, but Binance data only available from August 2024. To check when a coin was in top N, query the `crypto_universe` table
 
 ## SQL Query Notes
 
 **Case-Sensitivity**: DuckDB's `LIKE` is case-sensitive. Use `LOWER(categories) NOT LIKE '%stablecoin%'` or `ILIKE` for filtering.
 
 **Universe JOINs**: Join crypto_universe with binance tables using `u.symbol || 'USDT' = s.symbol` and `u.date = DATE_TRUNC('day', s.timestamp)`
+
+**Checking Top N Status**: To determine if a coin was in top N at a specific time, query the `crypto_universe` table directly:
+```sql
+SELECT date, symbol, rank
+FROM crypto_universe
+WHERE symbol = 'TON'
+  AND date >= '2024-01-01'
+  AND rank <= 50
+ORDER BY date;
+```
+Do NOT rely on spot/futures tables for this - they only show data availability from Binance, not market cap rankings.
 
 **Users write SQL directly** - this package does NOT provide query methods.
 

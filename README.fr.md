@@ -115,6 +115,8 @@ get_symbols_from_universe(
 
 Vous capturez ainsi **toute la dynamique du marché** : entrées, sorties, échecs, delistings.
 
+**Important pour le backtesting** : Les cryptos avec des gaps de données à la fin (delistées) doivent être conservées dans les backtests même si elles n'apparaissent que dans le training set. Cela reflète les conditions réelles du marché et évite le biais du survivant - les cryptos ayant échoué font partie de la réalité dont vous devez apprendre.
+
 ---
 
 ## 🚀 Installation
@@ -302,6 +304,85 @@ ORDER BY volume_24h DESC
 LIMIT 10;
 ```
 
+### 6. Vérifier quand une crypto était dans le top N
+
+```sql
+-- Trouver quand TON est entré/sorti du top 50
+SELECT date, symbol, rank, market_cap
+FROM crypto_universe
+WHERE symbol = 'TON'
+  AND date >= '2024-01-01'
+  AND rank <= 50
+ORDER BY date;
+```
+
+> **Important** : Utilisez la table `crypto_universe` pour vérifier les classements, PAS les tables spot/futures. Les barres de progression montrent la disponibilité des données Binance (ex: données TON à partir d'août 2024), pas quand la crypto est entrée dans le top N (juin 2024).
+
+### 7. Interroger plusieurs intervalles depuis la même base
+
+```sql
+-- Comparer les données 1h vs 4h pour le même symbole
+SELECT
+    interval,
+    COUNT(*) as nb_candles,
+    MIN(timestamp) as first_date,
+    MAX(timestamp) as last_date
+FROM spot
+WHERE exchange = 'binance'
+  AND symbol = 'BTCUSDT'
+  AND interval IN ('1h', '4h')
+GROUP BY interval;
+```
+
+> **Note** : Vous pouvez stocker plusieurs intervalles (5m, 1h, 4h, etc.) dans la même base de données. Chaque intervalle est stocké comme une ligne séparée avec une clé primaire différente.
+
+---
+
+## 🚀 Exports directs depuis la base (Plus rapide que l'API)
+
+Une fois les données ingérées, vous pouvez interroger directement les tables `spot` et `futures` pour vos propres exports - **beaucoup plus rapide que d'appeler l'API Binance à répétition**.
+
+### Cas d'usage
+
+- 📊 Export vers CSV/Parquet pour pipelines de machine learning
+- 📈 Créer des agrégations personnalisées (VWAP journalier, volatilité glissante, etc.)
+- 🖥️ Construire des tableaux de bord temps réel avec connexions en lecture seule
+- 🔍 Analyse cross-exchange (futur : comparer Binance vs Bybit)
+
+### Exemple : Export vers DataFrame Pandas
+
+```python
+import duckdb
+
+# Connexion à la base (mode lecture seule)
+conn = duckdb.connect('crypto_data.db', read_only=True)
+
+# Export des données BTC 1h pour 2024
+df = conn.execute("""
+    SELECT timestamp, open, high, low, close, volume
+    FROM spot
+    WHERE exchange = 'binance'
+      AND symbol = 'BTCUSDT'
+      AND interval = '1h'
+      AND timestamp >= '2024-01-01'
+    ORDER BY timestamp
+""").df()
+
+# Sauvegarder en Parquet (rapide, compressé)
+df.to_parquet('btc_2024_1h.parquet')
+
+conn.close()
+```
+
+### Performance
+
+**Les requêtes DuckDB sur la base locale sont 10-100x plus rapides que les appels API**, avec **aucune limite de débit**.
+
+- ✅ **Pas de rate limiting** : requêtes illimitées
+- ✅ **Accès instantané** : pas de latence réseau
+- ✅ **Agrégations complexes** : analytics basées sur SQL
+- ✅ **Export Parquet** : optimisé pour les pipelines ML
+
 ---
 
 ## 🗄️ Schéma de base de données (v4.0.0)
@@ -322,6 +403,10 @@ Stocke les classements CoinMarketCap (top N par capitalisation).
 
 **Clé primaire** : `(date, symbol)`
 **Index** : `(date, rank)`
+
+> **Interprétation des timestamps** : Une date comme `2024-01-01 00:00:00.000` signifie que la crypto était dans le top N pour **TOUT le mois** de janvier 2024 (snapshot mensuel pris le 1er).
+>
+> **Fréquence de mise à jour** : Les snapshots sont pris le **1er de chaque mois UNIQUEMENT** (pas de mises à jour quotidiennes/hebdomadaires). Pour remplir 12 mois, vous avez besoin de 12 appels API.
 
 ### Tables `spot` et `futures` - Données OHLCV
 
@@ -344,6 +429,8 @@ Données de prix historiques multi-exchanges (actuellement Binance uniquement).
 
 **Clé primaire** : `(exchange, symbol, interval, timestamp)`
 **Index** : `(exchange, symbol, interval, timestamp)`
+
+> **Support multi-intervalle** : Vous pouvez stocker plusieurs intervalles (5m, 1h, 4h, etc.) dans la même base de données simultanément. Chaque intervalle est stocké comme une ligne séparée avec une clé primaire différente. Interrogez en filtrant avec `WHERE interval = '5m'`.
 
 ---
 

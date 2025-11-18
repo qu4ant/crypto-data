@@ -115,6 +115,8 @@ get_symbols_from_universe(
 
 You thus capture **the full market dynamics**: entries, exits, failures, delistings.
 
+**Important for Backtesting**: Coins with data gaps at the end (delisted) should be kept in backtests even if they only appear in the training set. This reflects real market conditions and prevents survivorship bias - failed coins are part of the reality you must learn from.
+
 ---
 
 ## 🚀 Installation
@@ -302,6 +304,85 @@ ORDER BY volume_24h DESC
 LIMIT 10;
 ```
 
+### 6. Check When a Coin Was in Top N Rankings
+
+```sql
+-- Find when TON entered/exited top 50
+SELECT date, symbol, rank, market_cap
+FROM crypto_universe
+WHERE symbol = 'TON'
+  AND date >= '2024-01-01'
+  AND rank <= 50
+ORDER BY date;
+```
+
+> **Important**: Use the `crypto_universe` table to check rankings, NOT the spot/futures tables. Progress bars show Binance data availability (e.g., TON data from August 2024), not when the coin entered top N (June 2024).
+
+### 7. Query Multiple Intervals from Same Database
+
+```sql
+-- Compare 1h vs 4h data for the same symbol
+SELECT
+    interval,
+    COUNT(*) as nb_candles,
+    MIN(timestamp) as first_date,
+    MAX(timestamp) as last_date
+FROM spot
+WHERE exchange = 'binance'
+  AND symbol = 'BTCUSDT'
+  AND interval IN ('1h', '4h')
+GROUP BY interval;
+```
+
+> **Note**: You can store multiple intervals (5m, 1h, 4h, etc.) in the same database. Each interval is stored as a separate row with a different primary key.
+
+---
+
+## 🚀 Direct Database Exports (Faster than API)
+
+Once data is ingested, you can query the `spot` and `futures` tables directly for your own exports - **much faster than calling Binance API repeatedly**.
+
+### Use Cases
+
+- 📊 Export to CSV/Parquet for machine learning pipelines
+- 📈 Create custom aggregations (daily VWAP, rolling volatility, etc.)
+- 🖥️ Build real-time dashboards with read-only connections
+- 🔍 Cross-exchange analysis (future: compare Binance vs Bybit)
+
+### Example: Export to Pandas DataFrame
+
+```python
+import duckdb
+
+# Connect to database (read-only mode)
+conn = duckdb.connect('crypto_data.db', read_only=True)
+
+# Export BTC 1h data for 2024
+df = conn.execute("""
+    SELECT timestamp, open, high, low, close, volume
+    FROM spot
+    WHERE exchange = 'binance'
+      AND symbol = 'BTCUSDT'
+      AND interval = '1h'
+      AND timestamp >= '2024-01-01'
+    ORDER BY timestamp
+""").df()
+
+# Save to Parquet (fast, compressed)
+df.to_parquet('btc_2024_1h.parquet')
+
+conn.close()
+```
+
+### Performance
+
+**DuckDB queries on local database are 10-100x faster than API calls**, with **no rate limits**.
+
+- ✅ **No rate limiting**: unlimited queries
+- ✅ **Instant access**: no network latency
+- ✅ **Complex aggregations**: SQL-based analytics
+- ✅ **Parquet export**: optimized for ML pipelines
+
 ---
 
 ## 🗄️ Database Schema (v4.0.0)
@@ -322,6 +403,10 @@ Stores CoinMarketCap rankings (top N by market cap).
 
 **Primary key**: `(date, symbol)`
 **Index**: `(date, rank)`
+
+> **Timestamp Interpretation**: A date like `2024-01-01 00:00:00.000` means the coin was in top N for the **ENTIRE month** of January 2024 (monthly snapshot taken on the 1st).
+>
+> **Update Frequency**: Snapshots are taken on the **1st of each month ONLY** (no daily/weekly updates). To backfill 12 months, you need 12 API calls.
 
 ### Tables `spot` and `futures` - OHLCV Data
 
@@ -344,6 +429,8 @@ Historical price data multi-exchange (currently Binance only).
 
 **Primary key**: `(exchange, symbol, interval, timestamp)`
 **Index**: `(exchange, symbol, interval, timestamp)`
+
+> **Multi-Interval Support**: You can store multiple intervals (5m, 1h, 4h, etc.) in the same database simultaneously. Each interval is stored as a separate row with a different primary key. Query by filtering `WHERE interval = '5m'`.
 
 ---
 

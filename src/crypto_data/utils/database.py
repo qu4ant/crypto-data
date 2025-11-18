@@ -241,6 +241,7 @@ def import_metrics_to_duckdb(
 
         # Add exchange column
         df['exchange'] = exchange
+        df['symbol'] = symbol  # Normalize symbol (handles 1000-prefix tokens)
 
         # Convert timestamp string to datetime
         df['timestamp'] = pd.to_datetime(df['create_time'])

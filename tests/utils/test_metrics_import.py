@@ -339,5 +339,42 @@ def test_metrics_all_zero_values(tmp_path, temp_db, caplog):
     assert result[0] == 0
 
 
+def test_metrics_1000prefix_normalization(tmp_path, temp_db):
+    """CSV with 1000-prefix symbol should be normalized to base symbol."""
+    # Create CSV where symbol column contains 1000PEPEUSDT
+    # This simulates downloading from Binance with 1000-prefix
+    csv_content = """create_time,symbol,sum_open_interest,sum_open_interest_value,count_toptrader_long_short_ratio,sum_toptrader_long_short_ratio,count_long_short_ratio,sum_taker_long_short_vol_ratio
+2025-11-02 00:05:00,1000PEPEUSDT,5000000.0,150000000.0,2.05,1.91,1.88,0.76
+2025-11-02 00:10:00,1000PEPEUSDT,5100000.0,153000000.0,2.05,1.91,1.88,0.97"""
+
+    zip_path = tmp_path / "1000PEPEUSDT-metrics-2025-11-02.zip"
+    with zipfile.ZipFile(zip_path, 'w') as zf:
+        zf.writestr("1000PEPEUSDT-metrics-2025-11-02.csv", csv_content)
+
+    # Import with normalized symbol (PEPEUSDT, not 1000PEPEUSDT)
+    import_metrics_to_duckdb(temp_db, zip_path, 'PEPEUSDT', exchange='binance')
+
+    # Verify data was imported with normalized symbol
+    result = temp_db.execute("""
+        SELECT symbol, COUNT(*)
+        FROM open_interest
+        WHERE symbol = 'PEPEUSDT'
+        GROUP BY symbol
+    """).fetchone()
+
+    assert result is not None, "No data found for PEPEUSDT"
+    assert result[0] == 'PEPEUSDT', "Symbol should be normalized to PEPEUSDT"
+    assert result[1] == 2, "Should have 2 rows"
+
+    # Verify no 1000-prefix symbol exists in database
+    result_1000 = temp_db.execute("""
+        SELECT COUNT(*)
+        FROM open_interest
+        WHERE symbol = '1000PEPEUSDT'
+    """).fetchone()
+
+    assert result_1000[0] == 0, "No 1000PEPEUSDT symbol should exist in database"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
