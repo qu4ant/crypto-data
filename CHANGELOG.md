@@ -7,6 +7,92 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [5.0.0] - 2025-11-21
+
+### 🚨 Breaking Changes
+
+**Type-Safe Enums Replace String Parameters**
+
+All data type and interval parameters now require enums instead of strings. This is a breaking change from v4.x.
+
+**Migration Required:**
+```python
+# ❌ Old way (v4.x) - strings
+populate_database(
+    data_types=['spot', 'futures'],
+    interval='5m'
+)
+
+# ✅ New way (v5.x) - enums
+from crypto_data import DataType, Interval
+
+populate_database(
+    data_types=[DataType.SPOT, DataType.FUTURES],
+    interval=Interval.MIN_5
+)
+```
+
+**Affected functions:**
+- `populate_database()` - `data_types` and `interval` parameters
+- `ingest_binance_async()` - `data_types` and `interval` parameters
+- All internal functions that accept data types or intervals
+
+### ✨ New Features
+
+**Type-Safe Enumerations**
+- **`DataType` enum**: `SPOT`, `FUTURES`, `OPEN_INTEREST`, `FUNDING_RATES`
+- **`Interval` enum**: `MIN_1`, `MIN_5`, `MIN_15`, `MIN_30`, `HOUR_1`, `HOUR_2`, `HOUR_4`, `HOUR_6`, `HOUR_8`, `HOUR_12`, `DAY_1`, `DAY_3`, `WEEK_1`, `MONTH_1`
+- **`Exchange` enum**: `BINANCE`, `BYBIT`, `KRAKEN`, `COINBASE` (only Binance implemented)
+
+**Benefits:**
+- ✅ IDE autocompletion for available options
+- ✅ Type checking with mypy/pyright
+- ✅ Protection against typos (`'spot'` vs `'spots'`)
+- ✅ Self-documenting code
+
+### 📦 Improvements
+
+**Developer Experience**
+- Better IDE support with autocompletion
+- Catch errors at development time instead of runtime
+- Clear, explicit parameter names (e.g., `Interval.HOUR_1` instead of `'1h'`)
+- Reduced cognitive load - discover available options via autocomplete
+
+**Code Quality**
+- All enums properly documented with docstrings
+- Exported in public API (`__init__.py`)
+- Used consistently across all tests and examples
+- Full backward compatibility removed (clean break)
+
+### 📝 Documentation
+
+**Updated Documentation:**
+- README.md: Added "Type-Safe Enums (v5.0.0+)" section with migration guide
+- README.fr.md: Added French translation of enum documentation
+- CLAUDE.md: Already documented enums in v5.0.0+ section
+- All code examples updated to use enums
+- Migration examples in both English and French
+
+**Version Updates:**
+- `__init__.py`: Updated version to 5.0.0
+- `pyproject.toml`: Already at 5.0.0
+- README badges: Updated to v5.0.0
+
+### 🔧 Technical Details
+
+**New Module:**
+- `src/crypto_data/enums.py` - Contains all enum definitions
+
+**API Exports:**
+- Added to `__all__`: `DataType`, `Interval`, `Exchange`
+
+**Test Coverage:**
+- All tests updated to use enums
+- No string-based tests remaining
+- Example scripts updated (`scripts/Download_data_universe.py`)
+
+---
+
 ## [4.0.0] - 2025-11-17
 
 ### 🚨 Breaking Changes

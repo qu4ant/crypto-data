@@ -6,7 +6,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![Version](https://img.shields.io/badge/version-4.0.0-green.svg)](https://github.com/qu4ant/crypto-data)
+[![Version](https://img.shields.io/badge/version-5.0.0-green.svg)](https://github.com/qu4ant/crypto-data)
 [![codecov](https://codecov.io/gh/qu4ant/crypto-data/branch/main/graph/badge.svg)](https://codecov.io/gh/qu4ant/crypto-data)
 [![Tests](https://github.com/qu4ant/crypto-data/workflows/Tests/badge.svg)](https://github.com/qu4ant/crypto-data/actions)
 
@@ -158,7 +158,7 @@ pip install -e ".[dev]"
 La fonction `populate_database()` fait tout en un appel : télécharge l'univers + données OHLCV.
 
 ```python
-from crypto_data import populate_database, setup_colored_logging
+from crypto_data import populate_database, setup_colored_logging, DataType, Interval
 
 # Logs colorés (optionnel mais recommandé)
 setup_colored_logging()
@@ -169,8 +169,8 @@ populate_database(
     start_date='2024-01-01',
     end_date='2024-12-31',
     top_n=100,                    # Top 100 par capitalisation
-    interval='1h',                # Options: 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M
-    data_types=['spot', 'futures'],
+    interval=Interval.HOUR_1,     # Utiliser l'enum Interval (MIN_5, HOUR_1, HOUR_4, DAY_1, etc.)
+    data_types=[DataType.SPOT, DataType.FUTURES],  # Utiliser l'enum DataType
     exclude_tags=['stablecoin', 'wrapped-tokens'],  # Filtres optionnels
     exclude_symbols=['LUNA', 'FTT', 'UST']
 )
@@ -184,7 +184,9 @@ from crypto_data import (
     ingest_universe,
     get_symbols_from_universe,
     ingest_binance_async,
-    setup_colored_logging
+    setup_colored_logging,
+    DataType,
+    Interval
 )
 
 setup_colored_logging()
@@ -212,10 +214,82 @@ ingest_binance_async(
     symbols=symbols,
     start_date='2024-01-01',
     end_date='2024-12-31',
-    data_types=['spot', 'futures'],
-    interval='1h'  # Options: 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M
+    data_types=[DataType.SPOT, DataType.FUTURES],  # Utiliser l'enum DataType
+    interval=Interval.HOUR_1  # Utiliser l'enum Interval (MIN_5, HOUR_1, HOUR_4, DAY_1, etc.)
 )
 ```
+
+---
+
+## 🔐 Énumérations Type-Safe (v5.0.0+)
+
+**Changement majeur dans v5.0.0** : Tous les paramètres de type de données et d'intervalle nécessitent maintenant des énumérations au lieu de chaînes de caractères.
+
+### Énumérations disponibles
+
+```python
+from crypto_data import DataType, Interval, Exchange
+
+# Enum DataType - Types de données disponibles
+DataType.SPOT           # 'spot' - OHLCV marché spot
+DataType.FUTURES        # 'futures' - OHLCV marché futures
+DataType.OPEN_INTEREST  # 'open_interest' - Open interest futures (journalier)
+DataType.FUNDING_RATES  # 'funding_rates' - Taux de financement (8h)
+
+# Enum Interval - Intervalles de klines
+Interval.MIN_1    # '1m'
+Interval.MIN_5    # '5m'
+Interval.MIN_15   # '15m'
+Interval.MIN_30   # '30m'
+Interval.HOUR_1   # '1h'
+Interval.HOUR_2   # '2h'
+Interval.HOUR_4   # '4h'
+Interval.HOUR_6   # '6h'
+Interval.HOUR_8   # '8h'
+Interval.HOUR_12  # '12h'
+Interval.DAY_1    # '1d'
+Interval.DAY_3    # '3d'
+Interval.WEEK_1   # '1w'
+Interval.MONTH_1  # '1M'
+
+# Enum Exchange (expansion future)
+Exchange.BINANCE   # 'binance' (actuellement implémenté)
+Exchange.BYBIT     # 'bybit' (planifié)
+Exchange.KRAKEN    # 'kraken' (planifié)
+```
+
+### Migration de v4.x vers v5.x
+
+```python
+# ❌ Ancienne méthode (v4.x) - chaînes de caractères
+populate_database(
+    db_path='crypto_data.db',
+    symbols=['BTCUSDT'],
+    data_types=['spot', 'futures'],
+    start_date='2024-01-01',
+    end_date='2024-12-31',
+    interval='5m'
+)
+
+# ✅ Nouvelle méthode (v5.x) - énumérations
+from crypto_data import DataType, Interval
+
+populate_database(
+    db_path='crypto_data.db',
+    symbols=['BTCUSDT'],
+    data_types=[DataType.SPOT, DataType.FUTURES],
+    start_date='2024-01-01',
+    end_date='2024-12-31',
+    interval=Interval.MIN_5
+)
+```
+
+### Avantages
+
+- ✅ **Autocomplétion IDE** - Découvrez les options disponibles pendant la frappe
+- ✅ **Vérification de type** - Détectez les erreurs au moment du développement avec mypy/pyright
+- ✅ **Protection contre les fautes de frappe** - Plus d'erreurs `'spot'` vs `'spots'`
+- ✅ **Code auto-documenté** - Code clair et explicite
 
 ---
 
@@ -551,7 +625,7 @@ kill <PID>
 df -h  # Vérifier espace disponible
 
 # Option 2 : Utiliser interval plus large
-populate_database(interval='1h')  # Au lieu de '5m'
+populate_database(interval=Interval.HOUR_1)  # Au lieu de Interval.MIN_5
 
 # Option 3 : Réduire top_n
 populate_database(top_n=50)  # Au lieu de 100
@@ -579,7 +653,8 @@ ingest_universe(
 ingest_binance_async(
     db_path='crypto_data.db',
     symbols=['FTTUSDT'],
-    data_types=['spot'],
+    data_types=[DataType.SPOT],  # Utiliser l'enum DataType
+    interval=Interval.HOUR_1,
     failure_threshold=0  # Désactive gap detection
 )
 ```
