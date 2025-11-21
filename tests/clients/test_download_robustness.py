@@ -5,6 +5,7 @@ Tests partial download detection, ZIP integrity verification, and atomic write p
 """
 
 import pytest
+from crypto_data.enums import DataType, Interval
 import asyncio
 import zipfile
 from pathlib import Path
@@ -65,7 +66,7 @@ async def test_partial_download_detected_and_rejected(tmp_path, mock_response, v
 
             # Download should return False (failed)
             success = await client.download_klines(
-                'BTCUSDT', 'spot', '2024-01', '5m', output_path
+                'BTCUSDT', DataType.SPOT, '2024-01', Interval.MIN_5, output_path
             )
 
     assert success is False, "Partial download should be rejected"
@@ -87,7 +88,7 @@ async def test_full_download_with_content_length_succeeds(tmp_path, mock_respons
 
             # Download should succeed
             success = await client.download_klines(
-                'BTCUSDT', 'spot', '2024-01', '5m', output_path
+                'BTCUSDT', DataType.SPOT, '2024-01', Interval.MIN_5, output_path
             )
 
     assert success is True, "Complete download should succeed"
@@ -110,7 +111,7 @@ async def test_download_without_content_length_header_succeeds(tmp_path, mock_re
 
             # Download should succeed (skip Content-Length check)
             success = await client.download_klines(
-                'BTCUSDT', 'spot', '2024-01', '5m', output_path
+                'BTCUSDT', DataType.SPOT, '2024-01', Interval.MIN_5, output_path
             )
 
     assert success is True, "Download without Content-Length should succeed"
@@ -135,7 +136,7 @@ async def test_corrupt_zip_detected_and_rejected(tmp_path, mock_response, corrup
 
             # Download should return False (corrupt ZIP)
             success = await client.download_klines(
-                'BTCUSDT', 'spot', '2024-01', '5m', output_path
+                'BTCUSDT', DataType.SPOT, '2024-01', Interval.MIN_5, output_path
             )
 
     assert success is False, "Corrupt ZIP should be rejected"
@@ -157,7 +158,7 @@ async def test_valid_zip_passes_integrity_check(tmp_path, mock_response, valid_z
 
             # Download should succeed
             success = await client.download_klines(
-                'BTCUSDT', 'spot', '2024-01', '5m', output_path
+                'BTCUSDT', DataType.SPOT, '2024-01', Interval.MIN_5, output_path
             )
 
     assert success is True, "Valid ZIP should pass integrity check"
@@ -197,7 +198,7 @@ async def test_atomic_write_uses_temp_file(tmp_path, mock_response, valid_zip_co
                 mock_get.return_value.__aenter__.return_value = mock_response
 
                 success = await client.download_klines(
-                    'BTCUSDT', 'spot', '2024-01', '5m', output_path
+                    'BTCUSDT', DataType.SPOT, '2024-01', Interval.MIN_5, output_path
                 )
 
     assert success is True
@@ -220,7 +221,7 @@ async def test_temp_file_cleaned_up_on_corruption(tmp_path, mock_response, corru
             mock_get.return_value.__aenter__.return_value = mock_response
 
             success = await client.download_klines(
-                'BTCUSDT', 'spot', '2024-01', '5m', output_path
+                'BTCUSDT', DataType.SPOT, '2024-01', Interval.MIN_5, output_path
             )
 
     assert success is False
@@ -334,7 +335,7 @@ async def test_zero_byte_download_accepted(tmp_path, mock_response):
             mock_get.return_value.__aenter__.return_value = mock_response
 
             success = await client.download_klines(
-                'BTCUSDT', 'spot', '2024-01', '5m', output_path
+                'BTCUSDT', DataType.SPOT, '2024-01', Interval.MIN_5, output_path
             )
 
     # Note: Empty files are accepted (skip validation for < 1KB)
@@ -362,7 +363,7 @@ async def test_very_small_zip_accepted_if_valid(tmp_path, mock_response):
             mock_get.return_value.__aenter__.return_value = mock_response
 
             success = await client.download_klines(
-                'BTCUSDT', 'spot', '2024-01', '5m', output_path
+                'BTCUSDT', DataType.SPOT, '2024-01', Interval.MIN_5, output_path
             )
 
     assert success is True, "Valid minimal ZIP should be accepted"

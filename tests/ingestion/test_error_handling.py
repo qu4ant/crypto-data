@@ -8,6 +8,7 @@ Tests:
 """
 
 import pytest
+from crypto_data.enums import DataType, Interval
 import asyncio
 import threading
 import tempfile
@@ -290,8 +291,8 @@ class TestDateValidationIntegration:
                 symbols=['BTCUSDT'],
                 start_date='2024/01/01',  # Invalid format
                 end_date='2024-12-31',
-                interval='5m',
-                data_types=['spot']
+                interval=Interval.MIN_5,
+                data_types=[DataType.SPOT]
             )
         assert "Invalid start_date format" in str(exc_info.value)
 
@@ -302,8 +303,8 @@ class TestDateValidationIntegration:
                 symbols=['BTCUSDT'],
                 start_date='2024-12-31',
                 end_date='2024-01-01',
-                interval='5m',
-                data_types=['spot']
+                interval=Interval.MIN_5,
+                data_types=[DataType.SPOT]
             )
         assert "must be before or equal to" in str(exc_info.value)
 

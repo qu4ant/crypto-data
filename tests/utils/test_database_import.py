@@ -5,6 +5,7 @@ Tests edge cases including malformed ZIPs, duplicate timestamps, and column harm
 """
 
 import pytest
+from crypto_data.enums import DataType, Interval
 import duckdb
 import zipfile
 from pathlib import Path
@@ -68,7 +69,7 @@ def test_zip_without_csv_raises_error(tmp_path, temp_db):
         zf.writestr("readme.txt", "This is not a CSV file")
 
     with pytest.raises(ValueError, match="No CSV file found in ZIP"):
-        import_to_duckdb(temp_db, zip_path, 'BTCUSDT', 'spot', '5m')
+        import_to_duckdb(temp_db, zip_path, 'BTCUSDT', DataType.SPOT, Interval.MIN_5)
 
 
 def test_csv_with_duplicates_logs_removal(tmp_path, temp_db, caplog):
@@ -86,7 +87,7 @@ def test_csv_with_duplicates_logs_removal(tmp_path, temp_db, caplog):
 
     # Import
     with caplog.at_level('DEBUG'):
-        import_to_duckdb(temp_db, zip_path, 'BTCUSDT', 'spot', '5m')
+        import_to_duckdb(temp_db, zip_path, 'BTCUSDT', DataType.SPOT, Interval.MIN_5)
 
     # Check that duplicate removal was logged
     assert any("Removed 1 duplicate" in record.message for record in caplog.records)
@@ -109,7 +110,7 @@ def test_csv_with_count_column_normalized(tmp_path, temp_db):
         zf.writestr("BTCUSDT-5m-2024-01.csv", csv_content)
 
     # Import
-    import_to_duckdb(temp_db, zip_path, 'BTCUSDT', 'spot', '5m')
+    import_to_duckdb(temp_db, zip_path, 'BTCUSDT', DataType.SPOT, Interval.MIN_5)
 
     # Verify data was imported with trades_count column
     result = temp_db.execute("SELECT trades_count FROM spot ORDER BY timestamp LIMIT 1").fetchone()
@@ -129,7 +130,7 @@ def test_csv_with_taker_buy_volume_normalized(tmp_path, temp_db):
         zf.writestr("BTCUSDT-5m-2024-01.csv", csv_content)
 
     # Import
-    import_to_duckdb(temp_db, zip_path, 'BTCUSDT', 'spot', '5m')
+    import_to_duckdb(temp_db, zip_path, 'BTCUSDT', DataType.SPOT, Interval.MIN_5)
 
     # Verify data was imported with taker_buy_base_volume column
     result = temp_db.execute("SELECT taker_buy_base_volume FROM spot ORDER BY timestamp LIMIT 1").fetchone()
@@ -148,7 +149,7 @@ def test_import_with_original_symbol(tmp_path, temp_db):
         zf.writestr("1000PEPEUSDT-5m-2024-01.csv", csv_content)
 
     # Import with original_symbol (simulating 1000-prefix normalization)
-    import_to_duckdb(temp_db, zip_path, '1000PEPEUSDT', 'spot', '5m', original_symbol='PEPEUSDT')
+    import_to_duckdb(temp_db, zip_path, '1000PEPEUSDT', DataType.SPOT, Interval.MIN_5, original_symbol='PEPEUSDT')
 
     # Verify symbol stored is PEPEUSDT, not 1000PEPEUSDT
     result = temp_db.execute("SELECT DISTINCT symbol FROM spot").fetchone()
@@ -167,7 +168,7 @@ def test_import_malformed_csv_raises_exception(tmp_path, temp_db):
 
     # Import should raise exception (pandas will fail to parse)
     with pytest.raises(Exception):
-        import_to_duckdb(temp_db, zip_path, 'BTCUSDT', 'spot', '5m')
+        import_to_duckdb(temp_db, zip_path, 'BTCUSDT', DataType.SPOT, Interval.MIN_5)
 
 
 def test_import_cleans_up_extracted_csv(tmp_path, temp_db):
@@ -182,7 +183,7 @@ def test_import_cleans_up_extracted_csv(tmp_path, temp_db):
         zf.writestr(csv_name, csv_content)
 
     # Import
-    import_to_duckdb(temp_db, zip_path, 'BTCUSDT', 'spot', '5m')
+    import_to_duckdb(temp_db, zip_path, 'BTCUSDT', DataType.SPOT, Interval.MIN_5)
 
     # Verify extracted CSV was deleted
     extracted_csv = tmp_path / csv_name
@@ -203,7 +204,7 @@ def test_import_cleans_up_csv_even_on_error(tmp_path, temp_db):
     # Import should fail but still cleanup
     extracted_csv = tmp_path / csv_name
     try:
-        import_to_duckdb(temp_db, zip_path, 'BTCUSDT', 'spot', '5m')
+        import_to_duckdb(temp_db, zip_path, 'BTCUSDT', DataType.SPOT, Interval.MIN_5)
     except Exception:
         pass  # Expected to fail
 
@@ -224,7 +225,7 @@ def test_import_with_header_detection(tmp_path, temp_db):
         zf.writestr("BTCUSDT-5m-2024-01.csv", csv_content)
 
     # Import
-    import_to_duckdb(temp_db, zip_path, 'BTCUSDT', 'spot', '5m')
+    import_to_duckdb(temp_db, zip_path, 'BTCUSDT', DataType.SPOT, Interval.MIN_5)
 
     # Verify 2 rows were imported (header not counted)
     result = temp_db.execute("SELECT COUNT(*) FROM spot").fetchone()
@@ -243,7 +244,7 @@ def test_import_without_header(tmp_path, temp_db):
         zf.writestr("BTCUSDT-5m-2024-01.csv", csv_content)
 
     # Import
-    import_to_duckdb(temp_db, zip_path, 'BTCUSDT', 'spot', '5m')
+    import_to_duckdb(temp_db, zip_path, 'BTCUSDT', DataType.SPOT, Interval.MIN_5)
 
     # Verify 2 rows were imported
     result = temp_db.execute("SELECT COUNT(*) FROM spot").fetchone()
@@ -261,9 +262,9 @@ def test_import_adds_symbol_and_interval_columns(tmp_path, temp_db):
         zf.writestr("BTCUSDT-5m-2024-01.csv", csv_content)
 
     # Import
-    import_to_duckdb(temp_db, zip_path, 'BTCUSDT', 'spot', '5m')
+    import_to_duckdb(temp_db, zip_path, 'BTCUSDT', DataType.SPOT, Interval.MIN_5)
 
     # Verify symbol and interval columns were added
     result = temp_db.execute("SELECT symbol, interval FROM spot").fetchone()
     assert result[0] == 'BTCUSDT'
-    assert result[1] == '5m'
+    assert result[1] == Interval.MIN_5.value

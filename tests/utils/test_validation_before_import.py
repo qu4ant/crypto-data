@@ -5,6 +5,7 @@ Tests that Pandera validation runs BEFORE import and rejects invalid data.
 """
 
 import pytest
+from crypto_data.enums import DataType, Interval
 import duckdb
 import zipfile
 from pathlib import Path
@@ -106,7 +107,7 @@ def test_valid_ohlcv_data_passes_validation(tmp_path, temp_db):
     # Import should succeed
     temp_db.execute("BEGIN TRANSACTION")
     try:
-        import_to_duckdb(temp_db, zip_path, 'BTCUSDT', 'spot', '5m')
+        import_to_duckdb(temp_db, zip_path, 'BTCUSDT', DataType.SPOT, Interval.MIN_5)
         temp_db.execute("COMMIT")
     except Exception as e:
         temp_db.execute("ROLLBACK")
@@ -131,7 +132,7 @@ def test_invalid_ohlc_high_less_than_low_rejects_data(tmp_path, temp_db):
     # Import should fail with ValueError
     temp_db.execute("BEGIN TRANSACTION")
     with pytest.raises(ValueError, match="Data validation failed.*OHLCV"):
-        import_to_duckdb(temp_db, zip_path, 'BTCUSDT', 'spot', '5m')
+        import_to_duckdb(temp_db, zip_path, 'BTCUSDT', DataType.SPOT, Interval.MIN_5)
     temp_db.execute("ROLLBACK")
 
     # Verify NO data was imported (transaction rollback)
@@ -153,7 +154,7 @@ def test_invalid_negative_price_rejects_data(tmp_path, temp_db):
     # Import should fail
     temp_db.execute("BEGIN TRANSACTION")
     with pytest.raises(ValueError, match="Data validation failed"):
-        import_to_duckdb(temp_db, zip_path, 'BTCUSDT', 'spot', '5m')
+        import_to_duckdb(temp_db, zip_path, 'BTCUSDT', DataType.SPOT, Interval.MIN_5)
     temp_db.execute("ROLLBACK")
 
     # Verify NO data was imported
@@ -175,7 +176,7 @@ def test_invalid_negative_volume_rejects_data(tmp_path, temp_db):
     # Import should fail
     temp_db.execute("BEGIN TRANSACTION")
     with pytest.raises(ValueError, match="Data validation failed"):
-        import_to_duckdb(temp_db, zip_path, 'BTCUSDT', 'spot', '5m')
+        import_to_duckdb(temp_db, zip_path, 'BTCUSDT', DataType.SPOT, Interval.MIN_5)
     temp_db.execute("ROLLBACK")
 
     # Verify NO data was imported
@@ -197,7 +198,7 @@ def test_invalid_open_greater_than_high_rejects_data(tmp_path, temp_db):
     # Import should fail
     temp_db.execute("BEGIN TRANSACTION")
     with pytest.raises(ValueError, match="Data validation failed"):
-        import_to_duckdb(temp_db, zip_path, 'BTCUSDT', 'spot', '5m')
+        import_to_duckdb(temp_db, zip_path, 'BTCUSDT', DataType.SPOT, Interval.MIN_5)
     temp_db.execute("ROLLBACK")
 
     # Verify NO data was imported
@@ -306,7 +307,7 @@ def test_validation_failure_triggers_transaction_rollback(tmp_path, temp_db):
         zf.writestr("BTCUSDT-5m-2024-01.csv", csv_valid)
 
     temp_db.execute("BEGIN TRANSACTION")
-    import_to_duckdb(temp_db, zip_valid, 'BTCUSDT', 'spot', '5m')
+    import_to_duckdb(temp_db, zip_valid, 'BTCUSDT', DataType.SPOT, Interval.MIN_5)
     temp_db.execute("COMMIT")
 
     # Verify 1 row inserted
@@ -322,7 +323,7 @@ def test_validation_failure_triggers_transaction_rollback(tmp_path, temp_db):
     # Import should fail
     temp_db.execute("BEGIN TRANSACTION")
     with pytest.raises(ValueError):
-        import_to_duckdb(temp_db, zip_invalid, 'ETHUSDT', 'spot', '5m')
+        import_to_duckdb(temp_db, zip_invalid, 'ETHUSDT', DataType.SPOT, Interval.MIN_5)
     temp_db.execute("ROLLBACK")
 
     # Verify STILL only 1 row (rollback worked)
@@ -344,7 +345,7 @@ def test_validation_logs_clear_error_message(tmp_path, temp_db, caplog):
     temp_db.execute("BEGIN TRANSACTION")
     with caplog.at_level('ERROR'):
         with pytest.raises(ValueError):
-            import_to_duckdb(temp_db, zip_path, 'BTCUSDT', 'spot', '5m')
+            import_to_duckdb(temp_db, zip_path, 'BTCUSDT', DataType.SPOT, Interval.MIN_5)
     temp_db.execute("ROLLBACK")
 
     # Check error message contains helpful information

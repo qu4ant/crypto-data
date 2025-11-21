@@ -8,6 +8,7 @@ Uses mocks to avoid external API calls and file I/O.
 """
 
 import pytest
+from crypto_data.enums import DataType, Interval
 import tempfile
 from pathlib import Path
 from unittest.mock import patch, MagicMock, AsyncMock, call
@@ -46,8 +47,8 @@ def test_populate_database_orchestrates_full_workflow():
                 start_date='2024-01-01',
                 end_date='2024-03-31',
                 top_n=50,
-                interval='5m',
-                data_types=['spot', 'futures']
+                interval=Interval.MIN_5,
+                data_types=[DataType.SPOT, DataType.FUTURES]
             )
 
             # Verify ingest_universe was called
@@ -60,10 +61,10 @@ def test_populate_database_orchestrates_full_workflow():
             mock_ingest_binance.assert_called_once_with(
                 db_path=db_path,
                 symbols=['BTCUSDT', 'ETHUSDT', 'SOLUSDT'],
-                data_types=['spot', 'futures'],
+                data_types=[DataType.SPOT, DataType.FUTURES],
                 start_date='2024-01-01',
                 end_date='2024-03-31',
-                interval='5m',
+                interval=Interval.MIN_5,
                 skip_existing=True,
                 max_concurrent_klines=20,
                 max_concurrent_metrics=100,
@@ -91,8 +92,8 @@ def test_populate_database_handles_empty_universe():
                 start_date='2024-01-01',
                 end_date='2024-01-31',
                 top_n=50,
-                interval='5m',
-                data_types=['spot']
+                interval=Interval.MIN_5,
+                data_types=[DataType.SPOT]
             )
 
             # Verify ingest_universe was called
@@ -124,8 +125,8 @@ def test_populate_database_generates_correct_month_list():
                 start_date='2024-01-01',
                 end_date='2024-12-31',
                 top_n=100,
-                interval='5m',
-                data_types=['spot']
+                interval=Interval.MIN_5,
+                data_types=[DataType.SPOT]
             )
 
             # Verify ingest_universe was called
@@ -151,8 +152,8 @@ def test_populate_database_continues_on_universe_failure():
                 start_date='2024-01-01',
                 end_date='2024-03-31',
                 top_n=50,
-                interval='5m',
-                data_types=['spot']
+                interval=Interval.MIN_5,
+                data_types=[DataType.SPOT]
             )
 
             # Verify ingest_universe was called
@@ -180,13 +181,13 @@ def test_populate_database_uses_default_data_types():
                 start_date='2024-01-01',
                 end_date='2024-01-31',
                 top_n=50,
-                interval='5m'
+                interval=Interval.MIN_5
                 # data_types not specified
             )
 
-            # Verify ingest_binance_async called with default ['spot', 'futures']
+            # Verify ingest_binance_async called with default [DataType.SPOT, DataType.FUTURES]
             call_args = mock_ingest_binance.call_args
-            assert call_args[1]['data_types'] == ['spot', 'futures']
+            assert call_args[1]['data_types'] == [DataType.SPOT, DataType.FUTURES]
 
 
 def test_populate_database_handles_year_boundary():
@@ -207,8 +208,8 @@ def test_populate_database_handles_year_boundary():
                 start_date='2023-11-01',
                 end_date='2024-02-28',
                 top_n=50,
-                interval='5m',
-                data_types=['spot']
+                interval=Interval.MIN_5,
+                data_types=[DataType.SPOT]
             )
 
             # Verify ingest_universe was called

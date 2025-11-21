@@ -5,6 +5,7 @@ Tests the download_funding_rates() method.
 """
 
 import pytest
+from crypto_data.enums import DataType, Interval
 from pathlib import Path
 from crypto_data.clients.binance_vision_async import BinanceDataVisionClientAsync
 

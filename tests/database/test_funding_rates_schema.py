@@ -6,6 +6,7 @@ and multi-exchange support.
 """
 
 import pytest
+from crypto_data.enums import DataType, Interval
 import duckdb
 from pathlib import Path
 from crypto_data.database import CryptoDatabase

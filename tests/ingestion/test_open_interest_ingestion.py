@@ -9,6 +9,7 @@ Tests the async download and import workflow for open interest data:
 """
 
 import pytest
+from crypto_data.enums import DataType, Interval
 import asyncio
 import tempfile
 from pathlib import Path

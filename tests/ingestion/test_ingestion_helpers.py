@@ -9,6 +9,7 @@ Tests the shared helper functions used by both universe and binance ingestion:
 """
 
 import pytest
+from crypto_data.enums import DataType, Interval
 import tempfile
 from pathlib import Path
 from datetime import date
@@ -70,7 +71,7 @@ def test_process_download_results_successful_import():
             {
                 'success': True,
                 'symbol': 'BTCUSDT',
-                'data_type': 'spot',
+                'data_type': DataType.SPOT.value,
                 'month': '2024-01',
                 'file_path': temp_file,
                 'error': None
@@ -81,15 +82,15 @@ def test_process_download_results_successful_import():
         stats = initialize_ingestion_stats()
 
         with patch('crypto_data.utils.ingestion_helpers.import_to_duckdb') as mock_import:
-            process_download_results(results, mock_conn, stats, '5m', 'BTCUSDT')
+            process_download_results(results, mock_conn, stats, Interval.MIN_5, 'BTCUSDT')
 
             # Verify import was called
             mock_import.assert_called_once_with(
                 conn=mock_conn,
                 file_path=temp_file,
                 symbol='BTCUSDT',
-                data_type='spot',
-                interval='5m',
+                data_type=DataType.SPOT,
+                interval=Interval.MIN_5,
                 exchange='binance',
                 original_symbol='BTCUSDT'
             )
@@ -108,7 +109,7 @@ def test_process_download_results_handles_not_found():
         {
             'success': False,
             'symbol': 'BTCUSDT',
-            'data_type': 'spot',
+            'data_type': DataType.SPOT.value,
             'month': '2024-01',
             'file_path': None,
             'error': 'not_found'
@@ -119,7 +120,7 @@ def test_process_download_results_handles_not_found():
     stats = initialize_ingestion_stats()
 
     with patch('crypto_data.utils.ingestion_helpers.import_to_duckdb') as mock_import:
-        process_download_results(results, mock_conn, stats, '5m', 'BTCUSDT')
+        process_download_results(results, mock_conn, stats, Interval.MIN_5, 'BTCUSDT')
 
         # Verify import NOT called
         mock_import.assert_not_called()
@@ -136,7 +137,7 @@ def test_process_download_results_handles_other_errors():
         {
             'success': False,
             'symbol': 'BTCUSDT',
-            'data_type': 'spot',
+            'data_type': DataType.SPOT.value,
             'month': '2024-01',
             'file_path': None,
             'error': 'Network timeout'
@@ -147,7 +148,7 @@ def test_process_download_results_handles_other_errors():
     stats = initialize_ingestion_stats()
 
     with patch('crypto_data.utils.ingestion_helpers.import_to_duckdb') as mock_import:
-        process_download_results(results, mock_conn, stats, '5m', 'BTCUSDT')
+        process_download_results(results, mock_conn, stats, Interval.MIN_5, 'BTCUSDT')
 
         # Verify import NOT called
         mock_import.assert_not_called()
@@ -168,7 +169,7 @@ def test_process_download_results_import_failure():
             {
                 'success': True,
                 'symbol': 'BTCUSDT',
-                'data_type': 'spot',
+                'data_type': DataType.SPOT.value,
                 'month': '2024-01',
                 'file_path': temp_file,
                 'error': None
@@ -181,7 +182,7 @@ def test_process_download_results_import_failure():
         with patch('crypto_data.utils.ingestion_helpers.import_to_duckdb') as mock_import:
             mock_import.side_effect = Exception("Import failed")
 
-            process_download_results(results, mock_conn, stats, '5m', 'BTCUSDT')
+            process_download_results(results, mock_conn, stats, Interval.MIN_5, 'BTCUSDT')
 
             # Verify stats updated
             assert stats['failed'] == 1
@@ -204,7 +205,7 @@ def test_process_download_results_multiple_results():
             {
                 'success': True,
                 'symbol': 'BTCUSDT',
-                'data_type': 'spot',
+                'data_type': DataType.SPOT.value,
                 'month': '2024-01',
                 'file_path': temp_file1,
                 'error': None
@@ -212,7 +213,7 @@ def test_process_download_results_multiple_results():
             {
                 'success': False,
                 'symbol': 'BTCUSDT',
-                'data_type': 'spot',
+                'data_type': DataType.SPOT.value,
                 'month': '2024-02',
                 'file_path': None,
                 'error': 'not_found'
@@ -220,7 +221,7 @@ def test_process_download_results_multiple_results():
             {
                 'success': True,
                 'symbol': 'BTCUSDT',
-                'data_type': 'spot',
+                'data_type': DataType.SPOT.value,
                 'month': '2024-03',
                 'file_path': temp_file2,
                 'error': None
@@ -231,7 +232,7 @@ def test_process_download_results_multiple_results():
         stats = initialize_ingestion_stats()
 
         with patch('crypto_data.utils.ingestion_helpers.import_to_duckdb'):
-            process_download_results(results, mock_conn, stats, '5m', 'BTCUSDT')
+            process_download_results(results, mock_conn, stats, Interval.MIN_5, 'BTCUSDT')
 
             # Verify stats
             assert stats['downloaded'] == 2
@@ -249,7 +250,7 @@ def test_process_download_results_uses_original_symbol():
             {
                 'success': True,
                 'symbol': '1000PEPEUSDT',  # Download symbol
-                'data_type': 'futures',
+                'data_type': DataType.FUTURES.value,
                 'month': '2024-01',
                 'file_path': temp_file,
                 'error': None
@@ -260,7 +261,7 @@ def test_process_download_results_uses_original_symbol():
         stats = initialize_ingestion_stats()
 
         with patch('crypto_data.utils.ingestion_helpers.import_to_duckdb') as mock_import:
-            process_download_results(results, mock_conn, stats, '5m', 'PEPEUSDT')  # Original symbol
+            process_download_results(results, mock_conn, stats, Interval.MIN_5, 'PEPEUSDT')  # Original symbol
 
             # Verify original_symbol passed correctly
             mock_import.assert_called_once()
@@ -280,7 +281,7 @@ def test_query_data_availability_returns_correct_format():
         ('BTCUSDT', 'futures', date(2024, 1, 1), date(2024, 12, 31))
     ]
 
-    result = query_data_availability(mock_conn, ['BTCUSDT'], '5m')
+    result = query_data_availability(mock_conn, ['BTCUSDT'],Interval.MIN_5)
 
     assert isinstance(result, list)
     assert len(result) == 2
@@ -293,7 +294,7 @@ def test_query_data_availability_executes_correct_query():
     mock_conn = MagicMock()
     mock_conn.execute.return_value.fetchall.return_value = []
 
-    query_data_availability(mock_conn, ['BTCUSDT', 'ETHUSDT'], '5m')
+    query_data_availability(mock_conn, ['BTCUSDT', 'ETHUSDT'],Interval.MIN_5)
 
     # Verify query was executed
     assert mock_conn.execute.called
@@ -315,7 +316,7 @@ def test_query_data_availability_with_multiple_symbols():
     mock_conn.execute.return_value.fetchall.return_value = []
 
     symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT']
-    query_data_availability(mock_conn, symbols, '5m')
+    query_data_availability(mock_conn, symbols,Interval.MIN_5)
 
     # Verify placeholders:
     # spot: symbols + interval = 3 + 1 = 4
@@ -328,7 +329,7 @@ def test_query_data_availability_with_multiple_symbols():
 
     # Verify parameters passed correctly
     params = mock_conn.execute.call_args[0][1]
-    assert params == symbols + ['5m'] + symbols + ['5m'] + symbols + symbols
+    assert params == symbols + [Interval.MIN_5.value] + symbols + [Interval.MIN_5.value] + symbols + symbols
 
 
 def test_query_data_availability_empty_result():
@@ -336,7 +337,7 @@ def test_query_data_availability_empty_result():
     mock_conn = MagicMock()
     mock_conn.execute.return_value.fetchall.return_value = []
 
-    result = query_data_availability(mock_conn, ['BTCUSDT'], '5m')
+    result = query_data_availability(mock_conn, ['BTCUSDT'],Interval.MIN_5)
 
     assert result == []
 
@@ -351,7 +352,7 @@ def test_query_data_availability_includes_all_four_data_types():
         ('BTCUSDT', 'spot', date(2024, 1, 1), date(2024, 12, 31))
     ]
 
-    result = query_data_availability(mock_conn, ['BTCUSDT'], '5m')
+    result = query_data_availability(mock_conn, ['BTCUSDT'],Interval.MIN_5)
 
     # Verify all 4 data types returned
     data_types = {row[1] for row in result}
@@ -364,7 +365,7 @@ def test_query_data_availability_query_includes_all_tables():
     mock_conn = MagicMock()
     mock_conn.execute.return_value.fetchall.return_value = []
 
-    query_data_availability(mock_conn, ['BTCUSDT'], '5m')
+    query_data_availability(mock_conn, ['BTCUSDT'],Interval.MIN_5)
 
     # Verify query contains all tables
     query = mock_conn.execute.call_args[0][0]
@@ -381,15 +382,15 @@ def test_query_data_availability_parameters_for_all_tables():
     mock_conn.execute.return_value.fetchall.return_value = []
 
     symbols = ['BTCUSDT', 'ETHUSDT']
-    query_data_availability(mock_conn, symbols, '5m')
+    query_data_availability(mock_conn, symbols,Interval.MIN_5)
 
     # Parameters:
-    # spot: symbols + interval = ['BTCUSDT', 'ETHUSDT', '5m']
-    # futures: symbols + interval = ['BTCUSDT', 'ETHUSDT', '5m']
+    # spot: symbols + interval = ['BTCUSDT', 'ETHUSDT', Interval.MIN_5.value]
+    # futures: symbols + interval = ['BTCUSDT', 'ETHUSDT', Interval.MIN_5.value]
     # open_interest: symbols (no interval) = ['BTCUSDT', 'ETHUSDT']
     # funding_rates: symbols (no interval) = ['BTCUSDT', 'ETHUSDT']
     params = mock_conn.execute.call_args[0][1]
-    expected = symbols + ['5m'] + symbols + ['5m'] + symbols + symbols
+    expected = symbols + [Interval.MIN_5.value] + symbols + [Interval.MIN_5.value] + symbols + symbols
     assert params == expected
 
 
@@ -397,7 +398,7 @@ def test_query_data_availability_empty_symbols_list():
     """Test that empty symbols list returns empty result without executing query."""
     mock_conn = MagicMock()
 
-    result = query_data_availability(mock_conn, [], '5m')
+    result = query_data_availability(mock_conn, [],Interval.MIN_5)
 
     assert result == []
     # Verify query was NOT executed
@@ -415,7 +416,7 @@ def test_query_data_availability_partial_data_types():
         # ETHUSDT has ONLY funding_rates
     ]
 
-    result = query_data_availability(mock_conn, ['BTCUSDT', 'ETHUSDT'], '5m')
+    result = query_data_availability(mock_conn, ['BTCUSDT', 'ETHUSDT'],Interval.MIN_5)
 
     # Verify correct symbols returned
     symbols_found = {row[0] for row in result}
@@ -527,7 +528,7 @@ def test_log_ingestion_summary_with_availability():
                 symbols=['BTCUSDT'],
                 start_date='2024-01-01',
                 end_date='2024-12-31',
-                interval='5m',
+                interval=Interval.MIN_5,
                 show_availability=True
             )
 
@@ -535,7 +536,7 @@ def test_log_ingestion_summary_with_availability():
             mock_query.assert_called_once_with(
                 mock_db_instance.conn,
                 ['BTCUSDT'],
-                '5m'
+                Interval.MIN_5.value
             )
     finally:
         Path(db_path).unlink()
@@ -570,7 +571,7 @@ def test_log_ingestion_summary_handles_db_error():
             symbols=['BTCUSDT'],
             start_date='2024-01-01',
             end_date='2024-12-31',
-            interval='5m',
+            interval=Interval.MIN_5,
             show_availability=True
         )
 

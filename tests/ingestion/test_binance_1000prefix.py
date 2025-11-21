@@ -6,6 +6,7 @@ when stored in the database, ensuring consistency across spot and futures data.
 """
 
 import pytest
+from crypto_data.enums import DataType, Interval
 import tempfile
 from pathlib import Path
 import duckdb
@@ -61,8 +62,8 @@ def test_1000prefix_normalization():
                 conn=conn,
                 file_path=zip_path,
                 symbol='1000PEPEUSDT',
-                data_type='futures',
-                interval='5m',
+                data_type=DataType.FUTURES,
+                interval=Interval.MIN_5,
                 original_symbol='PEPEUSDT'  # Key: normalize to original
             )
 
@@ -100,8 +101,8 @@ def test_normal_symbol_unchanged():
                 conn=conn,
                 file_path=zip_path,
                 symbol='BTCUSDT',
-                data_type='spot',
-                interval='5m'
+                data_type=DataType.SPOT,
+                interval=Interval.MIN_5
                 # No original_symbol parameter
             )
 

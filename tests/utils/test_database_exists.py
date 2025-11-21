@@ -5,6 +5,7 @@ Tests the month completion logic that determines whether to skip re-downloading.
 """
 
 import pytest
+from crypto_data.enums import DataType, Interval
 import duckdb
 from datetime import datetime
 from crypto_data.utils.database import data_exists
@@ -69,7 +70,7 @@ def test_complete_data_returns_true(temp_db):
         ('binance', 'BTCUSDT', '5m', '2024-01-28 23:55:00', 47000, 47100, 46900, 47050, 100, 4700000, 1000, 50, 2350000)
     """)
 
-    result = data_exists(temp_db, 'BTCUSDT', '2024-01', 'spot', '5m')
+    result = data_exists(temp_db, 'BTCUSDT', '2024-01', DataType.SPOT, Interval.MIN_5)
     assert result is True
 
 
@@ -83,13 +84,13 @@ def test_partial_data_returns_false(temp_db):
         ('binance', 'BTCUSDT', '5m', '2024-01-15 23:55:00', 47000, 47100, 46900, 47050, 100, 4700000, 1000, 50, 2350000)
     """)
 
-    result = data_exists(temp_db, 'BTCUSDT', '2024-01', 'spot', '5m')
+    result = data_exists(temp_db, 'BTCUSDT', '2024-01', DataType.SPOT, Interval.MIN_5)
     assert result is False
 
 
 def test_no_data_returns_false(temp_db):
     """Month with no data should return False."""
-    result = data_exists(temp_db, 'BTCUSDT', '2024-01', 'spot', '5m')
+    result = data_exists(temp_db, 'BTCUSDT', '2024-01', DataType.SPOT, Interval.MIN_5)
     assert result is False
 
 
@@ -102,7 +103,7 @@ def test_exactly_day_24_returns_true(temp_db):
         ('binance', 'BTCUSDT', '5m', '2024-01-24 00:00:00', 47000, 47100, 46900, 47050, 100, 4700000, 1000, 50, 2350000)
     """)
 
-    result = data_exists(temp_db, 'BTCUSDT', '2024-01', 'spot', '5m')
+    result = data_exists(temp_db, 'BTCUSDT', '2024-01', DataType.SPOT, Interval.MIN_5)
     assert result is True
 
 
@@ -115,7 +116,7 @@ def test_december_month_boundary(temp_db):
         ('binance', 'BTCUSDT', '5m', '2024-12-28 23:55:00', 47000, 47100, 46900, 47050, 100, 4700000, 1000, 50, 2350000)
     """)
 
-    result = data_exists(temp_db, 'BTCUSDT', '2024-12', 'spot', '5m')
+    result = data_exists(temp_db, 'BTCUSDT', '2024-12', DataType.SPOT, Interval.MIN_5)
     assert result is True
 
 
@@ -130,7 +131,7 @@ def test_january_data_not_counted_in_december(temp_db):
     """)
 
     # December check should return False (max is day 15)
-    result = data_exists(temp_db, 'BTCUSDT', '2024-12', 'spot', '5m')
+    result = data_exists(temp_db, 'BTCUSDT', '2024-12', DataType.SPOT, Interval.MIN_5)
     assert result is False
 
 
@@ -149,10 +150,10 @@ def test_different_intervals_are_separate(temp_db):
     """)
 
     # 5m should exist (complete)
-    assert data_exists(temp_db, 'BTCUSDT', '2024-01', 'spot', '5m') is True
+    assert data_exists(temp_db, 'BTCUSDT', '2024-01', DataType.SPOT, Interval.MIN_5) is True
 
     # 1h should not exist (partial)
-    assert data_exists(temp_db, 'BTCUSDT', '2024-01', 'spot', '1h') is False
+    assert data_exists(temp_db, 'BTCUSDT', '2024-01', DataType.SPOT, Interval.HOUR_1) is False
 
 
 def test_different_data_types_are_separate(temp_db):
@@ -170,10 +171,10 @@ def test_different_data_types_are_separate(temp_db):
     """)
 
     # Spot should exist (complete)
-    assert data_exists(temp_db, 'BTCUSDT', '2024-01', 'spot', '5m') is True
+    assert data_exists(temp_db, 'BTCUSDT', '2024-01', DataType.SPOT, Interval.MIN_5) is True
 
     # Futures should not exist (partial)
-    assert data_exists(temp_db, 'BTCUSDT', '2024-01', 'futures', '5m') is False
+    assert data_exists(temp_db, 'BTCUSDT', '2024-01', DataType.FUTURES, Interval.MIN_5) is False
 
 
 def test_different_symbols_are_separate(temp_db):
@@ -185,7 +186,7 @@ def test_different_symbols_are_separate(temp_db):
     """)
 
     # Check ETHUSDT (no data)
-    assert data_exists(temp_db, 'ETHUSDT', '2024-01', 'spot', '5m') is False
+    assert data_exists(temp_db, 'ETHUSDT', '2024-01', DataType.SPOT, Interval.MIN_5) is False
 
 
 def test_year_boundary_forward(temp_db):
@@ -197,7 +198,7 @@ def test_year_boundary_forward(temp_db):
         ('binance', 'BTCUSDT', '5m', '2025-01-28 23:55:00', 47000, 47100, 46900, 47050, 100, 4700000, 1000, 50, 2350000)
     """)
 
-    result = data_exists(temp_db, 'BTCUSDT', '2025-01', 'spot', '5m')
+    result = data_exists(temp_db, 'BTCUSDT', '2025-01', DataType.SPOT, Interval.MIN_5)
     assert result is True
 
 
@@ -209,7 +210,7 @@ def test_last_day_of_month_is_complete(temp_db):
         ('binance', 'BTCUSDT', '5m', '2024-01-31 23:55:00', 47000, 47100, 46900, 47050, 100, 4700000, 1000, 50, 2350000)
     """)
 
-    result = data_exists(temp_db, 'BTCUSDT', '2024-01', 'spot', '5m')
+    result = data_exists(temp_db, 'BTCUSDT', '2024-01', DataType.SPOT, Interval.MIN_5)
     assert result is True
 
 
@@ -222,5 +223,5 @@ def test_february_short_month(temp_db):
         ('binance', 'BTCUSDT', '5m', '2024-02-27 23:55:00', 47000, 47100, 46900, 47050, 100, 4700000, 1000, 50, 2350000)
     """)
 
-    result = data_exists(temp_db, 'BTCUSDT', '2024-02', 'spot', '5m')
+    result = data_exists(temp_db, 'BTCUSDT', '2024-02', DataType.SPOT, Interval.MIN_5)
     assert result is True

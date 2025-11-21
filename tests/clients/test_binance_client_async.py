@@ -6,6 +6,7 @@ Uses mocks to avoid real network requests.
 """
 
 import pytest
+from crypto_data.enums import DataType, Interval
 import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, Mock, patch, MagicMock
@@ -49,9 +50,9 @@ class TestBasicDownload:
             # Download
             result = await client.download_klines(
                 symbol='BTCUSDT',
-                data_type='spot',
+                data_type=DataType.SPOT,
                 month='2024-01',
-                interval='5m',
+                interval=Interval.MIN_5,
                 output_path=output_path
             )
 
@@ -89,9 +90,9 @@ class TestBasicDownload:
         try:
             result = await client.download_klines(
                 symbol='BTCUSDT',
-                data_type='spot',
+                data_type=DataType.SPOT,
                 month='2024-01',
-                interval='5m',
+                interval=Interval.MIN_5,
                 output_path=output_path
             )
 
@@ -134,9 +135,9 @@ class TestBasicDownload:
         with pytest.raises(aiohttp.ClientResponseError) as exc_info:
             await client.download_klines(
                 symbol='BTCUSDT',
-                data_type='spot',
+                data_type=DataType.SPOT,
                 month='2024-01',
-                interval='5m',
+                interval=Interval.MIN_5,
                 output_path=output_path
             )
 
@@ -174,9 +175,9 @@ class TestBasicDownload:
         with pytest.raises(aiohttp.ClientResponseError) as exc_info:
             await client.download_klines(
                 symbol='BTCUSDT',
-                data_type='spot',
+                data_type=DataType.SPOT,
                 month='2024-01',
-                interval='5m',
+                interval=Interval.MIN_5,
                 output_path=output_path
             )
 
@@ -203,9 +204,9 @@ class TestBasicDownload:
         with pytest.raises(aiohttp.ClientError):
             await client.download_klines(
                 symbol='BTCUSDT',
-                data_type='spot',
+                data_type=DataType.SPOT,
                 month='2024-01',
-                interval='5m',
+                interval=Interval.MIN_5,
                 output_path=output_path
             )
 
@@ -237,9 +238,9 @@ class TestBasicDownload:
         try:
             await client.download_klines(
                 symbol='ETHUSDT',
-                data_type='futures',
+                data_type=DataType.FUTURES,
                 month='2024-03',
-                interval='1h',
+                interval=Interval.HOUR_1,
                 output_path=output_path
             )
 
@@ -292,9 +293,9 @@ class TestContextManager:
         with pytest.raises(RuntimeError, match="Client session not initialized"):
             await client.download_klines(
                 symbol='BTCUSDT',
-                data_type='spot',
+                data_type=DataType.SPOT,
                 month='2024-01',
-                interval='5m',
+                interval=Interval.MIN_5,
                 output_path=output_path
             )
 
@@ -312,9 +313,9 @@ class TestUrlConstruction:
 
         url = client.get_download_url(
             symbol='BTCUSDT',
-            data_type='spot',
+            data_type=DataType.SPOT,
             month='2024-01',
-            interval='5m'
+            interval=Interval.MIN_5
         )
 
         expected = 'https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/5m/BTCUSDT-5m-2024-01.zip'
@@ -326,30 +327,30 @@ class TestUrlConstruction:
 
         url = client.get_download_url(
             symbol='ETHUSDT',
-            data_type='futures',
+            data_type=DataType.FUTURES,
             month='2024-03',
-            interval='1h'
+            interval=Interval.HOUR_1
         )
 
         expected = 'https://data.binance.vision/data/futures/um/monthly/klines/ETHUSDT/1h/ETHUSDT-1h-2024-03.zip'
         assert url == expected
 
     def test_invalid_data_type_raises_value_error(self):
-        """Test that invalid data_type raises ValueError."""
+        """Test that invalid data_type (OPEN_INTEREST) raises ValueError."""
         client = BinanceDataVisionClientAsync()
 
-        # get_download_url should raise ValueError
+        # OPEN_INTEREST is not valid for klines downloads (only SPOT/FUTURES)
         with pytest.raises(ValueError, match="Invalid data_type"):
             client.get_download_url(
                 symbol='BTCUSDT',
-                data_type='invalid',
+                data_type=DataType.OPEN_INTEREST,
                 month='2024-01',
-                interval='5m'
+                interval=Interval.MIN_5
             )
 
     @pytest.mark.asyncio
     async def test_download_invalid_data_type_raises_value_error(self):
-        """Test that download_klines with invalid data_type raises ValueError."""
+        """Test that download_klines with invalid data_type (OPEN_INTEREST) raises ValueError."""
         client = BinanceDataVisionClientAsync()
 
         # Initialize session
@@ -359,13 +360,13 @@ class TestUrlConstruction:
         with tempfile.NamedTemporaryFile(suffix='.zip') as f:
             output_path = Path(f.name)
 
-        # Should raise ValueError
+        # OPEN_INTEREST is not valid for klines downloads (only SPOT/FUTURES)
         with pytest.raises(ValueError, match="Invalid data_type"):
             await client.download_klines(
                 symbol='BTCUSDT',
-                data_type='invalid',
+                data_type=DataType.OPEN_INTEREST,
                 month='2024-01',
-                interval='5m',
+                interval=Interval.MIN_5,
                 output_path=output_path
             )
 
@@ -461,9 +462,9 @@ class TestConcurrency:
 
             # Download in parallel
             tasks = [
-                client.download_klines('BTCUSDT', 'spot', '2024-01', '5m', paths[0]),
-                client.download_klines('BTCUSDT', 'spot', '2024-02', '5m', paths[1]),
-                client.download_klines('BTCUSDT', 'spot', '2024-03', '5m', paths[2])
+                client.download_klines('BTCUSDT', DataType.SPOT, '2024-01', Interval.MIN_5, paths[0]),
+                client.download_klines('BTCUSDT', DataType.SPOT, '2024-02', Interval.MIN_5, paths[1]),
+                client.download_klines('BTCUSDT', DataType.SPOT, '2024-03', Interval.MIN_5, paths[2])
             ]
 
             results = await asyncio.gather(*tasks)
@@ -509,9 +510,9 @@ class TestConfiguration:
 
         url = client.get_download_url(
             symbol='BTCUSDT',
-            data_type='spot',
+            data_type=DataType.SPOT,
             month='2024-01',
-            interval='5m'
+            interval=Interval.MIN_5
         )
 
         assert url.startswith(custom_url)

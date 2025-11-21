@@ -16,6 +16,7 @@ All tests are GitHub Actions compatible:
 """
 
 import pytest
+from crypto_data.enums import DataType, Interval
 import tempfile
 import asyncio
 from pathlib import Path
@@ -295,9 +296,9 @@ async def test_download_single_month_success():
         result = await _download_single_month(
             client=mock_client,
             symbol='BTCUSDT',
-            data_type='spot',
+            data_type=DataType.SPOT,
             month='2024-01',
-            interval='5m',
+            interval=Interval.MIN_5,
             temp_path=temp_path,
             progress_info={'total': 1}
         )
@@ -320,9 +321,9 @@ async def test_download_single_month_404_returns_not_found():
         result = await _download_single_month(
             client=mock_client,
             symbol='BTCUSDT',
-            data_type='spot',
+            data_type=DataType.SPOT,
             month='2024-01',
-            interval='5m',
+            interval=Interval.MIN_5,
             temp_path=temp_path,
             progress_info={'total': 1}
         )
@@ -342,9 +343,9 @@ async def test_download_single_month_network_error():
         result = await _download_single_month(
             client=mock_client,
             symbol='BTCUSDT',
-            data_type='spot',
+            data_type=DataType.SPOT,
             month='2024-01',
-            interval='5m',
+            interval=Interval.MIN_5,
             temp_path=temp_path,
             progress_info={'total': 1}
         )
@@ -371,9 +372,9 @@ async def test_download_symbol_parallel_downloads(temp_db):
 
         results = await _download_symbol_data_type_async(
             symbol='BTCUSDT',
-            data_type='spot',
+            data_type=DataType.SPOT,
             months=['2024-01', '2024-02', '2024-03'],
-            interval='5m',
+            interval=Interval.MIN_5,
             temp_path=temp_path,
             conn=db.conn,
             skip_existing=False,
@@ -400,9 +401,9 @@ async def test_download_symbol_skips_existing_data(temp_db):
 
         results = await _download_symbol_data_type_async(
             symbol='BTCUSDT',
-            data_type='spot',
+            data_type=DataType.SPOT,
             months=['2024-01', '2024-02'],
-            interval='5m',
+            interval=Interval.MIN_5,
             temp_path=temp_path,
             conn=db.conn,
             skip_existing=True,
@@ -436,9 +437,9 @@ async def test_download_symbol_respects_max_concurrent(temp_db):
 
         await _download_symbol_data_type_async(
             symbol='BTCUSDT',
-            data_type='spot',
+            data_type=DataType.SPOT,
             months=['2024-01', '2024-02'],
-            interval='5m',
+            interval=Interval.MIN_5,
             temp_path=temp_path,
             conn=db.conn,
             skip_existing=False,
@@ -477,9 +478,9 @@ async def test_download_symbol_handles_mixed_results(temp_db):
 
         results = await _download_symbol_data_type_async(
             symbol='BTCUSDT',
-            data_type='spot',
+            data_type=DataType.SPOT,
             months=['2024-01', '2024-02', '2024-03', '2024-04'],
-            interval='5m',
+            interval=Interval.MIN_5,
             temp_path=temp_path,
             conn=db.conn,
             skip_existing=False,
@@ -509,9 +510,9 @@ async def test_download_symbol_empty_results_when_all_exist(temp_db):
 
         results = await _download_symbol_data_type_async(
             symbol='BTCUSDT',
-            data_type='spot',
+            data_type=DataType.SPOT,
             months=['2024-01'],
-            interval='5m',
+            interval=Interval.MIN_5,
             temp_path=temp_path,
             conn=db.conn,
             skip_existing=True,
@@ -554,9 +555,9 @@ async def test_gap_detection_stops_at_threshold(temp_db):
 
         results = await _download_symbol_data_type_async(
             symbol='FTTUSDT',
-            data_type='spot',
+            data_type=DataType.SPOT,
             months=['2024-01', '2024-02', '2024-03', '2024-04', '2024-05', '2024-06'],
-            interval='5m',
+            interval=Interval.MIN_5,
             temp_path=temp_path,
             conn=db.conn,
             skip_existing=False,
@@ -597,9 +598,9 @@ async def test_gap_detection_ignores_leading_failures(temp_db):
 
         results = await _download_symbol_data_type_async(
             symbol='NEWTOKEN',
-            data_type='spot',
+            data_type=DataType.SPOT,
             months=['2024-01', '2024-02', '2024-03', '2024-04', '2024-05'],
-            interval='5m',
+            interval=Interval.MIN_5,
             temp_path=temp_path,
             conn=db.conn,
             skip_existing=False,
@@ -642,9 +643,9 @@ async def test_gap_detection_resets_on_success(temp_db):
 
         results = await _download_symbol_data_type_async(
             symbol='BTCUSDT',
-            data_type='spot',
+            data_type=DataType.SPOT,
             months=['2024-01', '2024-02', '2024-03', '2024-04', '2024-05'],
-            interval='5m',
+            interval=Interval.MIN_5,
             temp_path=temp_path,
             conn=db.conn,
             skip_existing=False,
@@ -684,9 +685,9 @@ async def test_gap_detection_disabled_when_threshold_zero(temp_db):
 
         results = await _download_symbol_data_type_async(
             symbol='BTCUSDT',
-            data_type='spot',
+            data_type=DataType.SPOT,
             months=['2024-01', '2024-02', '2024-03', '2024-04'],
-            interval='5m',
+            interval=Interval.MIN_5,
             temp_path=temp_path,
             conn=db.conn,
             skip_existing=False,
@@ -725,17 +726,17 @@ def test_1000prefix_retry_on_all_404s(temp_db):
 
         # First call returns all 404s, second call (retry) succeeds
         mock_run.side_effect = [
-            [{'success': False, 'error': 'not_found', 'symbol': 'PEPEUSDT', 'data_type': 'futures', 'month': '2024-01', 'file_path': None}],
-            [{'success': True, 'error': None, 'symbol': '1000PEPEUSDT', 'data_type': 'futures', 'month': '2024-01', 'file_path': Path('/tmp/test.zip')}]
+            [{'success': False, 'error': 'not_found', 'symbol': 'PEPEUSDT', 'data_type': DataType.FUTURES.value, 'month': '2024-01', 'file_path': None}],
+            [{'success': True, 'error': None, 'symbol': '1000PEPEUSDT', 'data_type': DataType.FUTURES.value, 'month': '2024-01', 'file_path': Path('/tmp/test.zip')}]
         ]
 
         ingest_binance_async(
             db_path=temp_db,
             symbols=['PEPEUSDT'],
-            data_types=['futures'],
+            data_types=[DataType.FUTURES],
             start_date='2024-01-01',
             end_date='2024-01-31',
-            interval='5m'
+            interval=Interval.MIN_5
         )
 
     # Verify two calls: original + retry
@@ -762,19 +763,19 @@ def test_1000prefix_cache_persists_across_symbols(temp_db):
 
         # First symbol: all 404s, retry succeeds
         mock_run.side_effect = [
-            [{'success': False, 'error': 'not_found', 'symbol': 'PEPEUSDT', 'data_type': 'futures', 'month': '2024-01', 'file_path': None}],
-            [{'success': True, 'error': None, 'symbol': '1000PEPEUSDT', 'data_type': 'futures', 'month': '2024-01', 'file_path': Path('/tmp/test.zip')}],
+            [{'success': False, 'error': 'not_found', 'symbol': 'PEPEUSDT', 'data_type': DataType.FUTURES.value, 'month': '2024-01', 'file_path': None}],
+            [{'success': True, 'error': None, 'symbol': '1000PEPEUSDT', 'data_type': DataType.FUTURES.value, 'month': '2024-01', 'file_path': Path('/tmp/test.zip')}],
             # Second symbol: uses cached mapping (only 1 call)
-            [{'success': True, 'error': None, 'symbol': '1000PEPEUSDT', 'data_type': 'futures', 'month': '2024-01', 'file_path': Path('/tmp/test2.zip')}]
+            [{'success': True, 'error': None, 'symbol': '1000PEPEUSDT', 'data_type': DataType.FUTURES.value, 'month': '2024-01', 'file_path': Path('/tmp/test2.zip')}]
         ]
 
         ingest_binance_async(
             db_path=temp_db,
             symbols=['PEPEUSDT', 'PEPEUSDT'],  # Same symbol twice
-            data_types=['futures'],
+            data_types=[DataType.FUTURES],
             start_date='2024-01-01',
             end_date='2024-01-31',
-            interval='5m'
+            interval=Interval.MIN_5
         )
 
     # Verify cache was used: first symbol = 2 calls, second symbol = 1 call (cached)
@@ -801,15 +802,15 @@ def test_1000prefix_skips_retry_if_cached(temp_db):
         mock_db.return_value = mock_db_instance
 
         # Only one call (uses cached mapping)
-        mock_run.return_value = [{'success': True, 'error': None, 'symbol': '1000PEPEUSDT', 'data_type': 'futures', 'month': '2024-01', 'file_path': Path('/tmp/test.zip')}]
+        mock_run.return_value = [{'success': True, 'error': None, 'symbol': '1000PEPEUSDT', 'data_type': DataType.FUTURES.value, 'month': '2024-01', 'file_path': Path('/tmp/test.zip')}]
 
         ingest_binance_async(
             db_path=temp_db,
             symbols=['PEPEUSDT'],
-            data_types=['futures'],
+            data_types=[DataType.FUTURES],
             start_date='2024-01-01',
             end_date='2024-01-31',
-            interval='5m'
+            interval=Interval.MIN_5
         )
 
     # Verify only one call (no retry)
@@ -833,15 +834,15 @@ def test_binance_import_commits_on_success(temp_db):
         mock_db_instance = MagicMock()
         mock_db.return_value = mock_db_instance
 
-        mock_run.return_value = [{'success': True, 'error': None, 'symbol': 'BTCUSDT', 'data_type': 'spot', 'month': '2024-01', 'file_path': Path('/tmp/test.zip')}]
+        mock_run.return_value = [{'success': True, 'error': None, 'symbol': 'BTCUSDT', 'data_type': DataType.SPOT.value, 'month': '2024-01', 'file_path': Path('/tmp/test.zip')}]
 
         ingest_binance_async(
             db_path=temp_db,
             symbols=['BTCUSDT'],
-            data_types=['spot'],
+            data_types=[DataType.SPOT],
             start_date='2024-01-01',
             end_date='2024-01-31',
-            interval='5m'
+            interval=Interval.MIN_5
         )
 
     # Verify BEGIN and COMMIT were called
@@ -863,7 +864,7 @@ def test_binance_import_rolls_back_on_error(temp_db):
         mock_db_instance = MagicMock()
         mock_db.return_value = mock_db_instance
 
-        mock_run.return_value = [{'success': True, 'error': None, 'symbol': 'BTCUSDT', 'data_type': 'spot', 'month': '2024-01', 'file_path': Path('/tmp/test.zip')}]
+        mock_run.return_value = [{'success': True, 'error': None, 'symbol': 'BTCUSDT', 'data_type': DataType.SPOT.value, 'month': '2024-01', 'file_path': Path('/tmp/test.zip')}]
 
         # Simulate import error
         mock_process.side_effect = Exception("Import failed")
@@ -871,10 +872,10 @@ def test_binance_import_rolls_back_on_error(temp_db):
         ingest_binance_async(
             db_path=temp_db,
             symbols=['BTCUSDT'],
-            data_types=['spot'],
+            data_types=[DataType.SPOT],
             start_date='2024-01-01',
             end_date='2024-01-31',
-            interval='5m'
+            interval=Interval.MIN_5
         )
 
     # Verify ROLLBACK was called

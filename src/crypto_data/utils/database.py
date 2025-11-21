@@ -11,6 +11,7 @@ from typing import Optional
 import pandas as pd
 import pandera as pa
 
+from crypto_data.enums import DataType, Interval
 # Import Pandera validation functions
 from crypto_data.schemas import (
     validate_ohlcv_dataframe,
@@ -25,8 +26,8 @@ def import_to_duckdb(
     conn,
     file_path: Path,
     symbol: str,
-    data_type: str,
-    interval: str,
+    data_type: DataType,
+    interval: Interval,
     exchange: str = 'binance',
     original_symbol: Optional[str] = None
 ):
@@ -61,10 +62,10 @@ def import_to_duckdb(
         Path to ZIP file containing CSV data
     symbol : str
         Symbol used for download (may be 1000-prefixed, e.g., '1000PEPEUSDT')
-    data_type : str
-        Data type ('spot' or 'futures')
-    interval : str
-        Kline interval (e.g., '5m', '1h')
+    data_type : DataType
+        Data type (DataType.SPOT or DataType.FUTURES)
+    interval : Interval
+        Kline interval (e.g., Interval.MIN_5, Interval.HOUR_1)
     exchange : str, optional
         Exchange name (default: 'binance')
     original_symbol : str, optional
@@ -72,7 +73,7 @@ def import_to_duckdb(
         If None, uses symbol parameter. This ensures consistency when
         Binance uses different tickers for spot vs futures.
     """
-    table = data_type  # 'spot' or 'futures'
+    table = data_type.value  # 'spot' or 'futures'
     logger.debug(f"Importing to {table} (exchange={exchange})")
 
     # Extract ZIP file
@@ -114,7 +115,7 @@ def import_to_duckdb(
         storage_symbol = original_symbol if original_symbol else symbol
         df['exchange'] = exchange
         df['symbol'] = storage_symbol
-        df['interval'] = interval
+        df['interval'] = interval.value
 
         # Convert timestamp (handle both milliseconds and microseconds)
         # Auto-detect format based on magnitude:
@@ -414,7 +415,7 @@ def import_funding_rates_to_duckdb(
             csv_path.unlink()
 
 
-def data_exists(conn, symbol: str, month: str, data_type: str, interval: str = None, exchange: str = 'binance') -> bool:
+def data_exists(conn, symbol: str, month: str, data_type: DataType, interval: Interval = None, exchange: str = 'binance') -> bool:
     """
     Check if data already exists and is complete for given symbol/month/interval.
 
@@ -429,10 +430,10 @@ def data_exists(conn, symbol: str, month: str, data_type: str, interval: str = N
         Symbol to check
     month : str
         Month in YYYY-MM format
-    data_type : str
-        Data type ('spot', 'futures', 'funding_rates')
-    interval : str, optional
-        Kline interval (e.g., '5m', '1h'). Required for spot/futures, not used for funding_rates.
+    data_type : DataType
+        Data type (DataType.SPOT, DataType.FUTURES, DataType.FUNDING_RATES)
+    interval : Interval, optional
+        Kline interval (e.g., Interval.MIN_5). Required for spot/futures, not used for funding_rates.
     exchange : str, optional
         Exchange name (default: 'binance')
 
@@ -442,9 +443,9 @@ def data_exists(conn, symbol: str, month: str, data_type: str, interval: str = N
         True if data exists and is complete, False otherwise
     """
     # Determine table name
-    if data_type in ['spot', 'futures']:
-        table = data_type
-    elif data_type == 'funding_rates':
+    if data_type in [DataType.SPOT, DataType.FUTURES]:
+        table = data_type.value
+    elif data_type == DataType.FUNDING_RATES:
         table = 'funding_rates'
     else:
         return False  # Unknown data type
@@ -460,7 +461,7 @@ def data_exists(conn, symbol: str, month: str, data_type: str, interval: str = N
         end_date = f"{year}-{int(month_num) + 1:02d}-01"
 
     # Build query based on data type
-    if data_type in ['spot', 'futures']:
+    if data_type in [DataType.SPOT, DataType.FUTURES]:
         # Klines have interval column
         result = conn.execute(f"""
             SELECT MAX(timestamp) FROM {table}
@@ -469,7 +470,7 @@ def data_exists(conn, symbol: str, month: str, data_type: str, interval: str = N
                 AND interval = ?
                 AND timestamp >= ?
                 AND timestamp < ?
-        """, [exchange, symbol, interval, start_date, end_date]).fetchone()
+        """, [exchange, symbol, interval.value, start_date, end_date]).fetchone()
     else:
         # Funding rates don't have interval column
         result = conn.execute(f"""

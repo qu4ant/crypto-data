@@ -1,4 +1,4 @@
-from crypto_data import populate_database, setup_colored_logging
+from crypto_data import populate_database, setup_colored_logging, DataType, Interval
 
 # Universe filtering constants
 # Exclude these CoinMarketCap tags (categories) from the universe
@@ -27,11 +27,11 @@ def main():
     # 5. Download Binance spot + futures data for filtered symbols
     populate_database(
         db_path='crypto_data.db',
-        start_date='2022-01-01',
+        start_date='2025-01-01',
         end_date='2025-10-01',
-        top_n=50,  # Top X coins by market cap
-        interval='15m',  # interval : 1m, 5m, 15m, 30m, 1h, 4h, 1d
-        data_types=['spot', 'futures', 'open_interest','funding_rates'],
+        top_n=15,  # Top X coins by market cap
+        interval=Interval.HOUR_4,  # interval : Interval.MIN_1, MIN_5, MIN_15, MIN_30, HOUR_1, HOUR_4, DAY_1
+        data_types=[DataType.SPOT, DataType.FUTURES, DataType.OPEN_INTEREST, DataType.FUNDING_RATES],
         exclude_tags=DEFAULT_EXCLUDE_TAGS,
         exclude_symbols=DEFAULT_EXCLUDE_SYMBOLS
     )

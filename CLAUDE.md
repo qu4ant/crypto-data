@@ -23,6 +23,7 @@ Developer guidance for Claude Code when working with this repository.
 - `CryptoDatabase` - Schema management, stats, context manager
 - `setup_colored_logging()`, `get_logger()` - Colored logging utilities
 - `get_symbols_from_universe(db_path, start_date, end_date, top_n)` - Extract symbols (UNION strategy)
+- **Enums** (v5.0.0+): `DataType`, `Interval`, `Exchange` - Type-safe enumerations
 
 **Internal Clients** (`src/crypto_data/clients/` - not exported):
 - `CoinMarketCapClient` - **Async** client with retry logic (429→60s, 500/503→5s, max 3 retries)
@@ -32,9 +33,75 @@ Developer guidance for Claude Code when working with this repository.
 - `scripts/Download_data_universe.py` - Example script using populate_database() function
 
 **Data Types**:
-- Binance: Spot/Futures Klines (OHLCV), default 5m interval
+- Binance: Spot/Futures Klines (OHLCV), Open Interest, Funding Rates
 - CoinMarketCap: Universe rankings (top N by market cap), stablecoin flags
-- Not included: Premium Index, Funding Rates
+
+### Type-Safe Enums (v5.0.0+)
+
+**Breaking Change**: All data type and interval parameters now require enums instead of strings.
+
+**Available Enums**:
+```python
+from crypto_data import DataType, Interval, Exchange
+
+# DataType enum
+DataType.SPOT           # 'spot'
+DataType.FUTURES        # 'futures'
+DataType.OPEN_INTEREST  # 'open_interest'
+DataType.FUNDING_RATES  # 'funding_rates'
+
+# Interval enum
+Interval.MIN_1    # '1m'
+Interval.MIN_5    # '5m'
+Interval.MIN_15   # '15m'
+Interval.MIN_30   # '30m'
+Interval.HOUR_1   # '1h'
+Interval.HOUR_2   # '2h'
+Interval.HOUR_4   # '4h'
+Interval.HOUR_6   # '6h'
+Interval.HOUR_8   # '8h'
+Interval.HOUR_12  # '12h'
+Interval.DAY_1    # '1d'
+Interval.DAY_3    # '3d'
+Interval.WEEK_1   # '1w'
+Interval.MONTH_1  # '1M'
+
+# Exchange enum (future expansion)
+Exchange.BINANCE   # 'binance' (currently implemented)
+Exchange.BYBIT     # 'bybit' (future)
+Exchange.KRAKEN    # 'kraken' (future)
+```
+
+**Migration from v4.x to v5.x**:
+```python
+# Before (v4.x) - strings
+ingest_binance_async(
+    db_path='crypto_data.db',
+    symbols=['BTCUSDT'],
+    data_types=['spot', 'futures'],
+    start_date='2024-01-01',
+    end_date='2024-12-31',
+    interval='5m'
+)
+
+# After (v5.x) - enums
+from crypto_data import DataType, Interval
+
+ingest_binance_async(
+    db_path='crypto_data.db',
+    symbols=['BTCUSDT'],
+    data_types=[DataType.SPOT, DataType.FUTURES],
+    start_date='2024-01-01',
+    end_date='2024-12-31',
+    interval=Interval.MIN_5
+)
+```
+
+**Benefits**:
+- ✅ IDE autocompletion
+- ✅ Type checking (mypy, pyright)
+- ✅ Protection against typos
+- ✅ Self-documenting code
 
 ## Database Schema (v4.0.0 - Multi-Exchange)
 
@@ -238,7 +305,10 @@ python scripts/Download_data_universe.py  # Runs complete database population wo
 
 **Python API**:
 ```python
-from crypto_data import populate_database, ingest_universe, ingest_binance_async, setup_colored_logging
+from crypto_data import (
+    populate_database, ingest_universe, ingest_binance_async,
+    setup_colored_logging, DataType, Interval
+)
 
 # Setup logging (auto-creates logs/crypto_data_YYYY-MM-DD_HH-MM-SS.log)
 log_file = setup_colored_logging()
@@ -249,8 +319,8 @@ populate_database(
     start_date='2024-01-01',
     end_date='2024-12-31',
     top_n=100,
-    interval='5m',  # Options: 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M
-    data_types=['spot', 'futures'],
+    interval=Interval.MIN_5,  # Use Interval enum (MIN_5, MIN_15, HOUR_1, HOUR_4, DAY_1, etc.)
+    data_types=[DataType.SPOT, DataType.FUTURES],
     exclude_tags=['stablecoin', 'wrapped-tokens', 'privacy'],
     exclude_symbols=['LUNA', 'FTT', 'UST']
 )
@@ -261,8 +331,8 @@ populate_database(
     start_date='2024-01-01',
     end_date='2024-12-31',
     top_n=100,
-    interval='5m',
-    data_types=['spot', 'futures']
+    interval=Interval.MIN_5,
+    data_types=[DataType.SPOT, DataType.FUTURES]
 )
 
 # Step-by-step: ingest_universe() → get_symbols_from_universe() → ingest_binance_async()
@@ -281,8 +351,14 @@ asyncio.run(ingest_universe(
 symbols = get_symbols_from_universe('crypto_data.db', '2024-01-01', '2024-12-31', 100)
 
 # 3. Ingest Binance data (async)
-# interval options: 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M
-ingest_binance_async('crypto_data.db', symbols, '2024-01-01', '2024-12-31', interval='5m')
+ingest_binance_async(
+    db_path='crypto_data.db',
+    symbols=symbols,
+    data_types=[DataType.SPOT, DataType.FUTURES],
+    start_date='2024-01-01',
+    end_date='2024-12-31',
+    interval=Interval.MIN_5
+)
 ```
 
 **Testing**:

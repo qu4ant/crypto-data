@@ -3,6 +3,7 @@ Tests for open_interest table schema and basic operations.
 """
 
 import pytest
+from crypto_data.enums import DataType, Interval
 import tempfile
 from pathlib import Path
 from datetime import datetime

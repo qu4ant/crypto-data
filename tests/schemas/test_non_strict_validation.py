@@ -6,6 +6,7 @@ This improves code coverage for error handling paths in schema validation functi
 """
 
 import pytest
+from crypto_data.enums import DataType, Interval
 import pandas as pd
 import pandera as pa
 from datetime import datetime
@@ -84,7 +85,7 @@ class TestOHLCVNonStrictValidation:
         df = pd.DataFrame({
             'exchange': ['binance'],
             'symbol': ['BTCUSDT'],
-            'interval': ['1h'],
+            'interval': [Interval.HOUR_1.value],
             'timestamp': [pd.Timestamp('2024-01-01')],
             'open': [40000.0],
             'high': [41000.0],
@@ -106,7 +107,7 @@ class TestOHLCVNonStrictValidation:
         df = pd.DataFrame({
             'exchange': ['binance'],
             'symbol': ['BTCUSDT'],
-            'interval': ['1h'],
+            'interval': [Interval.HOUR_1.value],
             'timestamp': [pd.Timestamp('2024-01-01')],
             'open': [40000.0],
             'high': [38000.0],  # Invalid: high < low
@@ -127,7 +128,7 @@ class TestOHLCVNonStrictValidation:
         df = pd.DataFrame({
             'exchange': ['binance'],
             'symbol': ['BTCUSDT'],
-            'interval': ['1h'],
+            'interval': [Interval.HOUR_1.value],
             'timestamp': [pd.Timestamp('2024-01-01')],
             'open': [40000.0],
             'high': [41000.0],
@@ -250,7 +251,7 @@ class TestErrorStructure:
         df = pd.DataFrame({
             'exchange': ['binance'],
             'symbol': ['BTCUSDT'],
-            'interval': ['1h'],
+            'interval': [Interval.HOUR_1.value],
             'timestamp': [pd.Timestamp('2024-01-01')],
             'open': [40000.0],
             'high': [38000.0],  # Invalid: high < low

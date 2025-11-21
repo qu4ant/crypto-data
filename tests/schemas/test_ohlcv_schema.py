@@ -9,6 +9,7 @@ Tests Pandera schemas for OHLCV data validation including:
 """
 
 import pytest
+from crypto_data.enums import DataType, Interval
 import pandas as pd
 import pandera as pa
 
@@ -52,7 +53,7 @@ class TestOHLCVSchema:
         df = pd.DataFrame({
             'exchange': ['binance'],
             'symbol': ['BTCUSDT'],
-            'interval': ['5m'],
+            'interval': [Interval.MIN_5.value],
             'timestamp': [pd.Timestamp('2024-01-01')],
             'open': [None],  # Null price
             'high': [50100.0],
@@ -150,7 +151,7 @@ class TestOHLCVStatisticalValidation:
         df = pd.DataFrame({
             'exchange': ['binance'] * num_points,
             'symbol': ['BTCUSDT'] * num_points,
-            'interval': ['5m'] * num_points,
+            'interval': [Interval.MIN_5.value] * num_points,
             'timestamp': pd.date_range('2024-01-01', periods=num_points, freq='5T'),
             'open': [50000.0] * num_points,
             'high': [50100.0] * num_points,

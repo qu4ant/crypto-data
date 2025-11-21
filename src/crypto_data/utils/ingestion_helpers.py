@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 from datetime import date
 
+from crypto_data.enums import Interval
 from crypto_data.utils.database import import_to_duckdb
 from crypto_data.utils.formatting import format_file_size, format_availability_bar, format_availability_bar_daily
 
@@ -51,7 +52,7 @@ def process_download_results(
     results: List[Dict],
     conn,
     stats: Dict[str, int],
-    interval: str,
+    interval: Interval,
     original_symbol: str
 ) -> None:
     """
@@ -140,7 +141,7 @@ def process_download_results(
 def query_data_availability(
     conn,
     symbols: List[str],
-    interval: str
+    interval: Interval
 ) -> List[Tuple[str, str, date, date]]:
     """
     Query availability summary from ALL data tables.
@@ -156,8 +157,8 @@ def query_data_availability(
         Database connection
     symbols : List[str]
         List of symbols to query (e.g., ['BTCUSDT', 'ETHUSDT'])
-    interval : str
-        Kline interval (e.g., '5m') - only applies to spot/futures
+    interval : Interval
+        Kline interval (e.g., Interval.MIN_5) - only applies to spot/futures
 
     Returns
     -------
@@ -168,7 +169,8 @@ def query_data_availability(
 
     Example
     -------
-    >>> results = query_data_availability(conn, ['BTCUSDT', 'ETHUSDT'], '5m')
+    >>> from crypto_data.enums import Interval
+    >>> results = query_data_availability(conn, ['BTCUSDT', 'ETHUSDT'], Interval.MIN_5)
     >>> # [('BTCUSDT', 'funding_rates', date(2024,1,1), date(2024,12,31)),
     >>> #  ('BTCUSDT', 'futures', date(2024,1,1), date(2024,12,31)),
     >>> #  ('BTCUSDT', 'open_interest', date(2024,1,1), date(2024,12,31)),
@@ -223,7 +225,7 @@ def query_data_availability(
     # Parameters: symbols twice for spot+futures (with interval), symbols twice for OI+FR (no interval)
     result = conn.execute(
         query,
-        symbols + [interval] + symbols + [interval] + symbols + symbols
+        symbols + [interval.value] + symbols + [interval.value] + symbols + symbols
     ).fetchall()
     return result
 
@@ -234,7 +236,7 @@ def log_ingestion_summary(
     symbols: Optional[List[str]] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    interval: Optional[str] = None,
+    interval: Optional[Interval] = None,
     show_availability: bool = False
 ) -> None:
     """

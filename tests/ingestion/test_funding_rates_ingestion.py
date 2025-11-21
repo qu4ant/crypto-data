@@ -9,6 +9,7 @@ Tests the async download and import workflow for funding rates data:
 """
 
 import pytest
+from crypto_data.enums import DataType, Interval
 import tempfile
 import asyncio
 from pathlib import Path

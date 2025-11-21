@@ -14,6 +14,8 @@ import aiohttp
 import asyncio
 import zipfile
 
+from crypto_data.enums import DataType, Interval
+
 logger = logging.getLogger(__name__)
 
 
@@ -77,9 +79,9 @@ class BinanceDataVisionClientAsync:
     async def download_klines(
         self,
         symbol: str,
-        data_type: str,
+        data_type: DataType,
         month: str,
-        interval: str,
+        interval: Interval,
         output_path: Path
     ) -> bool:
         """
@@ -91,12 +93,12 @@ class BinanceDataVisionClientAsync:
         ----------
         symbol : str
             Trading pair symbol (e.g., 'BTCUSDT', 'ETHUSDT')
-        data_type : str
-            Market type: 'spot' or 'futures'
+        data_type : DataType
+            Market type (DataType.SPOT or DataType.FUTURES)
         month : str
             Month in YYYY-MM format (e.g., '2024-01')
-        interval : str
-            Kline interval (e.g., '5m', '1h', '4h', '1d')
+        interval : Interval
+            Kline interval (e.g., Interval.MIN_5, Interval.HOUR_1)
         output_path : Path
             Path where the ZIP file should be saved
 
@@ -114,11 +116,12 @@ class BinanceDataVisionClientAsync:
 
         Example
         -------
+        >>> from crypto_data.enums import DataType, Interval
         >>> async def download():
         ...     async with BinanceDataVisionClientAsync() as client:
         ...         output = Path('/tmp/BTCUSDT-5m-2024-01.zip')
         ...         success = await client.download_klines(
-        ...             'BTCUSDT', 'spot', '2024-01', '5m', output
+        ...             'BTCUSDT', DataType.SPOT, '2024-01', Interval.MIN_5, output
         ...         )
         ...         return success
         >>>
@@ -127,16 +130,17 @@ class BinanceDataVisionClientAsync:
         if not self.session:
             raise RuntimeError("Client session not initialized. Use 'async with' context manager.")
 
-        # Validate data_type
-        if data_type not in self.DATA_CATEGORIES:
+        # Validate data_type (klines only supports spot and futures)
+        VALID_KLINES_TYPES = {'spot', 'futures'}
+        if data_type.value not in VALID_KLINES_TYPES:
             raise ValueError(
-                f"Invalid data_type '{data_type}'. Must be one of: {list(self.DATA_CATEGORIES.keys())}"
+                f"Invalid data_type '{data_type.value}'. Must be one of: {list(VALID_KLINES_TYPES)}"
             )
 
         # Construct URL
-        category = self.DATA_CATEGORIES[data_type]
-        filename = f"{symbol}-{interval}-{month}.zip"
-        url = f"{self.base_url}{category}/{symbol}/{interval}/{filename}"
+        category = self.DATA_CATEGORIES[data_type.value]
+        filename = f"{symbol}-{interval.value}-{month}.zip"
+        url = f"{self.base_url}{category}/{symbol}/{interval.value}/{filename}"
 
         logger.debug(f"Downloading: {url}")
 
@@ -413,9 +417,9 @@ class BinanceDataVisionClientAsync:
     def get_download_url(
         self,
         symbol: str,
-        data_type: str,
+        data_type: DataType,
         month: str,
-        interval: str
+        interval: Interval
     ) -> str:
         """
         Construct the download URL for a kline file (useful for debugging).
@@ -424,12 +428,12 @@ class BinanceDataVisionClientAsync:
         ----------
         symbol : str
             Trading pair symbol (e.g., 'BTCUSDT')
-        data_type : str
-            Market type: 'spot' or 'futures'
+        data_type : DataType
+            Market type: DataType.SPOT or DataType.FUTURES
         month : str
             Month in YYYY-MM format (e.g., '2024-01')
-        interval : str
-            Kline interval (e.g., '5m', '1h', '1d')
+        interval : Interval
+            Kline interval (e.g., Interval.MIN_5, Interval.HOUR_1)
 
         Returns
         -------
@@ -438,16 +442,19 @@ class BinanceDataVisionClientAsync:
 
         Example
         -------
+        >>> from crypto_data.enums import DataType, Interval
         >>> client = BinanceDataVisionClientAsync()
-        >>> url = client.get_download_url('BTCUSDT', 'spot', '2024-01', '5m')
+        >>> url = client.get_download_url('BTCUSDT', DataType.SPOT, '2024-01', Interval.MIN_5)
         >>> print(url)
         https://data.binance.vision/data/spot/monthly/klines/BTCUSDT/5m/BTCUSDT-5m-2024-01.zip
         """
-        if data_type not in self.DATA_CATEGORIES:
+        # Klines only supports spot and futures
+        VALID_KLINES_TYPES = {'spot', 'futures'}
+        if data_type.value not in VALID_KLINES_TYPES:
             raise ValueError(
-                f"Invalid data_type '{data_type}'. Must be one of: {list(self.DATA_CATEGORIES.keys())}"
+                f"Invalid data_type '{data_type.value}'. Must be one of: {list(VALID_KLINES_TYPES)}"
             )
 
-        category = self.DATA_CATEGORIES[data_type]
-        filename = f"{symbol}-{interval}-{month}.zip"
-        return f"{self.base_url}{category}/{symbol}/{interval}/{filename}"
+        category = self.DATA_CATEGORIES[data_type.value]
+        filename = f"{symbol}-{interval.value}-{month}.zip"
+        return f"{self.base_url}{category}/{symbol}/{interval.value}/{filename}"

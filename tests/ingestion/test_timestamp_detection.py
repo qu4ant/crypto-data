@@ -6,6 +6,7 @@ timestamp formats used by Binance Data Vision.
 """
 
 import pytest
+from crypto_data.enums import DataType, Interval
 import tempfile
 from pathlib import Path
 import duckdb
@@ -87,8 +88,8 @@ def test_timestamp_milliseconds_detection():
                 conn=conn,
                 file_path=zip_path,
                 symbol='BTCUSDT',
-                data_type='spot',
-                interval='5m'
+                data_type=DataType.SPOT,
+                interval=Interval.MIN_5
             )
 
             # Verify timestamps are correctly converted
@@ -135,8 +136,8 @@ def test_timestamp_microseconds_detection():
                 conn=conn,
                 file_path=zip_path,
                 symbol='BTCUSDT',
-                data_type='spot',
-                interval='5m'
+                data_type=DataType.SPOT,
+                interval=Interval.MIN_5
             )
 
             # Verify timestamps are correctly converted
@@ -182,8 +183,8 @@ def test_timestamp_threshold_boundary():
                 conn=conn,
                 file_path=zip_path,
                 symbol='TEST',
-                data_type='spot',
-                interval='5m'
+                data_type=DataType.SPOT,
+                interval=Interval.MIN_5
             )
 
             # Verify all timestamps are valid (no NaT)
@@ -230,8 +231,8 @@ def test_timestamp_mixed_format_error():
                 conn=conn,
                 file_path=zip_path,
                 symbol='MIXED',
-                data_type='spot',
-                interval='5m'
+                data_type=DataType.SPOT,
+                interval=Interval.MIN_5
             )
 
             # Verify both timestamps are valid (even if logically inconsistent)
@@ -276,8 +277,8 @@ def test_timestamp_with_header():
                 conn=conn,
                 file_path=zip_path,
                 symbol='HEADER',
-                data_type='spot',
-                interval='5m'
+                data_type=DataType.SPOT,
+                interval=Interval.MIN_5
             )
 
             # Verify timestamps are correctly converted
@@ -337,8 +338,8 @@ def test_timestamp_rounding_to_full_seconds():
                 conn=conn,
                 file_path=zip_path_ms,
                 symbol='ROUNDMS',
-                data_type='spot',
-                interval='5m'
+                data_type=DataType.SPOT,
+                interval=Interval.MIN_5
             )
 
             result_ms = conn.execute("""
@@ -365,8 +366,8 @@ def test_timestamp_rounding_to_full_seconds():
                 conn=conn,
                 file_path=zip_path_us,
                 symbol='ROUNDUS',
-                data_type='spot',
-                interval='5m'
+                data_type=DataType.SPOT,
+                interval=Interval.MIN_5
             )
 
             result_us = conn.execute("""

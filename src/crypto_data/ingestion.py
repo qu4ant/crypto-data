@@ -26,6 +26,7 @@ import pandas as pd
 from crypto_data.clients.coinmarketcap import CoinMarketCapClient
 from crypto_data.clients.binance_vision_async import BinanceDataVisionClientAsync
 from crypto_data.database import CryptoDatabase
+from crypto_data.enums import DataType, Interval
 from crypto_data.utils.dates import generate_month_list, generate_day_list
 from crypto_data.utils.formatting import format_file_size
 from crypto_data.utils.database import import_to_duckdb, import_metrics_to_duckdb, import_funding_rates_to_duckdb, data_exists
@@ -440,9 +441,9 @@ async def ingest_universe(
 async def _download_single_month(
     client: BinanceDataVisionClientAsync,
     symbol: str,
-    data_type: str,
+    data_type: DataType,
     month: str,
-    interval: str,
+    interval: Interval,
     temp_path: Path,
     progress_info: Dict
 ) -> Dict:
@@ -455,12 +456,12 @@ async def _download_single_month(
         Async client for downloads
     symbol : str
         Symbol to download (e.g., 'BTCUSDT')
-    data_type : str
-        Data type ('spot' or 'futures')
+    data_type : DataType
+        Data type (DataType.SPOT or DataType.FUTURES)
     month : str
         Month in YYYY-MM format
-    interval : str
-        Kline interval (e.g., '5m')
+    interval : Interval
+        Kline interval (e.g., Interval.MIN_5)
     temp_path : Path
         Temporary directory for downloads
     progress_info : dict
@@ -829,9 +830,9 @@ async def _download_symbol_funding_rates_async(
 
 async def _download_symbol_data_type_async(
     symbol: str,
-    data_type: str,
+    data_type: DataType,
     months: List[str],
-    interval: str,
+    interval: Interval,
     temp_path: Path,
     conn,
     skip_existing: bool,
@@ -848,11 +849,11 @@ async def _download_symbol_data_type_async(
     ----------
     symbol : str
         Symbol to download
-    data_type : str
-        Data type ('spot' or 'futures')
+    data_type : DataType
+        Data type (DataType.SPOT or DataType.FUTURES)
     months : List[str]
         List of months to download
-    interval : str
+    interval : Interval
         Kline interval
     temp_path : Path
         Temporary directory
@@ -990,10 +991,10 @@ async def _download_symbol_data_type_async(
 def ingest_binance_async(
     db_path: str,
     symbols: List[str],
-    data_types: List[str],
+    data_types: List[DataType],
     start_date: str,
     end_date: str,
-    interval: str = '5m',
+    interval: Interval = Interval.MIN_5,
     skip_existing: bool = True,
     max_concurrent_klines: int = 20,
     max_concurrent_metrics: int = 100,
@@ -1029,14 +1030,14 @@ def ingest_binance_async(
         Path to DuckDB database file
     symbols : List[str]
         List of symbols to download (e.g., ['BTCUSDT', 'ETHUSDT'])
-    data_types : List[str]
-        List of data types to download ('spot', 'futures', 'open_interest')
+    data_types : List[DataType]
+        List of data types to download (e.g., [DataType.SPOT, DataType.FUTURES])
     start_date : str
         Start date in YYYY-MM-DD format
     end_date : str
         End date in YYYY-MM-DD format
-    interval : str
-        Kline interval (5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M) (default: '5m')
+    interval : Interval
+        Kline interval (default: Interval.MIN_5)
     skip_existing : bool
         Skip if data already exists in database (default: True)
     max_concurrent_klines : int
@@ -1055,12 +1056,14 @@ def ingest_binance_async(
 
     Example
     -------
+    >>> from crypto_data import ingest_binance_async, DataType, Interval
     >>> ingest_binance_async(
     ...     db_path='crypto_data.db',
     ...     symbols=['BTCUSDT', 'ETHUSDT', 'SOLUSDT'],
-    ...     data_types=['spot', 'futures', 'open_interest'],
+    ...     data_types=[DataType.SPOT, DataType.FUTURES, DataType.OPEN_INTEREST],
     ...     start_date='2024-01-01',
     ...     end_date='2024-12-31',
+    ...     interval=Interval.MIN_5,
     ...     max_concurrent_klines=20,
     ...     max_concurrent_metrics=100
     ... )
@@ -1100,7 +1103,7 @@ def ingest_binance_async(
         for symbol in symbols:
             for data_type in data_types:
                 # === BRANCH: Open Interest (metrics data) ===
-                if data_type == 'open_interest':
+                if data_type == DataType.OPEN_INTEREST:
                     # Check if we have a cached ticker mapping (e.g., PEPEUSDT → 1000PEPEUSDT)
                     with _ticker_mappings_lock:
                         download_symbol = _ticker_mappings.get(symbol, symbol)
@@ -1188,7 +1191,7 @@ def ingest_binance_async(
                     continue  # Skip to next data_type
 
                 # === BRANCH: Funding Rates (futures only) ===
-                if data_type == 'funding_rates':
+                if data_type == DataType.FUNDING_RATES:
                     # Check if we have a cached ticker mapping (e.g., PEPEUSDT → 1000PEPEUSDT)
                     with _ticker_mappings_lock:
                         download_symbol = _ticker_mappings.get(symbol, symbol)
@@ -1324,7 +1327,7 @@ def ingest_binance_async(
 
                 # Auto-retry with 1000-prefix for futures if all downloads failed with 404
                 # Only retry if we haven't already used a cached mapping
-                if (data_type == 'futures' and
+                if (data_type == DataType.FUTURES and
                     download_symbol == symbol and  # Not using cached mapping already
                     len(results) > 0 and  # Must have actual results (not skipped due to existing data)
                     all(not r['success'] and r['error'] == 'not_found' for r in results)):
@@ -1398,8 +1401,8 @@ def populate_database(
     start_date: str,
     end_date: str,
     top_n: int,
-    interval: str = '5m',
-    data_types: List[str] = None,
+    interval: Interval = Interval.MIN_5,
+    data_types: List[DataType] = None,
     exclude_tags: List[str] = [],
     exclude_symbols: List[str] = []
 ):
@@ -1422,11 +1425,11 @@ def populate_database(
         End date (YYYY-MM-DD)
     top_n : int
         Number of top coins by market cap
-    interval : str
-        Kline interval (5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M) (default: '5m')
-    data_types : List[str], optional
-        Data types to download (default: ['spot', 'futures'])
-        Options: 'spot', 'futures', 'open_interest', 'funding_rates'
+    interval : Interval
+        Kline interval (default: Interval.MIN_5)
+    data_types : List[DataType], optional
+        Data types to download (default: [DataType.SPOT, DataType.FUTURES])
+        Options: DataType.SPOT, DataType.FUTURES, DataType.OPEN_INTEREST, DataType.FUNDING_RATES
     exclude_tags : List[str]
         List of CoinMarketCap tags to exclude (e.g., ['stablecoin', 'wrapped-tokens'])
         Default: [] (no exclusions)
@@ -1436,19 +1439,20 @@ def populate_database(
 
     Example
     -------
+    >>> from crypto_data import populate_database, DataType, Interval
     >>> populate_database(
     ...     db_path='crypto_data.db',
     ...     start_date='2024-01-01',
     ...     end_date='2024-12-31',
     ...     top_n=100,
-    ...     interval='5m',
-    ...     data_types=['spot', 'futures', 'open_interest', 'funding_rates'],
+    ...     interval=Interval.MIN_5,
+    ...     data_types=[DataType.SPOT, DataType.FUTURES, DataType.OPEN_INTEREST, DataType.FUNDING_RATES],
     ...     exclude_tags=['stablecoin', 'wrapped-tokens', 'privacy'],
     ...     exclude_symbols=['LUNA', 'FTT', 'UST']
     ... )
     """
     if data_types is None:
-        data_types = ['spot', 'futures']
+        data_types = [DataType.SPOT, DataType.FUTURES]
 
     logger.info("=" * 60)
     logger.info("Starting Database Population")

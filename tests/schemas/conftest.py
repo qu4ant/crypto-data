@@ -5,6 +5,7 @@ Provides sample valid and invalid DataFrames for testing schemas.
 """
 
 import pytest
+from crypto_data.enums import DataType, Interval
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
@@ -16,7 +17,7 @@ def valid_ohlcv_df():
     return pd.DataFrame({
         'exchange': ['binance'] * 5,
         'symbol': ['BTCUSDT'] * 5,
-        'interval': ['5m'] * 5,
+        'interval': [Interval.MIN_5.value] * 5,
         'timestamp': pd.date_range('2024-01-01', periods=5, freq='5T'),
         'open': [50000.0, 50010.0, 50020.0, 50030.0, 50040.0],
         'high': [50100.0, 50110.0, 50120.0, 50130.0, 50140.0],
@@ -36,7 +37,7 @@ def invalid_ohlcv_high_low():
     return pd.DataFrame({
         'exchange': ['binance'] * 3,
         'symbol': ['BTCUSDT'] * 3,
-        'interval': ['5m'] * 3,
+        'interval': [Interval.MIN_5.value] * 3,
         'timestamp': pd.date_range('2024-01-01', periods=3, freq='5T'),
         'open': [50000.0, 50010.0, 50020.0],
         'high': [50100.0, 49900.0, 50120.0],  # Second row: high < low
@@ -56,7 +57,7 @@ def invalid_ohlcv_negative_price():
     return pd.DataFrame({
         'exchange': ['binance'] * 3,
         'symbol': ['BTCUSDT'] * 3,
-        'interval': ['5m'] * 3,
+        'interval': [Interval.MIN_5.value] * 3,
         'timestamp': pd.date_range('2024-01-01', periods=3, freq='5T'),
         'open': [50000.0, -50010.0, 50020.0],  # Negative price
         'high': [50100.0, 50110.0, 50120.0],
