@@ -34,6 +34,31 @@ from .logging_utils import setup_colored_logging, get_logger
 from .utils.symbols import get_symbols_from_universe
 from .enums import DataType, Interval, Exchange
 
+# Strategy pattern components (new architecture)
+from .strategies import (
+    DataTypeStrategy,
+    Period,
+    DownloadResult,
+    KlinesStrategy,
+    OpenInterestStrategy,
+    FundingRatesStrategy,
+    get_strategy,
+)
+
+from .exchanges import (
+    ExchangeClient,
+    BinanceExchange,
+)
+
+from .core import (
+    DataImporter,
+    BatchDownloader,
+    ingest_binance_async_v2,
+    get_ticker_mapping,
+    set_ticker_mapping,
+    clear_ticker_mappings,
+)
+
 # Import Pandera schemas and validation functions
 from .schemas import (
     OHLCV_SCHEMA,
@@ -73,6 +98,27 @@ __all__ = [
     "DataType",
     "Interval",
     "Exchange",
+
+    # Strategy Pattern (new architecture)
+    "DataTypeStrategy",
+    "Period",
+    "DownloadResult",
+    "KlinesStrategy",
+    "OpenInterestStrategy",
+    "FundingRatesStrategy",
+    "get_strategy",
+
+    # Exchange Clients (new architecture)
+    "ExchangeClient",
+    "BinanceExchange",
+
+    # Core Components (new architecture)
+    "DataImporter",
+    "BatchDownloader",
+    "ingest_binance_async_v2",
+    "get_ticker_mapping",
+    "set_ticker_mapping",
+    "clear_ticker_mappings",
 
     # Pandera Schemas
     "OHLCV_SCHEMA",

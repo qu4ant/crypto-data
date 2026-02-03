@@ -1,0 +1,202 @@
+"""
+Funding Rates Strategy for Monthly Funding Rate Data
+
+Implements the DataTypeStrategy ABC for downloading and parsing
+funding rate data from Binance futures markets.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+from pathlib import Path
+from typing import List, Optional
+
+import pandas as pd
+import pandera.pandas as pa
+
+from crypto_data.enums import DataType
+from crypto_data.schemas import FUNDING_RATES_SCHEMA
+from crypto_data.strategies.base import DataTypeStrategy, Period
+from crypto_data.utils.dates import generate_month_list
+
+
+# Final columns for database import
+FINAL_COLUMNS = ['exchange', 'symbol', 'timestamp', 'funding_rate']
+
+
+class FundingRatesStrategy(DataTypeStrategy):
+    """
+    Strategy for downloading and parsing funding rate data.
+
+    Funding rate data is organized monthly and comes from Binance futures
+    markets only. Does not require an interval parameter.
+
+    Examples
+    --------
+    >>> strategy = FundingRatesStrategy()
+    >>> strategy.table_name
+    'funding_rates'
+    >>> strategy.is_monthly
+    True
+    >>> strategy.requires_interval()
+    False
+    """
+
+    @property
+    def data_type(self) -> DataType:
+        """Return the DataType enum value for this strategy."""
+        return DataType.FUNDING_RATES
+
+    @property
+    def table_name(self) -> str:
+        """Return the target database table name."""
+        return 'funding_rates'
+
+    @property
+    def is_monthly(self) -> bool:
+        """Return True - funding rate data is organized by month."""
+        return True
+
+    @property
+    def default_max_concurrent(self) -> int:
+        """Return the default maximum concurrent downloads (50 for monthly metrics)."""
+        return 50
+
+    def generate_periods(self, start: datetime, end: datetime) -> List[Period]:
+        """
+        Generate list of monthly periods for the given date range.
+
+        Parameters
+        ----------
+        start : datetime
+            Start date (inclusive)
+        end : datetime
+            End date (inclusive)
+
+        Returns
+        -------
+        List[Period]
+            List of Period objects with monthly granularity
+        """
+        months = generate_month_list(start, end)
+        return [Period(month, is_monthly=True) for month in months]
+
+    def get_schema(self) -> pa.DataFrameSchema:
+        """
+        Return the Pandera validation schema for funding rate data.
+
+        Returns
+        -------
+        pa.DataFrameSchema
+            Funding rates schema for validating data before import
+        """
+        return FUNDING_RATES_SCHEMA
+
+    def build_download_url(
+        self,
+        base_url: str,
+        symbol: str,
+        period: Period,
+        interval: Optional[str] = None
+    ) -> str:
+        """
+        Build the download URL for a specific symbol and period.
+
+        URL format:
+            {base_url}data/futures/um/monthly/fundingRate/{symbol}/{symbol}-fundingRate-{period}.zip
+
+        Parameters
+        ----------
+        base_url : str
+            Base URL for Binance Data Vision (e.g., 'https://data.binance.vision/')
+        symbol : str
+            Trading pair symbol (e.g., 'BTCUSDT')
+        period : Period
+            Time period to download (e.g., Period('2024-01', is_monthly=True))
+        interval : Optional[str]
+            Not used for funding rate data (ignored)
+
+        Returns
+        -------
+        str
+            Full download URL
+        """
+        path = f"data/futures/um/monthly/fundingRate/{symbol}"
+        filename = f"{symbol}-fundingRate-{period.value}.zip"
+        return f"{base_url}{path}/{filename}"
+
+    def build_temp_filename(
+        self,
+        symbol: str,
+        period: Period,
+        interval: Optional[str] = None
+    ) -> str:
+        """
+        Build the temporary filename for a download.
+
+        Format: {symbol}-fundingRate-{period}.zip
+
+        Parameters
+        ----------
+        symbol : str
+            Trading pair symbol (e.g., 'BTCUSDT')
+        period : Period
+            Time period to download
+        interval : Optional[str]
+            Not used for funding rate data (ignored)
+
+        Returns
+        -------
+        str
+            Temporary filename (without directory path)
+        """
+        return f"{symbol}-fundingRate-{period.value}.zip"
+
+    def parse_csv(
+        self,
+        csv_path: Path,
+        symbol: str,
+        exchange: str
+    ) -> pd.DataFrame:
+        """
+        Parse a funding rate CSV file into a DataFrame ready for database import.
+
+        Funding rate files always have headers. Reads 'calc_time' and
+        'last_funding_rate' columns.
+
+        Parameters
+        ----------
+        csv_path : Path
+            Path to the CSV file
+        symbol : str
+            Trading pair symbol (for overriding - handles 1000-prefix normalization)
+        exchange : str
+            Exchange name (for adding to DataFrame)
+
+        Returns
+        -------
+        pd.DataFrame
+            Parsed DataFrame with columns: exchange, symbol, timestamp, funding_rate
+        """
+        # Funding rate files always have headers
+        df = pd.read_csv(csv_path)
+
+        # Add exchange column
+        df['exchange'] = exchange
+
+        # Override symbol column (for 1000-prefix normalization)
+        df['symbol'] = symbol
+
+        # Convert timestamp (milliseconds)
+        df['timestamp'] = pd.to_datetime(df['calc_time'], unit='ms')
+
+        # Rename last_funding_rate to funding_rate
+        df = df.rename(columns={'last_funding_rate': 'funding_rate'})
+
+        # Select final columns
+        df = df[FINAL_COLUMNS]
+
+        # Drop duplicates on primary key columns
+        df = df.drop_duplicates(subset=['exchange', 'symbol', 'timestamp'])
+
+        return df
