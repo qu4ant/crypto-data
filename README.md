@@ -5,8 +5,8 @@
 **Cryptocurrency Data Infrastructure** - Automated multi-exchange OHLCV data and market rankings downloader.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![Version](https://img.shields.io/badge/version-5.0.0-green.svg)](https://github.com/qu4ant/crypto-data)
+[![Python 3.10+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![Version](https://img.shields.io/badge/version-5.0.0-green.svg)](https://github.com/qu4ant/crypto-data/releases/tag/v5.0.0)
 [![codecov](https://codecov.io/gh/qu4ant/crypto-data/branch/main/graph/badge.svg)](https://codecov.io/gh/qu4ant/crypto-data)
 [![Tests](https://github.com/qu4ant/crypto-data/workflows/Tests/badge.svg)](https://github.com/qu4ant/crypto-data/actions)
 
@@ -147,7 +147,7 @@ pip install -e ".[dev]"
 
 > **Coming Soon**: `pip install crypto-data` will be available once published to PyPI
 
-**Requirements**: Python 3.8+, duckdb, aiohttp, pandas, pyarrow
+**Requirements**: Python 3.10+, duckdb, aiohttp, pandas, pyarrow
 
 ---
 
