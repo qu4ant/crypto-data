@@ -6,7 +6,6 @@ ingest_binance_async() to reduce code duplication and improve maintainability.
 
 Functions:
     - initialize_ingestion_stats(): Create standardized stats tracking dict
-    - process_download_results(): Import downloads to DB, update stats, cleanup
     - query_data_availability(): Query first/last dates from OHLCV tables
     - log_ingestion_summary(): Log comprehensive ingestion summary with stats
 """
@@ -17,7 +16,6 @@ from typing import Dict, List, Tuple, Optional
 from datetime import date
 
 from crypto_data.enums import Interval
-from crypto_data.utils.database import import_to_duckdb
 from crypto_data.utils.formatting import format_file_size, format_availability_bar, format_availability_bar_daily
 
 logger = logging.getLogger(__name__)
@@ -46,96 +44,6 @@ def initialize_ingestion_stats() -> Dict[str, int]:
         'failed': 0,
         'not_found': 0
     }
-
-
-def process_download_results(
-    results: List[Dict],
-    conn,
-    stats: Dict[str, int],
-    interval: Interval,
-    original_symbol: str
-) -> None:
-    """
-    Process download results: import to DuckDB, update stats, cleanup temp files.
-
-    This function handles the complete lifecycle of download results:
-    1. Import successful downloads to DuckDB
-    2. Update statistics (downloaded/failed/not_found)
-    3. Delete temporary files after import
-    4. Log progress at DEBUG level
-
-    Used by both populate_database and async ingestion workflows to eliminate code duplication.
-
-    Parameters
-    ----------
-    results : List[Dict]
-        Download results with keys:
-        - success: bool
-        - symbol: str (download symbol, may be 1000-prefixed)
-        - data_type: str ('spot' or 'futures')
-        - month: str (YYYY-MM format)
-        - file_path: Path or None
-        - error: str or None ('not_found' for 404s)
-    conn : duckdb.DuckDBPyConnection
-        Database connection for imports
-    stats : Dict[str, int]
-        Statistics dictionary (modified in place)
-        Keys: downloaded, skipped, failed, not_found
-    interval : str
-        Kline interval (e.g., '5m', '1h', '1d')
-    original_symbol : str
-        Original symbol to store in database (handles 1000-prefix normalization)
-        Example: PEPEUSDT (even if downloaded as 1000PEPEUSDT)
-
-    Side Effects
-    ------------
-    - Modifies stats dict in place
-    - Imports data to DuckDB (via import_to_duckdb)
-    - Deletes temporary files from disk
-    - Logs import progress at DEBUG level
-
-    Example
-    -------
-    >>> results = [
-    ...     {'success': True, 'symbol': '1000PEPEUSDT', 'month': '2024-01', ...},
-    ...     {'success': False, 'error': 'not_found', 'month': '2024-02', ...}
-    ... ]
-    >>> stats = initialize_ingestion_stats()
-    >>> process_download_results(results, conn, stats, '5m', 'PEPEUSDT')
-    >>> stats['downloaded']  # 1
-    >>> stats['not_found']   # 1
-    """
-    for result in results:
-        if result['success']:
-            try:
-                import_to_duckdb(
-                    conn=conn,
-                    file_path=result['file_path'],
-                    symbol=result['symbol'],
-                    data_type=result['data_type'],
-                    interval=interval,
-                    exchange='binance',
-                    original_symbol=original_symbol  # Store with original symbol (e.g., PEPEUSDT)
-                )
-                stats['downloaded'] += 1
-                logger.debug(f"    ✓ {result['month']} imported")
-
-                # Delete temp file
-                if result['file_path'].exists():
-                    result['file_path'].unlink()
-
-            except Exception as e:
-                logger.error(f"    ✗ Import failed {result['month']}: {e}")
-                stats['failed'] += 1
-
-        else:
-            # Download failed or not found
-            if result['error'] == 'not_found':
-                stats['not_found'] += 1
-                logger.debug(f"    - {result['month']} not found")
-            else:
-                stats['failed'] += 1
-                logger.debug(f"    ✗ {result['month']}: {result['error']}")
 
 
 def query_data_availability(
@@ -372,6 +280,6 @@ def log_ingestion_summary(
         db_size = Path(db_path).stat().st_size
         logger.info(f"Database size: {format_file_size(db_size)}")
     except Exception as e:
-        logger.debug(f"Could not get database size: {e}")
+        logger.warning(f"Could not determine database size: {e}")
 
     logger.info("=" * 60)

@@ -296,11 +296,9 @@ class TestApiGetHistoricalListings:
             with patch.object(client, '_call_with_retry', new_callable=AsyncMock) as mock_api:
                 mock_api.return_value = malformed_cmc_api_response
 
-                result = await client.get_historical_listings('2024-01-01', 100)
-
-                # Should return empty list for malformed response
-                assert isinstance(result, list)
-                assert len(result) == 0
+                # Should raise ValueError for malformed response (missing 'data' key)
+                with pytest.raises(ValueError, match="missing 'data' key"):
+                    await client.get_historical_listings('2024-01-01', 100)
 
     @pytest.mark.asyncio
     async def test_api_timeout_propagates(self):
@@ -331,7 +329,7 @@ class TestDateRangeValidation:
     @pytest.mark.slow
     @pytest.mark.asyncio
     async def test_future_date_returns_error(self):
-        """Test that requesting future date returns API error."""
+        """Test that requesting future date raises ValueError due to missing 'data' key."""
         # Note: This would actually hit the real API
         # In practice, we mock this to avoid real API calls
         async with CoinMarketCapClient() as client:
@@ -343,11 +341,9 @@ class TestDateRangeValidation:
                     }
                 }
 
-                result = await client.get_historical_listings('2099-01-01', 100)
-
-                # Should return empty list or handle error gracefully
-                assert isinstance(result, list)
-                assert len(result) == 0
+                # Should raise ValueError for API response without 'data' key
+                with pytest.raises(ValueError, match="missing 'data' key"):
+                    await client.get_historical_listings('2099-01-01', 100)
 
 
 class TestApiPerformance:

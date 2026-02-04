@@ -14,7 +14,6 @@ Internal Utilities
 ------------------
 - dates: Date manipulation (generate_month_list)
 - formatting: Display formatting (format_file_size, format_availability_bar)
-- database: Database operations (import_to_duckdb, data_exists, etc.)
 """
 
 from .symbols import get_symbols_from_universe

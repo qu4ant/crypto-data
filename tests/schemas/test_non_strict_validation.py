@@ -8,7 +8,7 @@ This improves code coverage for error handling paths in schema validation functi
 import pytest
 from crypto_data.enums import DataType, Interval
 import pandas as pd
-import pandera as pa
+import pandera.pandas as pa
 from datetime import datetime
 
 from crypto_data.schemas import (

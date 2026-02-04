@@ -181,14 +181,29 @@ class FundingRatesStrategy(DataTypeStrategy):
         # Funding rate files always have headers
         df = pd.read_csv(csv_path)
 
+        # Validate required columns exist
+        required_cols = ['calc_time', 'last_funding_rate']
+        missing = [c for c in required_cols if c not in df.columns]
+        if missing:
+            raise ValueError(
+                f"CSV file {csv_path.name} missing required columns: {missing}. "
+                f"Available columns: {list(df.columns)}"
+            )
+
         # Add exchange column
         df['exchange'] = exchange
 
         # Override symbol column (for 1000-prefix normalization)
         df['symbol'] = symbol
 
-        # Convert timestamp (milliseconds)
-        df['timestamp'] = pd.to_datetime(df['calc_time'], unit='ms')
+        # Convert timestamp: calc_time >= 5e12 means microseconds, otherwise milliseconds
+        calc_time = df['calc_time']
+        if (calc_time >= 5e12).any():
+            # Microseconds (16+ digits) - divide by 1,000,000
+            df['timestamp'] = pd.to_datetime(calc_time / 1_000_000, unit='s')
+        else:
+            # Milliseconds (13 digits) - divide by 1,000
+            df['timestamp'] = pd.to_datetime(calc_time / 1_000, unit='s')
 
         # Rename last_funding_rate to funding_rate
         df = df.rename(columns={'last_funding_rate': 'funding_rate'})

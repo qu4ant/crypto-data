@@ -3,21 +3,19 @@ Tests for ingestion_helpers module.
 
 Tests the shared helper functions used by both universe and binance ingestion:
 - initialize_ingestion_stats()
-- process_download_results()
 - query_data_availability()
 - log_ingestion_summary()
 """
 
 import pytest
-from crypto_data.enums import DataType, Interval
+from crypto_data.enums import Interval
 import tempfile
 from pathlib import Path
 from datetime import date
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 from crypto_data.utils.ingestion_helpers import (
     initialize_ingestion_stats,
-    process_download_results,
     query_data_availability,
     log_ingestion_summary
 )
@@ -55,218 +53,6 @@ def test_initialize_ingestion_stats_is_mutable():
 
     assert stats['downloaded'] == 5
     assert stats['failed'] == 2
-
-
-# =============================================================================
-# Tests for process_download_results()
-# =============================================================================
-
-def test_process_download_results_successful_import():
-    """Test processing successful download results."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        temp_file = Path(tmpdir) / "test.zip"
-        temp_file.touch()
-
-        results = [
-            {
-                'success': True,
-                'symbol': 'BTCUSDT',
-                'data_type': DataType.SPOT.value,
-                'month': '2024-01',
-                'file_path': temp_file,
-                'error': None
-            }
-        ]
-
-        mock_conn = MagicMock()
-        stats = initialize_ingestion_stats()
-
-        with patch('crypto_data.utils.ingestion_helpers.import_to_duckdb') as mock_import:
-            process_download_results(results, mock_conn, stats, Interval.MIN_5, 'BTCUSDT')
-
-            # Verify import was called
-            mock_import.assert_called_once_with(
-                conn=mock_conn,
-                file_path=temp_file,
-                symbol='BTCUSDT',
-                data_type=DataType.SPOT,
-                interval=Interval.MIN_5,
-                exchange='binance',
-                original_symbol='BTCUSDT'
-            )
-
-            # Verify stats updated
-            assert stats['downloaded'] == 1
-            assert stats['failed'] == 0
-
-            # Verify temp file deleted
-            assert not temp_file.exists()
-
-
-def test_process_download_results_handles_not_found():
-    """Test processing results with not_found errors."""
-    results = [
-        {
-            'success': False,
-            'symbol': 'BTCUSDT',
-            'data_type': DataType.SPOT.value,
-            'month': '2024-01',
-            'file_path': None,
-            'error': 'not_found'
-        }
-    ]
-
-    mock_conn = MagicMock()
-    stats = initialize_ingestion_stats()
-
-    with patch('crypto_data.utils.ingestion_helpers.import_to_duckdb') as mock_import:
-        process_download_results(results, mock_conn, stats, Interval.MIN_5, 'BTCUSDT')
-
-        # Verify import NOT called
-        mock_import.assert_not_called()
-
-        # Verify stats updated
-        assert stats['not_found'] == 1
-        assert stats['downloaded'] == 0
-        assert stats['failed'] == 0
-
-
-def test_process_download_results_handles_other_errors():
-    """Test processing results with generic errors."""
-    results = [
-        {
-            'success': False,
-            'symbol': 'BTCUSDT',
-            'data_type': DataType.SPOT.value,
-            'month': '2024-01',
-            'file_path': None,
-            'error': 'Network timeout'
-        }
-    ]
-
-    mock_conn = MagicMock()
-    stats = initialize_ingestion_stats()
-
-    with patch('crypto_data.utils.ingestion_helpers.import_to_duckdb') as mock_import:
-        process_download_results(results, mock_conn, stats, Interval.MIN_5, 'BTCUSDT')
-
-        # Verify import NOT called
-        mock_import.assert_not_called()
-
-        # Verify stats updated
-        assert stats['failed'] == 1
-        assert stats['not_found'] == 0
-        assert stats['downloaded'] == 0
-
-
-def test_process_download_results_import_failure():
-    """Test that import failures are counted as failed."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        temp_file = Path(tmpdir) / "test.zip"
-        temp_file.touch()
-
-        results = [
-            {
-                'success': True,
-                'symbol': 'BTCUSDT',
-                'data_type': DataType.SPOT.value,
-                'month': '2024-01',
-                'file_path': temp_file,
-                'error': None
-            }
-        ]
-
-        mock_conn = MagicMock()
-        stats = initialize_ingestion_stats()
-
-        with patch('crypto_data.utils.ingestion_helpers.import_to_duckdb') as mock_import:
-            mock_import.side_effect = Exception("Import failed")
-
-            process_download_results(results, mock_conn, stats, Interval.MIN_5, 'BTCUSDT')
-
-            # Verify stats updated
-            assert stats['failed'] == 1
-            assert stats['downloaded'] == 0
-
-            # Note: temp file is NOT deleted on import failure (happens in success block)
-            # This is by design - failed imports don't clean up files for debugging
-            assert temp_file.exists()
-
-
-def test_process_download_results_multiple_results():
-    """Test processing mixed success/failure results."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        temp_file1 = Path(tmpdir) / "test1.zip"
-        temp_file2 = Path(tmpdir) / "test2.zip"
-        temp_file1.touch()
-        temp_file2.touch()
-
-        results = [
-            {
-                'success': True,
-                'symbol': 'BTCUSDT',
-                'data_type': DataType.SPOT.value,
-                'month': '2024-01',
-                'file_path': temp_file1,
-                'error': None
-            },
-            {
-                'success': False,
-                'symbol': 'BTCUSDT',
-                'data_type': DataType.SPOT.value,
-                'month': '2024-02',
-                'file_path': None,
-                'error': 'not_found'
-            },
-            {
-                'success': True,
-                'symbol': 'BTCUSDT',
-                'data_type': DataType.SPOT.value,
-                'month': '2024-03',
-                'file_path': temp_file2,
-                'error': None
-            }
-        ]
-
-        mock_conn = MagicMock()
-        stats = initialize_ingestion_stats()
-
-        with patch('crypto_data.utils.ingestion_helpers.import_to_duckdb'):
-            process_download_results(results, mock_conn, stats, Interval.MIN_5, 'BTCUSDT')
-
-            # Verify stats
-            assert stats['downloaded'] == 2
-            assert stats['not_found'] == 1
-            assert stats['failed'] == 0
-
-
-def test_process_download_results_uses_original_symbol():
-    """Test that original_symbol is passed to import (for 1000-prefix normalization)."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        temp_file = Path(tmpdir) / "test.zip"
-        temp_file.touch()
-
-        results = [
-            {
-                'success': True,
-                'symbol': '1000PEPEUSDT',  # Download symbol
-                'data_type': DataType.FUTURES.value,
-                'month': '2024-01',
-                'file_path': temp_file,
-                'error': None
-            }
-        ]
-
-        mock_conn = MagicMock()
-        stats = initialize_ingestion_stats()
-
-        with patch('crypto_data.utils.ingestion_helpers.import_to_duckdb') as mock_import:
-            process_download_results(results, mock_conn, stats, Interval.MIN_5, 'PEPEUSDT')  # Original symbol
-
-            # Verify original_symbol passed correctly
-            mock_import.assert_called_once()
-            assert mock_import.call_args[1]['original_symbol'] == 'PEPEUSDT'
-            assert mock_import.call_args[1]['symbol'] == '1000PEPEUSDT'
 
 
 # =============================================================================
@@ -536,7 +322,7 @@ def test_log_ingestion_summary_with_availability():
             mock_query.assert_called_once_with(
                 mock_db_instance.conn,
                 ['BTCUSDT'],
-                Interval.MIN_5.value
+                Interval.MIN_5
             )
     finally:
         Path(db_path).unlink()

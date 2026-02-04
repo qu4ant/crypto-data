@@ -10,8 +10,8 @@ DEFAULT_EXCLUDE_TAGS = [
 
 # Exclude these specific symbols (tickers) from the universe
 DEFAULT_EXCLUDE_SYMBOLS = [
-#    'LUNA',  # Terra collapse (May 2022)
-#    'FTT',   # FTX Token collapse (Nov 2022)
+    'LUNA',  # Terra collapse (May 2022)
+    'FTT',   # FTX Token collapse (Nov 2022)
 ]
 
 # Setup logging (returns log file path)
@@ -27,11 +27,11 @@ def main():
     # 5. Download Binance spot + futures data for filtered symbols
     populate_database(
         db_path='crypto_data.db',
-        start_date='2025-01-01',
-        end_date='2025-10-01',
-        top_n=15,  # Top X coins by market cap
+        start_date='2022-01-01',
+        end_date='2025-11-01',
+        top_n=30,  # Top X coins by market cap
         interval=Interval.HOUR_4,  # interval : Interval.MIN_1, MIN_5, MIN_15, MIN_30, HOUR_1, HOUR_4, DAY_1
-        data_types=[DataType.SPOT, DataType.FUTURES, DataType.OPEN_INTEREST, DataType.FUNDING_RATES],
+        data_types=[DataType.SPOT, DataType.FUTURES],# DataType.OPEN_INTEREST, DataType.FUNDING_RATES],
         exclude_tags=DEFAULT_EXCLUDE_TAGS,
         exclude_symbols=DEFAULT_EXCLUDE_SYMBOLS
     )

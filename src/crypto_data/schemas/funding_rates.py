@@ -9,8 +9,8 @@ Features:
 - Distribution checks
 """
 
-import pandera as pa
-from pandera import Column, Check, DataFrameSchema
+import pandera.pandas as pa
+from pandera.pandas import Column, Check, DataFrameSchema
 import numpy as np
 
 

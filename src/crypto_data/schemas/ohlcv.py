@@ -12,8 +12,8 @@ Features:
 - Separate schemas for spot vs futures (same structure, different semantics)
 """
 
-import pandera as pa
-from pandera import Column, Check, DataFrameSchema
+import pandera.pandas as pa
+from pandera.pandas import Column, Check, DataFrameSchema
 from crypto_data.schemas.checks import (
     check_ohlc_relationships,
     check_price_continuity,

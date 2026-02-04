@@ -181,14 +181,35 @@ class OpenInterestStrategy(DataTypeStrategy):
         # Metrics files always have headers
         df = pd.read_csv(csv_path)
 
+        # Validate required columns exist
+        required_cols = ['create_time', 'sum_open_interest']
+        missing = [c for c in required_cols if c not in df.columns]
+        if missing:
+            raise ValueError(
+                f"CSV file {csv_path.name} missing required columns: {missing}. "
+                f"Available columns: {list(df.columns)}"
+            )
+
         # Add exchange column
         df['exchange'] = exchange
 
         # Override symbol column (for 1000-prefix normalization)
         df['symbol'] = symbol
 
-        # Convert timestamp
-        df['timestamp'] = pd.to_datetime(df['create_time'])
+        # Convert timestamp with auto-detection for format
+        create_time = df['create_time']
+        if pd.api.types.is_numeric_dtype(create_time):
+            # Numeric timestamps: detect ms vs μs (same logic as klines)
+            # timestamps >= 5e12 are microseconds
+            if (create_time >= 5e12).any():
+                # Microseconds
+                df['timestamp'] = pd.to_datetime(create_time / 1_000_000, unit='s')
+            else:
+                # Milliseconds
+                df['timestamp'] = pd.to_datetime(create_time / 1_000, unit='s')
+        else:
+            # String timestamps (e.g., '2024-01-01 00:00:00')
+            df['timestamp'] = pd.to_datetime(create_time)
 
         # Rename sum_open_interest to open_interest
         df = df.rename(columns={'sum_open_interest': 'open_interest'})

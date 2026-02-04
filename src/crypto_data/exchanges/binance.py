@@ -11,15 +11,12 @@ import asyncio
 import logging
 import zipfile
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 
 import aiohttp
 
 from crypto_data.enums import Exchange
 from crypto_data.exchanges.base import ExchangeClient
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 
@@ -123,8 +120,10 @@ class BinanceExchange(ExchangeClient):
             Traceback if an exception was raised
         """
         if self._session:
-            await self._session.close()
-            self._session = None
+            try:
+                await self._session.close()
+            finally:
+                self._session = None
 
     async def download_file(
         self,

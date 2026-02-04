@@ -4,7 +4,7 @@ Developer guidance for Claude Code when working with this repository.
 
 ## Project Overview
 
-**Crypto Data v3.0.0** - DuckDB ingestion pipeline for cryptocurrency market data.
+**Crypto Data v5.0.0** - DuckDB ingestion pipeline for cryptocurrency market data.
 
 **Core Functions:**
 - Downloads OHLCV data from Binance Data Vision
@@ -300,7 +300,7 @@ grep "ERROR" logs/*.log
 
 **Example Script**:
 ```bash
-python scripts/Download_data_universe.py  # Runs complete database population workflow
+uv run python scripts/Download_data_universe.py  # Runs complete database population workflow
 ```
 
 **Python API**:
@@ -369,7 +369,7 @@ pytest tests/ --cov=crypto_data --cov-report=html  # With coverage
 pytest tests/schemas/ -v --tb=short  # Schema validation tests
 ```
 
-**Installation**: `pip install -e .` or `pip install -e ".[dev]"`
+**Installation**: `uv sync` (recommended) or `pip install -e ".[dev]"`
 
 ## Data Validation (Pandera v2)
 
@@ -440,22 +440,36 @@ validated_df = validate_ohlcv_dataframe(df, strict=True)
 
 ```
 src/crypto_data/
-├── __init__.py              # Public API (7 exports)
+├── __init__.py              # Public API exports
 ├── database.py              # CryptoDatabase class
-├── ingestion.py             # Unified ingestion (Universe + Binance async)
+├── ingestion.py             # Universe ingestion + populate_database()
 ├── logging_utils.py         # Colored logging
-├── clients/                 # INTERNAL (not exported)
+├── enums.py                 # DataType, Interval, Exchange enums
+├── core/                    # Binance ingestion (strategy pattern)
+│   ├── orchestrator.py      # ingest_binance_async() - main entry point
+│   ├── downloader.py        # BatchDownloader, 1000-prefix cache
+│   └── importer.py          # DataImporter for DB operations
+├── strategies/              # Data type strategies
+│   ├── base.py              # DataTypeStrategy ABC
+│   ├── klines.py            # KlinesStrategy (spot/futures)
+│   ├── open_interest.py     # OpenInterestStrategy
+│   ├── funding_rates.py     # FundingRatesStrategy
+│   └── registry.py          # get_strategy() factory
+├── exchanges/               # Exchange clients
+│   ├── base.py              # ExchangeClient ABC
+│   └── binance.py           # BinanceExchange implementation
+├── clients/                 # INTERNAL HTTP clients
 │   ├── coinmarketcap.py     # CMC API client
 │   └── binance_vision_async.py  # Binance async HTTP client
-└── utils/                   # INTERNAL (except get_symbols_from_universe)
+└── utils/                   # INTERNAL utilities
     ├── database.py          # import_to_duckdb, data_exists, etc.
     ├── dates.py             # generate_month_list
     ├── formatting.py        # format_availability_bar, format_file_size
-    ├── ingestion_helpers.py # Shared ingestion helpers (stats, logging, result processing)
+    ├── ingestion_helpers.py # Shared ingestion helpers
     └── symbols.py           # get_symbols_from_universe (PUBLIC)
 
 scripts/: Download_data_universe.py
-tests/: 6 test modules (database, universe, binance, 1000-prefix, timestamps, helpers)
+tests/: test modules for all components
 ```
 
 ## Workflow & Data Flow
@@ -476,7 +490,7 @@ tests/: 6 test modules (database, universe, binance, 1000-prefix, timestamps, he
 - **1000-prefix auto-discovery**: PEPEUSDT futures 404 → retry as 1000PEPEUSDT → store as PEPEUSDT (normalized)
 - **Gap detection**: `failure_threshold=3` stops after N consecutive 404s (delisting detection)
 - **Auto-retry**: 429→60s, 500/503→5s, max 3 retries
-- **Session cache**: `_ticker_mappings` caches 1000-prefix mappings
+- **Session cache**: `core/downloader.py` caches 1000-prefix mappings
 - **Visual progress**: Progress bars show data availability with coverage %
 - **Important**: Progress bars show Binance data availability, NOT when the coin entered top N rankings. Example: TON entered top 50 in June 2024, but Binance data only available from August 2024. To check when a coin was in top N, query the `crypto_universe` table
 
@@ -501,24 +515,27 @@ Do NOT rely on spot/futures tables for this - they only show data availability f
 
 ## Environment & Dependencies
 
-**Conda**: Always use `/Users/user/miniconda3/envs/quant/`
-- Activate: `source /Users/user/miniconda3/bin/activate quant`
+**UV + venv**: This project uses [uv](https://docs.astral.sh/uv/) for dependency management.
+- Install/sync: `uv sync` (installs all deps including dev)
+- Run scripts: `uv run python scripts/Download_data_universe.py`
+- Or activate venv: `source .venv/bin/activate`
+- Add dependency: `uv add <package>`
 
-**Dependencies**: duckdb, requests, pandas, aiohttp
-**Dev**: pytest, pytest-cov
+**Dependencies**: duckdb, pandas, aiohttp, pandera
+**Dev**: pytest, pytest-cov, pytest-asyncio
 
 ## Coding Standards
 
 - Vectorize operations (pandas/numpy), use explicit type hints
 - pytest for all tests
-- Always use conda env `quant`
+- Use `uv run` or activate `.venv` before running scripts
 - **Philosophy**: Simplicity over features, SQL over abstraction, expose database directly
 
 ## Known Data Quality Issues (Auto-Handled)
 
 **1. Timestamp Format Changes (2024→2025)**:
 - Problem: 2024 uses milliseconds (13 digits), 2025 uses microseconds (16 digits)
-- Solution: Auto-detection based on threshold `>= 5e12` → μs, `< 5e12` → ms (in `_import_to_duckdb`)
+- Solution: Auto-detection based on threshold `>= 5e12` → μs, `< 5e12` → ms (in `import_to_duckdb`)
 
 **2. Inconsistent CSV Headers**:
 - Problem: Some files have headers, others don't
@@ -527,7 +544,7 @@ Do NOT rely on spot/futures tables for this - they only show data availability f
 **3. 1000-Prefix Tokens (PEPE, SHIB, BONK)**:
 - Problem: Futures use `1000PEPEUSDT`, spot uses `PEPEUSDT`
 - Solution: Auto-retry with 1000-prefix on 404, cache mappings in `_ticker_mappings`, **always store as original symbol** (PEPEUSDT)
-- Location: `ingestion.py` (cache at line 46, auto-retry logic in ingest_binance_async)
+- Location: `core/downloader.py` (cache and auto-retry logic in BatchDownloader)
 
 **4. Gap Detection (Delisting)**:
 - Problem: FTT delisted Nov 2022, don't download years of 404s
@@ -542,11 +559,12 @@ Do NOT rely on spot/futures tables for this - they only show data availability f
 
 **v3.0.0 vs v2.0.0**: Complete rewrite. Removed Parquet storage, reader/loader classes. Added DuckDB-only storage. ~52% less code.
 
-**Recent improvements (CoinMarketCap async migration)**:
-- `CoinMarketCapClient` migrated to async (aiohttp instead of requests)
-- `ingest_universe()` renamed from `ingest_universe_batch_async()` - now async with parallel downloads
-- API simplified: One async function instead of two (sync + async versions)
-- All 174 tests passing, no coroutine warnings
+**Recent improvements (v5.0.0 - Strategy Pattern Refactoring)**:
+- `ingest_binance_async()` refactored to use strategy pattern (cleaner, more maintainable)
+- New architecture: `core/`, `strategies/`, `exchanges/` modules
+- Type-safe enums: `DataType`, `Interval`, `Exchange` replace string parameters
+- Old ingestion code removed (~950 lines), `ingestion.py` now only has universe + populate_database
+- All 447 tests passing
 
 **When adding features**:
 - Scope: Ingestion ONLY (not querying)

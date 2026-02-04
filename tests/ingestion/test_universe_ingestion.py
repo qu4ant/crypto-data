@@ -17,7 +17,7 @@ from crypto_data.ingestion import ingest_universe
 
 
 def test_universe_rollback_on_error():
-    """Test that errors during API fetch are logged (batch version doesn't raise)."""
+    """Test that errors during API fetch raise RuntimeError when ALL fetches fail."""
     with tempfile.TemporaryDirectory() as tmpdir:
         db_path = Path(tmpdir) / 'test.db'
 
@@ -39,12 +39,13 @@ def test_universe_rollback_on_error():
             mock_instance.get_historical_listings = AsyncMock(side_effect=Exception("API error"))
             MockClient.return_value = mock_instance
 
-            # Batch version logs error and continues (doesn't raise)
-            asyncio.run(ingest_universe(
-                db_path=str(db_path),
-                months=['2024-01'],
-                top_n=1
-            ))
+            # When ALL fetches fail, should raise RuntimeError
+            with pytest.raises(RuntimeError, match="All .* universe fetches failed"):
+                asyncio.run(ingest_universe(
+                    db_path=str(db_path),
+                    months=['2024-01'],
+                    top_n=1
+                ))
 
         # Verify original data still there (no new data due to error)
         db = CryptoDatabase(str(db_path))

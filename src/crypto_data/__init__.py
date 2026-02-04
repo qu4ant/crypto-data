@@ -1,8 +1,12 @@
 """
-Crypto Data Infrastructure Package v4.0.0
+Crypto Data Infrastructure Package v5.0.0
 
 Pure data ingestion pipeline for cryptocurrency data.
 Downloads from Binance Data Vision and CoinMarketCap → Populates DuckDB.
+
+BREAKING CHANGE (v5.0.0): Type-safe enums
+- All data type and interval parameters now require enums instead of strings
+- Use DataType.SPOT, DataType.FUTURES, Interval.MIN_5, etc.
 
 BREAKING CHANGE (v4.0.0): Multi-exchange schema
 - Tables renamed: binance_spot → spot, binance_futures → futures
@@ -29,7 +33,7 @@ implementation details and not part of the public API.
 """
 
 from .database import CryptoDatabase
-from .ingestion import ingest_universe, populate_database, ingest_binance_async
+from .ingestion import ingest_universe, populate_database
 from .logging_utils import setup_colored_logging, get_logger
 from .utils.symbols import get_symbols_from_universe
 from .enums import DataType, Interval, Exchange
@@ -53,7 +57,7 @@ from .exchanges import (
 from .core import (
     DataImporter,
     BatchDownloader,
-    ingest_binance_async_v2,
+    ingest_binance_async,
     get_ticker_mapping,
     set_ticker_mapping,
     clear_ticker_mappings,
@@ -112,10 +116,9 @@ __all__ = [
     "ExchangeClient",
     "BinanceExchange",
 
-    # Core Components (new architecture)
+    # Core Components
     "DataImporter",
     "BatchDownloader",
-    "ingest_binance_async_v2",
     "get_ticker_mapping",
     "set_ticker_mapping",
     "clear_ticker_mappings",

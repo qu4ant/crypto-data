@@ -4,7 +4,7 @@ Tests for Crypto Universe Schema
 
 import pytest
 import pandas as pd
-import pandera as pa
+import pandera.pandas as pa
 from datetime import datetime
 
 from crypto_data.schemas import (

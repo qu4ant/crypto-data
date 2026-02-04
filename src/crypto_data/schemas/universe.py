@@ -9,8 +9,8 @@ Features:
 - Date range validation
 """
 
-import pandera as pa
-from pandera import Column, Check, DataFrameSchema
+import pandera.pandas as pa
+from pandera.pandas import Column, Check, DataFrameSchema
 from crypto_data.schemas.checks import check_no_duplicate_ranks_per_date
 
 

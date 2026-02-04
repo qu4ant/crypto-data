@@ -4,7 +4,7 @@ Tests for Open Interest Metrics Schema
 
 import pytest
 import pandas as pd
-import pandera as pa
+import pandera.pandas as pa
 
 from crypto_data.schemas import (
     OPEN_INTEREST_SCHEMA,

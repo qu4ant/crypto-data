@@ -4,7 +4,7 @@ Tests for Funding Rates Schema
 
 import pytest
 import pandas as pd
-import pandera as pa
+import pandera.pandas as pa
 
 from crypto_data.schemas import (
     FUNDING_RATES_SCHEMA,

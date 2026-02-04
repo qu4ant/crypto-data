@@ -11,7 +11,7 @@ Tests Pandera schemas for OHLCV data validation including:
 import pytest
 from crypto_data.enums import DataType, Interval
 import pandas as pd
-import pandera as pa
+import pandera.pandas as pa
 
 from crypto_data.schemas import (
     OHLCV_SCHEMA,

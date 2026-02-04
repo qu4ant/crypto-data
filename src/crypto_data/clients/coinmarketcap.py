@@ -65,13 +65,15 @@ class CoinMarketCapClient:
         self.max_concurrent = max_concurrent
 
         self._session = None
-        self._semaphore = asyncio.Semaphore(max_concurrent)
+        self._semaphore = None  # Created in __aenter__ to ensure event loop exists
 
         logger.debug(f"Initialized CoinMarketCap client: base={self.api_base}, retries={max_retries}, concurrent={max_concurrent}")
 
     async def __aenter__(self):
         """Async context manager entry."""
         self._session = aiohttp.ClientSession()
+        # Create semaphore here to ensure an event loop exists
+        self._semaphore = asyncio.Semaphore(self.max_concurrent)
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -128,8 +130,9 @@ class CoinMarketCapClient:
             logger.debug(f"Successfully fetched {len(response_data['data'])} coins")
             return response_data['data']
         else:
-            logger.error(f"Unexpected API response format: {response_data}")
-            return []
+            error_msg = f"Unexpected API response format (missing 'data' key): {response_data}"
+            logger.error(error_msg)
+            raise ValueError(error_msg)
 
     async def _call_with_retry(self, url: str, params: dict, timeout: int) -> dict:
         """

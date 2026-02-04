@@ -342,9 +342,12 @@ class BatchDownloader:
 
                 if consecutive_failures >= threshold:
                     # Gap detected - truncate at gap start
+                    gap_result = results[gap_start_idx]
+                    last_success = results[gap_start_idx - 1]
                     logger.warning(
-                        f"Gap detected: {consecutive_failures} consecutive "
-                        f"missing periods starting at index {gap_start_idx}"
+                        f"{gap_result.symbol}: data ends at {last_success.period} "
+                        f"({consecutive_failures} consecutive missing periods). "
+                        f"Possible causes: delisting, rebrand, or exchange maintenance."
                     )
                     return results[:gap_start_idx]
             else:

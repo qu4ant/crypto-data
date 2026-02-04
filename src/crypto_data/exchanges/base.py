@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 from crypto_data.enums import Exchange
 
@@ -74,7 +74,7 @@ class ExchangeClient(ABC):
         self,
         url: str,
         output_path: Path,
-        session: aiohttp.ClientSession
+        session: Optional[aiohttp.ClientSession] = None
     ) -> bool:
         """
         Download a file from the given URL.
@@ -85,8 +85,9 @@ class ExchangeClient(ABC):
             Full URL to download from
         output_path : Path
             Path where the downloaded file should be saved
-        session : aiohttp.ClientSession
-            Async HTTP session to use for the download
+        session : aiohttp.ClientSession, optional
+            Async HTTP session to use for the download.
+            If None, implementation should use an internal session.
 
         Returns
         -------

@@ -11,7 +11,7 @@ from crypto_data.core.downloader import (
     set_ticker_mapping,
     clear_ticker_mappings,
 )
-from crypto_data.core.orchestrator import ingest_binance_async_v2
+from crypto_data.core.orchestrator import ingest_binance_async
 
 __all__ = [
     'DataImporter',
@@ -19,5 +19,5 @@ __all__ = [
     'get_ticker_mapping',
     'set_ticker_mapping',
     'clear_ticker_mappings',
-    'ingest_binance_async_v2',
+    'ingest_binance_async',
 ]

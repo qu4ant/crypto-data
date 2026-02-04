@@ -246,6 +246,11 @@ class KlinesStrategy(DataTypeStrategy):
         if 'count' in df.columns and 'trades_count' not in df.columns:
             df = df.rename(columns={'count': 'trades_count'})
 
+        # Add missing optional columns with None (some intervals like 4h don't have taker_buy columns)
+        for col in ['taker_buy_base_volume', 'taker_buy_quote_volume']:
+            if col not in df.columns:
+                df[col] = None
+
         # Add metadata columns
         df['exchange'] = exchange
         df['symbol'] = symbol
@@ -261,6 +266,15 @@ class KlinesStrategy(DataTypeStrategy):
             divisor = 1_000
 
         df['timestamp'] = pd.to_datetime(close_time / divisor, unit='s').dt.ceil('1s')
+
+        # Validate required columns exist before selection
+        required_cols = ['close_time', 'open', 'high', 'low', 'close', 'volume']
+        missing = [c for c in required_cols if c not in df.columns]
+        if missing:
+            raise ValueError(
+                f"CSV file {csv_path.name} missing required columns: {missing}. "
+                f"Available columns: {list(df.columns)}"
+            )
 
         # Select and order final columns
         df = df[FINAL_COLUMNS]

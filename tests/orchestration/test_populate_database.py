@@ -24,7 +24,7 @@ def test_populate_database_orchestrates_full_workflow():
         # Mock all heavy functions
         with patch('crypto_data.ingestion.ingest_universe', new_callable=AsyncMock) as mock_ingest_universe, \
              patch('crypto_data.ingestion.get_symbols_from_universe') as mock_get_symbols, \
-             patch('crypto_data.ingestion.ingest_binance_async') as mock_ingest_binance, \
+             patch('crypto_data.core.ingest_binance_async') as mock_ingest_binance, \
              patch('crypto_data.ingestion.CryptoDatabase') as mock_db, \
              patch('crypto_data.ingestion.Path') as mock_path:
 
@@ -65,7 +65,6 @@ def test_populate_database_orchestrates_full_workflow():
                 start_date='2024-01-01',
                 end_date='2024-03-31',
                 interval=Interval.MIN_5,
-                skip_existing=True,
                 max_concurrent_klines=20,
                 max_concurrent_metrics=100,
                 max_concurrent_funding=50,
@@ -74,27 +73,28 @@ def test_populate_database_orchestrates_full_workflow():
 
 
 def test_populate_database_handles_empty_universe():
-    """Test that populate_database() exits gracefully when no symbols are extracted."""
+    """Test that populate_database() raises RuntimeError when no symbols are extracted."""
     with tempfile.TemporaryDirectory() as tmpdir:
         db_path = str(Path(tmpdir) / 'test.db')
 
         # Mock functions
         with patch('crypto_data.ingestion.ingest_universe', new_callable=AsyncMock) as mock_ingest_universe, \
              patch('crypto_data.ingestion.get_symbols_from_universe') as mock_get_symbols, \
-             patch('crypto_data.ingestion.ingest_binance_async') as mock_ingest_binance:
+             patch('crypto_data.core.ingest_binance_async') as mock_ingest_binance:
 
             # Setup mocks - empty universe
             mock_get_symbols.return_value = []
 
-            # Call populate_database
-            populate_database(
-                db_path=db_path,
-                start_date='2024-01-01',
-                end_date='2024-01-31',
-                top_n=50,
-                interval=Interval.MIN_5,
-                data_types=[DataType.SPOT]
-            )
+            # Should raise RuntimeError for empty universe
+            with pytest.raises(RuntimeError, match="No symbols extracted from universe"):
+                populate_database(
+                    db_path=db_path,
+                    start_date='2024-01-01',
+                    end_date='2024-01-31',
+                    top_n=50,
+                    interval=Interval.MIN_5,
+                    data_types=[DataType.SPOT]
+                )
 
             # Verify ingest_universe was called
             mock_ingest_universe.assert_called_once()
@@ -102,7 +102,7 @@ def test_populate_database_handles_empty_universe():
             # Verify get_symbols_from_universe was called
             assert mock_get_symbols.call_count == 1
 
-            # Verify ingest_binance_async was NOT called (early return)
+            # Verify ingest_binance_async was NOT called (error raised before)
             mock_ingest_binance.assert_not_called()
 
 
@@ -114,7 +114,7 @@ def test_populate_database_generates_correct_month_list():
         # Mock functions
         with patch('crypto_data.ingestion.ingest_universe', new_callable=AsyncMock) as mock_ingest_universe, \
              patch('crypto_data.ingestion.get_symbols_from_universe') as mock_get_symbols, \
-             patch('crypto_data.ingestion.ingest_binance_async') as mock_ingest_binance:
+             patch('crypto_data.core.ingest_binance_async') as mock_ingest_binance:
 
             # Setup mocks
             mock_get_symbols.return_value = ['BTCUSDT']
@@ -141,7 +141,7 @@ def test_populate_database_continues_on_universe_failure():
         # Mock functions
         with patch('crypto_data.ingestion.ingest_universe', new_callable=AsyncMock) as mock_ingest_universe, \
              patch('crypto_data.ingestion.get_symbols_from_universe') as mock_get_symbols, \
-             patch('crypto_data.ingestion.ingest_binance_async') as mock_ingest_binance:
+             patch('crypto_data.core.ingest_binance_async') as mock_ingest_binance:
 
             # Setup mocks
             mock_get_symbols.return_value = ['BTCUSDT']
@@ -171,7 +171,7 @@ def test_populate_database_uses_default_data_types():
         # Mock functions
         with patch('crypto_data.ingestion.ingest_universe', new_callable=AsyncMock), \
              patch('crypto_data.ingestion.get_symbols_from_universe') as mock_get_symbols, \
-             patch('crypto_data.ingestion.ingest_binance_async') as mock_ingest_binance:
+             patch('crypto_data.core.ingest_binance_async') as mock_ingest_binance:
 
             mock_get_symbols.return_value = ['BTCUSDT']
 
@@ -198,7 +198,7 @@ def test_populate_database_handles_year_boundary():
         # Mock functions
         with patch('crypto_data.ingestion.ingest_universe', new_callable=AsyncMock) as mock_ingest_universe, \
              patch('crypto_data.ingestion.get_symbols_from_universe') as mock_get_symbols, \
-             patch('crypto_data.ingestion.ingest_binance_async'):
+             patch('crypto_data.core.ingest_binance_async'):
 
             mock_get_symbols.return_value = ['BTCUSDT']
 
