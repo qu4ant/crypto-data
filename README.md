@@ -221,75 +221,29 @@ ingest_binance_async(
 
 ---
 
-## 🔐 Type-Safe Enums (v5.0.0+)
+## 🔐 Type-Safe Enums
 
-**Breaking Change in v5.0.0**: All data type and interval parameters now require enums instead of strings.
-
-### Available Enums
+All data type and interval parameters use enums for type safety and IDE autocompletion.
 
 ```python
 from crypto_data import DataType, Interval, Exchange
 
-# DataType enum - Available data types
-DataType.SPOT           # 'spot' - Spot market OHLCV
-DataType.FUTURES        # 'futures' - Futures market OHLCV
-DataType.OPEN_INTEREST  # 'open_interest' - Futures open interest (daily)
-DataType.FUNDING_RATES  # 'funding_rates' - Funding rates (8h)
+# DataType enum
+DataType.SPOT           # Spot market OHLCV
+DataType.FUTURES        # Futures market OHLCV
+DataType.OPEN_INTEREST  # Futures open interest (daily)
+DataType.FUNDING_RATES  # Funding rates (8h)
 
-# Interval enum - Kline intervals
-Interval.MIN_1    # '1m'
-Interval.MIN_5    # '5m'
-Interval.MIN_15   # '15m'
-Interval.MIN_30   # '30m'
-Interval.HOUR_1   # '1h'
-Interval.HOUR_2   # '2h'
-Interval.HOUR_4   # '4h'
-Interval.HOUR_6   # '6h'
-Interval.HOUR_8   # '8h'
-Interval.HOUR_12  # '12h'
-Interval.DAY_1    # '1d'
-Interval.DAY_3    # '3d'
-Interval.WEEK_1   # '1w'
-Interval.MONTH_1  # '1M'
+# Interval enum
+Interval.MIN_1, MIN_5, MIN_15, MIN_30
+Interval.HOUR_1, HOUR_2, HOUR_4, HOUR_6, HOUR_8, HOUR_12
+Interval.DAY_1, DAY_3, WEEK_1, MONTH_1
 
-# Exchange enum (future expansion)
-Exchange.BINANCE   # 'binance' (currently implemented)
-Exchange.BYBIT     # 'bybit' (planned)
-Exchange.KRAKEN    # 'kraken' (planned)
+# Exchange enum
+Exchange.BINANCE  # Currently implemented
+Exchange.BYBIT    # Planned
+Exchange.KRAKEN   # Planned
 ```
-
-### Migration from v4.x to v5.x
-
-```python
-# ❌ Old way (v4.x) - strings
-populate_database(
-    db_path='crypto_data.db',
-    symbols=['BTCUSDT'],
-    data_types=['spot', 'futures'],
-    start_date='2024-01-01',
-    end_date='2024-12-31',
-    interval='5m'
-)
-
-# ✅ New way (v5.x) - enums
-from crypto_data import DataType, Interval
-
-populate_database(
-    db_path='crypto_data.db',
-    symbols=['BTCUSDT'],
-    data_types=[DataType.SPOT, DataType.FUTURES],
-    start_date='2024-01-01',
-    end_date='2024-12-31',
-    interval=Interval.MIN_5
-)
-```
-
-### Benefits
-
-- ✅ **IDE autocompletion** - Discover available options as you type
-- ✅ **Type checking** - Catch errors at development time with mypy/pyright
-- ✅ **Typo protection** - No more `'spot'` vs `'spots'` mistakes
-- ✅ **Self-documenting** - Clear, explicit code
 
 ---
 
