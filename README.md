@@ -524,6 +524,7 @@ The pipeline applies the following transformations to raw Binance data. **No oth
 - Volume and quote_volume
 - Trade counts
 - Any numerical values
+- Gaps in data remain as gaps - users must handle this in their analysis/backtesting
 
 ---
 

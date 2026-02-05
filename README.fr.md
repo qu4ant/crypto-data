@@ -524,6 +524,7 @@ Le pipeline applique les transformations suivantes aux données brutes Binance. 
 - Volume et quote_volume
 - Nombre de trades
 - Toutes les valeurs numériques
+- Les gaps de données restent des gaps - les utilisateurs doivent gérer cela dans leur analyse/backtesting
 
 ---
 
