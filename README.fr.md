@@ -221,75 +221,29 @@ ingest_binance_async(
 
 ---
 
-## 🔐 Énumérations Type-Safe (v5.0.0+)
+## 🔐 Énumérations Type-Safe
 
-**Changement majeur dans v5.0.0** : Tous les paramètres de type de données et d'intervalle nécessitent maintenant des énumérations au lieu de chaînes de caractères.
-
-### Énumérations disponibles
+Tous les paramètres de type de données et d'intervalle utilisent des énumérations pour la sécurité de type et l'autocomplétion IDE.
 
 ```python
 from crypto_data import DataType, Interval, Exchange
 
-# Enum DataType - Types de données disponibles
-DataType.SPOT           # 'spot' - OHLCV marché spot
-DataType.FUTURES        # 'futures' - OHLCV marché futures
-DataType.OPEN_INTEREST  # 'open_interest' - Open interest futures (journalier)
-DataType.FUNDING_RATES  # 'funding_rates' - Taux de financement (8h)
+# Enum DataType
+DataType.SPOT           # OHLCV marché spot
+DataType.FUTURES        # OHLCV marché futures
+DataType.OPEN_INTEREST  # Open interest futures (journalier)
+DataType.FUNDING_RATES  # Taux de financement (8h)
 
-# Enum Interval - Intervalles de klines
-Interval.MIN_1    # '1m'
-Interval.MIN_5    # '5m'
-Interval.MIN_15   # '15m'
-Interval.MIN_30   # '30m'
-Interval.HOUR_1   # '1h'
-Interval.HOUR_2   # '2h'
-Interval.HOUR_4   # '4h'
-Interval.HOUR_6   # '6h'
-Interval.HOUR_8   # '8h'
-Interval.HOUR_12  # '12h'
-Interval.DAY_1    # '1d'
-Interval.DAY_3    # '3d'
-Interval.WEEK_1   # '1w'
-Interval.MONTH_1  # '1M'
+# Enum Interval
+Interval.MIN_1, MIN_5, MIN_15, MIN_30
+Interval.HOUR_1, HOUR_2, HOUR_4, HOUR_6, HOUR_8, HOUR_12
+Interval.DAY_1, DAY_3, WEEK_1, MONTH_1
 
-# Enum Exchange (expansion future)
-Exchange.BINANCE   # 'binance' (actuellement implémenté)
-Exchange.BYBIT     # 'bybit' (planifié)
-Exchange.KRAKEN    # 'kraken' (planifié)
+# Enum Exchange
+Exchange.BINANCE  # Actuellement implémenté
+Exchange.BYBIT    # Planifié
+Exchange.KRAKEN   # Planifié
 ```
-
-### Migration de v4.x vers v5.x
-
-```python
-# ❌ Ancienne méthode (v4.x) - chaînes de caractères
-populate_database(
-    db_path='crypto_data.db',
-    symbols=['BTCUSDT'],
-    data_types=['spot', 'futures'],
-    start_date='2024-01-01',
-    end_date='2024-12-31',
-    interval='5m'
-)
-
-# ✅ Nouvelle méthode (v5.x) - énumérations
-from crypto_data import DataType, Interval
-
-populate_database(
-    db_path='crypto_data.db',
-    symbols=['BTCUSDT'],
-    data_types=[DataType.SPOT, DataType.FUTURES],
-    start_date='2024-01-01',
-    end_date='2024-12-31',
-    interval=Interval.MIN_5
-)
-```
-
-### Avantages
-
-- ✅ **Autocomplétion IDE** - Découvrez les options disponibles pendant la frappe
-- ✅ **Vérification de type** - Détectez les erreurs au moment du développement avec mypy/pyright
-- ✅ **Protection contre les fautes de frappe** - Plus d'erreurs `'spot'` vs `'spots'`
-- ✅ **Code auto-documenté** - Code clair et explicite
 
 ---
 
@@ -548,6 +502,28 @@ Le pipeline gère automatiquement plusieurs problèmes de données :
 **Paramètres explicites** : Pas de fichiers config cachés
 - `exclude_tags` et `exclude_symbols` explicites dans chaque appel
 - Meilleure testabilité, zéro dépendance cachée
+
+---
+
+## 🔄 Transformations de données
+
+Le pipeline applique les transformations suivantes aux données brutes Binance. **Aucune autre modification n'est effectuée** - les prix, volumes et compteurs sont stockés exactement comme reçus.
+
+| Transformation | Donnée brute | Donnée stockée | Raison |
+|----------------|--------------|----------------|--------|
+| **Arrondi timestamp** | `1704067499999` ms → `2024-01-01 00:04:59.999` | `2024-01-01 00:05:00` | Ceil à 1 seconde évite les `.999` millisecondes |
+| **Unité timestamp** | Millisecondes (13 chiffres) ou microsecondes (16 chiffres) | datetime | Auto-détecté via seuil `>= 5e12` |
+| **Symboles 1000-prefix** | `1000PEPEUSDT` (fichier futures) | `PEPEUSDT` | Stocké avec symbole original pour cohérence |
+| **Noms de colonnes** | Casse mixte (`Open`, `OPEN`) | minuscules (`open`) | Normalisé pour requêtes cohérentes |
+| **Renommage colonne** | `count` | `trades_count` | Certains fichiers utilisent `count` |
+| **Colonnes manquantes** | (absentes) | `NULL` | Colonnes `taker_buy_*` ajoutées comme NULL si manquantes |
+| **Doublons** | Plusieurs lignes même timestamp | Ligne unique | Dédupliqué sur clé primaire avant insertion |
+
+**Ce qui n'est PAS modifié :**
+- Prix OHLC (open, high, low, close)
+- Volume et quote_volume
+- Nombre de trades
+- Toutes les valeurs numériques
 
 ---
 
