@@ -505,6 +505,28 @@ The pipeline automatically handles several data issues:
 
 ---
 
+## 🔄 Data Transformations
+
+The pipeline applies the following transformations to raw Binance data. **No other modifications are made** - prices, volumes, and counts are stored exactly as received.
+
+| Transformation | Raw Data | Stored Data | Reason |
+|----------------|----------|-------------|--------|
+| **Timestamp rounding** | `1704067499999` ms → `2024-01-01 00:04:59.999` | `2024-01-01 00:05:00` | Ceil to 1 second avoids `.999` milliseconds |
+| **Timestamp unit** | Milliseconds (13 digits) or microseconds (16 digits) | datetime | Auto-detected via threshold `>= 5e12` |
+| **1000-prefix symbols** | `1000PEPEUSDT` (futures file) | `PEPEUSDT` | Stored with original symbol for consistency |
+| **Column names** | Mixed case (`Open`, `OPEN`) | lowercase (`open`) | Normalized for consistent queries |
+| **Column rename** | `count` | `trades_count` | Some files use `count` instead |
+| **Missing columns** | (absent) | `NULL` | `taker_buy_*` columns added as NULL if missing |
+| **Duplicates** | Multiple rows same timestamp | Single row | Deduplicated on primary key before insert |
+
+**What is NOT modified:**
+- OHLC prices (open, high, low, close)
+- Volume and quote_volume
+- Trade counts
+- Any numerical values
+
+---
+
 ## ⚠️ Known Limitations
 
 ### Technical Constraints
