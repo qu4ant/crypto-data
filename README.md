@@ -2,7 +2,7 @@
 
 > **[Français](README.fr.md)** | **English**
 
-**Cryptocurrency Data Infrastructure** - Automated multi-exchange OHLCV data and market rankings downloader.
+**Cryptocurrency Data Infrastructure** - Automated Binance OHLCV data and market rankings downloader.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
@@ -25,7 +25,7 @@
 - 🚀 **Async Downloads**: 20 parallel downloads for maximum speed
 - 🔄 **Auto-Management**: Format detection, intelligent retry, 1000-prefix token handling
 - 💾 **DuckDB**: Embedded database, fast SQL queries
-- 🏗️ **Multi-exchange ready**: Schema v4.0.0 prepared for Bybit, Kraken, etc.
+- 🏗️ **Binance-exclusive**: The only exchange providing extensive free historical data (OHLCV, takers, open interest, funding rates, tick data, aggregated trades)
 
 **Console output:**
 
@@ -250,14 +250,7 @@ Interval.DAY_1, DAY_3, WEEK_1, MONTH_1
 > **Tip**: Prefer downloading `MIN_1` and aggregating with SQL to other timeframes.
 > This avoids re-downloading data for each interval you need.
 
-```python
-# Exchange enum
-Exchange.BINANCE  # Currently implemented
-Exchange.BYBIT    # Planned
-Exchange.KRAKEN   # Planned
-```
-
-> **📦 Data Source**: All data types download from **Binance Data Vision** (official historical archives).
+> **📦 Data Source**: All data types download from **Binance Data Vision** (official historical archives). Binance is the only exchange that provides extensive free historical data (OHLCV, takers, open interest, funding rates, tick data, aggregated trades).
 > The pipeline uses **monthly ZIP files** for complete past months (faster, fewer HTTP requests) and
 > **daily ZIP files** for current month days when monthly files aren't yet available.
 > This is important for Open Interest and Funding Rates, as the Binance REST API only provides
@@ -318,23 +311,7 @@ WHERE s.exchange = 'binance'
 ORDER BY u.date, u.rank;
 ```
 
-### 4. Volume Analysis by Exchange (Future)
-
-```sql
--- Today: Binance only
--- Future: compare Binance vs Bybit vs Kraken
-SELECT
-    exchange,
-    symbol,
-    interval,
-    SUM(volume) as total_volume
-FROM spot
-WHERE timestamp >= '2024-01-01'
-GROUP BY exchange, symbol, interval
-ORDER BY total_volume DESC;
-```
-
-### 5. Top 10 Cryptos by Volume (24h)
+### 4. Top 10 Cryptos by Volume (24h)
 
 ```sql
 SELECT
@@ -350,7 +327,7 @@ ORDER BY volume_24h DESC
 LIMIT 10;
 ```
 
-### 6. Check When a Coin Was in Top N Rankings
+### 5. Check When a Coin Was in Top N Rankings
 
 ```sql
 -- Find when TON entered/exited top 50
@@ -364,7 +341,7 @@ ORDER BY date;
 
 > **Important**: Use the `crypto_universe` table to check rankings, NOT the spot/futures tables. Progress bars show Binance data availability (e.g., TON data from August 2024), not when the coin entered top N (June 2024).
 
-### 7. Query Multiple Intervals from Same Database
+### 6. Query Multiple Intervals from Same Database
 
 ```sql
 -- Compare 1h vs 4h data for the same symbol
@@ -393,7 +370,7 @@ Once data is ingested, you can query the `spot` and `futures` tables directly fo
 - 📊 Export to CSV/Parquet for machine learning pipelines
 - 📈 Create custom aggregations (daily VWAP, rolling volatility, etc.)
 - 🖥️ Build real-time dashboards with read-only connections
-- 🔍 Cross-exchange analysis (future: compare Binance vs Bybit)
+- 🔍 Advanced analytics on Binance historical data
 
 ### Example: Export to Pandas DataFrame
 
@@ -456,11 +433,11 @@ Stores CoinMarketCap rankings (top N by market cap).
 
 ### Tables `spot` and `futures` - OHLCV Data
 
-Historical price data multi-exchange (currently Binance only).
+Historical price data from Binance.
 
 | Column           | Type      | Description                                   |
 |------------------|-----------|-----------------------------------------------|
-| `exchange`        | VARCHAR   | Exchange ('binance', future: 'bybit', etc.)  |
+| `exchange`        | VARCHAR   | Exchange ('binance')                         |
 | `symbol`          | VARCHAR   | Trading pair (BTCUSDT, ETHUSDT, etc.)        |
 | `interval`        | VARCHAR   | Interval (5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M) |
 | `timestamp`       | TIMESTAMP | Candle timestamp                             |
@@ -505,9 +482,7 @@ The pipeline automatically handles several data issues:
 
 ### 🎯 Design Decisions
 
-**Multi-Exchange v4.0.0**: Schema ready for Bybit, Kraken, Coinbase
-- `exchange` column in primary key
-- Cross-exchange analysis, arbitrage detection, redundancy
+**Binance Only**: Binance is the only exchange that shares extensive free historical data (OHLCV, takers, open interest, funding rates, tick data, aggregated trades). No other exchange provides this level of free data access.
 
 **Rebrands = Separate Symbols**: MATIC→POL, RNDR→RENDER treated differently
 - Reason: trading interruptions, separate files, different liquidity
@@ -754,7 +729,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 ✅ **Reliable**: Automatic retry, intelligent error handling
 ✅ **Unbiased**: UNION strategy captures all historical symbols
 ✅ **SQL-first**: Direct queries, no unnecessary abstraction
-✅ **Multi-exchange ready**: Schema v4.0.0 prepared for the future
+✅ **Binance Data Vision**: The richest free historical data source available
 
 ---
 
