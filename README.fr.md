@@ -10,6 +10,8 @@
 [![codecov](https://codecov.io/gh/qu4ant/crypto-data/branch/main/graph/badge.svg)](https://codecov.io/gh/qu4ant/crypto-data)
 [![Tests](https://github.com/qu4ant/crypto-data/workflows/Tests/badge.svg)](https://github.com/qu4ant/crypto-data/actions)
 
+📺 Plus d'outils et tuto ici -> [Guillaume Algo Trading](https://www.youtube.com/@GuillaumeAlgoTrading)
+
 ---
 
 ## 🎯 Vue d'ensemble
