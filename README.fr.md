@@ -32,51 +32,51 @@
 ## 🔄 Schéma Input/Output
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                         INPUTS                               │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  📊 CoinMarketCap API                                       │
-│  └─> Classements top N par capitalisation                  │
-│      (résout le biais du survivant)                        │
-│                                                              │
-│  📈 Binance Data Vision                                     │
-│  └─> Données OHLCV historiques                             │
-│      (spot + futures, intervalles 5m/1h/4h/1d)             │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────┐
+│                         INPUTS                            │
+├───────────────────────────────────────────────────────────┤
+│                                                           │
+│  CoinMarketCap API                                        │
+│  └─> Classements top N par capitalisation                 │
+│      (résout le biais du survivant)                       │
+│                                                           │
+│  Binance Data Vision                                      │
+│  └─> Données OHLCV historiques                            │
+│      (spot + futures, intervalles 5m/1h/4h/1d)            │
+│                                                           │
+└───────────────────────────────────────────────────────────┘
                             ↓
-┌─────────────────────────────────────────────────────────────┐
-│                   CRYPTO-DATA PIPELINE                       │
-│                                                              │
-│  ⚙️  Téléchargement asynchrone (20 threads)                 │
-│  ⚙️  Auto-détection format timestamps                       │
-│  ⚙️  Gestion 1000-prefix (PEPE, SHIB, BONK)                │
-│  ⚙️  Transaction atomique par symbole                       │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────┐
+│                   CRYPTO-DATA PIPELINE                    │
+│                                                           │
+│  - Téléchargement asynchrone (20 threads)                 │
+│  - Auto-détection format timestamps                       │
+│  - Gestion 1000-prefix (PEPE, SHIB, BONK)                 │
+│  - Transaction atomique par symbole                       │
+│                                                           │
+└───────────────────────────────────────────────────────────┘
                             ↓
-┌─────────────────────────────────────────────────────────────┐
-│                         OUTPUT                               │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│  💾 crypto_data.db (DuckDB)                                 │
-│                                                              │
-│  Tables:                                                     │
-│  • crypto_universe  → Classements historiques               │
-│  • spot             → Prix OHLCV spot                       │
-│  • futures          → Prix OHLCV futures                    │
-│                                                              │
-│  📝 Vous interrogez avec SQL:                               │
-│                                                              │
-│  SELECT symbol, close, volume                               │
-│  FROM spot                                                   │
-│  WHERE exchange = 'binance'                                 │
-│    AND symbol = 'BTCUSDT'                                   │
-│    AND interval = '1h'                                      │
-│    AND timestamp >= '2024-01-01'                            │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────┐
+│                         OUTPUT                            │
+├───────────────────────────────────────────────────────────┤
+│                                                           │
+│  crypto_data.db (DuckDB)                                  │
+│                                                           │
+│  Tables:                                                  │
+│  - crypto_universe  -> Classements historiques            │
+│  - spot             -> Prix OHLCV spot                    │
+│  - futures          -> Prix OHLCV futures                 │
+│                                                           │
+│  Vous interrogez avec SQL:                                │
+│                                                           │
+│  SELECT symbol, close, volume                             │
+│  FROM spot                                                │
+│  WHERE exchange = 'binance'                               │
+│    AND symbol = 'BTCUSDT'                                 │
+│    AND interval = '1h'                                    │
+│    AND timestamp >= '2024-01-01'                          │
+│                                                           │
+└───────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -153,6 +153,9 @@ pip install -e ".[dev]"
 
 ## 💻 Démarrage rapide
 
+> **Conseil** : Téléchargez les données 1 minute une fois, puis agrégez vers l'intervalle souhaité (5m, 1h, 4h...)
+> avec SQL. C'est plus rapide et flexible que de télécharger plusieurs intervalles séparément.
+
 ### Option 1 : Workflow complet avec `populate_database()`
 
 La fonction `populate_database()` fait tout en un appel : télécharge l'univers + données OHLCV.
@@ -175,6 +178,10 @@ populate_database(
     exclude_symbols=['LUNA', 'FTT', 'UST']
 )
 ```
+
+**Sortie console :**
+
+![Sortie console](console_output.png)
 
 ### Option 2 : Étape par étape
 
@@ -238,12 +245,23 @@ DataType.FUNDING_RATES  # Taux de financement (8h)
 Interval.MIN_1, MIN_5, MIN_15, MIN_30
 Interval.HOUR_1, HOUR_2, HOUR_4, HOUR_6, HOUR_8, HOUR_12
 Interval.DAY_1, DAY_3, WEEK_1, MONTH_1
+```
 
+> **Conseil** : Préférez télécharger `MIN_1` et agréger avec SQL vers d'autres timeframes.
+> Cela évite de re-télécharger les données pour chaque intervalle.
+
+```python
 # Enum Exchange
 Exchange.BINANCE  # Actuellement implémenté
 Exchange.BYBIT    # Planifié
 Exchange.KRAKEN   # Planifié
 ```
+
+> **📦 Source de données** : Tous les types de données sont téléchargés depuis **Binance Data Vision** (archives historiques officielles).
+> Le pipeline utilise des **fichiers ZIP mensuels** pour les mois complets passés (plus rapide, moins de requêtes HTTP) et
+> des **fichiers ZIP journaliers** pour les jours du mois en cours lorsque les fichiers mensuels ne sont pas encore disponibles.
+> C'est important pour l'Open Interest et les Funding Rates, car l'API REST Binance ne fournit que les données récentes (~6 mois),
+> tandis que Data Vision a des années d'historique.
 
 ---
 
@@ -576,6 +594,20 @@ Le pipeline applique les transformations suivantes aux données brutes Binance. 
 
 - Partial downloads/corrupt ZIPs → Retourne False (non importé)
 - **Solution** : Re-lancer `populate_database()` ou `ingest_binance_async()` → skip existing + retry failed
+
+### Source de données : Binance Data Vision vs API REST
+
+Ce package télécharge depuis **Binance Data Vision** (archives ZIP officielles), pas l'API REST.
+
+| Type de données | Data Vision (ce package) | API REST |
+|-----------------|--------------------------|----------|
+| OHLCV (spot/futures) | Historique complet (années) | Historique complet |
+| Open Interest | Historique complet (années) | Récent uniquement (~30 jours) |
+| Funding Rates | Historique complet (années) | ~6 mois maximum |
+
+**Avantage** : Vous obtenez l'historique complet qui n'est pas disponible via l'API REST.
+
+**Référence** : [Documentation API Binance](https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Open-Interest-Statistics)
 
 ---
 

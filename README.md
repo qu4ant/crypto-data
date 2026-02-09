@@ -153,6 +153,9 @@ pip install -e ".[dev]"
 
 ## 💻 Quick Start
 
+> **Tip**: Download 1-minute data once, then aggregate to your desired timeframe (5m, 1h, 4h...)
+> with SQL. This is faster and more flexible than downloading multiple intervals separately.
+
 ### Option 1: Complete Workflow with `populate_database()`
 
 The `populate_database()` function does everything in one call: downloads universe + OHLCV data.
@@ -175,6 +178,10 @@ populate_database(
     exclude_symbols=['LUNA', 'FTT', 'UST']
 )
 ```
+
+**Console output:**
+
+![Console output](console_output.png)
 
 ### Option 2: Step-by-Step
 
@@ -238,12 +245,23 @@ DataType.FUNDING_RATES  # Funding rates (8h)
 Interval.MIN_1, MIN_5, MIN_15, MIN_30
 Interval.HOUR_1, HOUR_2, HOUR_4, HOUR_6, HOUR_8, HOUR_12
 Interval.DAY_1, DAY_3, WEEK_1, MONTH_1
+```
 
+> **Tip**: Prefer downloading `MIN_1` and aggregating with SQL to other timeframes.
+> This avoids re-downloading data for each interval you need.
+
+```python
 # Exchange enum
 Exchange.BINANCE  # Currently implemented
 Exchange.BYBIT    # Planned
 Exchange.KRAKEN   # Planned
 ```
+
+> **📦 Data Source**: All data types download from **Binance Data Vision** (official historical archives).
+> The pipeline uses **monthly ZIP files** for complete past months (faster, fewer HTTP requests) and
+> **daily ZIP files** for current month days when monthly files aren't yet available.
+> This is important for Open Interest and Funding Rates, as the Binance REST API only provides
+> recent data (~6 months), while Data Vision has years of history.
 
 ---
 
@@ -576,6 +594,20 @@ The pipeline applies the following transformations to raw Binance data. **No oth
 
 - Partial downloads/corrupt ZIPs → Returns False (not imported)
 - **Solution**: Re-run `populate_database()` or `ingest_binance_async()` → skip existing + retry failed
+
+### Data Source: Binance Data Vision vs REST API
+
+This package downloads from **Binance Data Vision** (official ZIP archives), not the REST API.
+
+| Data Type | Data Vision (this package) | REST API |
+|-----------|---------------------------|----------|
+| OHLCV (spot/futures) | Full history (years) | Full history |
+| Open Interest | Full history (years) | Recent only (~30 days) |
+| Funding Rates | Full history (years) | ~6 months max |
+
+**Advantage**: You get complete historical data that's not available via REST API.
+
+**Reference**: [Binance API Docs](https://developers.binance.com/docs/derivatives/usds-margined-futures/market-data/rest-api/Open-Interest-Statistics)
 
 ---
 
