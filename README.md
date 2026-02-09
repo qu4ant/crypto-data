@@ -27,6 +27,10 @@
 - 💾 **DuckDB**: Embedded database, fast SQL queries
 - 🏗️ **Multi-exchange ready**: Schema v4.0.0 prepared for Bybit, Kraken, etc.
 
+**Console output:**
+
+![Console output](console_output.png)
+
 ---
 
 ## 🔄 Input/Output Schema
@@ -178,10 +182,6 @@ populate_database(
     exclude_symbols=['LUNA', 'FTT', 'UST']
 )
 ```
-
-**Console output:**
-
-![Console output](console_output.png)
 
 ### Option 2: Step-by-Step
 

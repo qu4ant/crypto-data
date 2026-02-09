@@ -27,6 +27,10 @@
 - 💾 **DuckDB** : Base de données embarquée, requêtes SQL rapides
 - 🏗️ **Multi-exchange ready** : Schéma v4.0.0 préparé pour Bybit, Kraken, etc.
 
+**Sortie console :**
+
+![Sortie console](console_output.png)
+
 ---
 
 ## 🔄 Schéma Input/Output
@@ -178,10 +182,6 @@ populate_database(
     exclude_symbols=['LUNA', 'FTT', 'UST']
 )
 ```
-
-**Sortie console :**
-
-![Sortie console](console_output.png)
 
 ### Option 2 : Étape par étape
 
