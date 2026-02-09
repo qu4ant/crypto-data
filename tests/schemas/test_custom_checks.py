@@ -134,7 +134,7 @@ class TestTimestampMonotonicCheck:
     def test_monotonic_timestamps_pass(self):
         """Test that monotonic increasing timestamps pass"""
         df = pd.DataFrame({
-            'timestamp': pd.date_range('2024-01-01', periods=5, freq='5T')
+            'timestamp': pd.date_range('2024-01-01', periods=5, freq='5min')
         })
         assert check_timestamp_monotonic(df) is True
 

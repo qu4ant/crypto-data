@@ -18,7 +18,7 @@ def valid_ohlcv_df():
         'exchange': ['binance'] * 5,
         'symbol': ['BTCUSDT'] * 5,
         'interval': [Interval.MIN_5.value] * 5,
-        'timestamp': pd.date_range('2024-01-01', periods=5, freq='5T'),
+        'timestamp': pd.date_range('2024-01-01', periods=5, freq='5min'),
         'open': [50000.0, 50010.0, 50020.0, 50030.0, 50040.0],
         'high': [50100.0, 50110.0, 50120.0, 50130.0, 50140.0],
         'low': [49900.0, 49910.0, 49920.0, 49930.0, 49940.0],
@@ -38,7 +38,7 @@ def invalid_ohlcv_high_low():
         'exchange': ['binance'] * 3,
         'symbol': ['BTCUSDT'] * 3,
         'interval': [Interval.MIN_5.value] * 3,
-        'timestamp': pd.date_range('2024-01-01', periods=3, freq='5T'),
+        'timestamp': pd.date_range('2024-01-01', periods=3, freq='5min'),
         'open': [50000.0, 50010.0, 50020.0],
         'high': [50100.0, 49900.0, 50120.0],  # Second row: high < low
         'low': [49900.0, 50000.0, 49920.0],   # Second row: low > high
@@ -58,7 +58,7 @@ def invalid_ohlcv_negative_price():
         'exchange': ['binance'] * 3,
         'symbol': ['BTCUSDT'] * 3,
         'interval': [Interval.MIN_5.value] * 3,
-        'timestamp': pd.date_range('2024-01-01', periods=3, freq='5T'),
+        'timestamp': pd.date_range('2024-01-01', periods=3, freq='5min'),
         'open': [50000.0, -50010.0, 50020.0],  # Negative price
         'high': [50100.0, 50110.0, 50120.0],
         'low': [49900.0, 49910.0, 49920.0],
@@ -77,7 +77,7 @@ def valid_open_interest_df():
     return pd.DataFrame({
         'exchange': ['binance'] * 5,
         'symbol': ['BTCUSDT'] * 5,
-        'timestamp': pd.date_range('2024-01-01', periods=5, freq='1H'),
+        'timestamp': pd.date_range('2024-01-01', periods=5, freq='1h'),
         'open_interest': [100000.0, 105000.0, 110000.0, 108000.0, 112000.0]
     })
 
@@ -88,7 +88,7 @@ def invalid_open_interest_zero():
     return pd.DataFrame({
         'exchange': ['binance'] * 3,
         'symbol': ['BTCUSDT'] * 3,
-        'timestamp': pd.date_range('2024-01-01', periods=3, freq='1H'),
+        'timestamp': pd.date_range('2024-01-01', periods=3, freq='1h'),
         'open_interest': [100000.0, 0.0, 110000.0]  # Zero value
     })
 
@@ -99,7 +99,7 @@ def valid_funding_rates_df():
     return pd.DataFrame({
         'exchange': ['binance'] * 5,
         'symbol': ['BTCUSDT'] * 5,
-        'timestamp': pd.date_range('2024-01-01', periods=5, freq='8H'),
+        'timestamp': pd.date_range('2024-01-01', periods=5, freq='8h'),
         'funding_rate': [0.0001, -0.0001, 0.0002, -0.0003, 0.0001]
     })
 
@@ -110,7 +110,7 @@ def funding_rates_extreme():
     return pd.DataFrame({
         'exchange': ['binance'] * 10,
         'symbol': ['BTCUSDT'] * 10,
-        'timestamp': pd.date_range('2024-01-01', periods=10, freq='8H'),
+        'timestamp': pd.date_range('2024-01-01', periods=10, freq='8h'),
         'funding_rate': [0.0001, -0.0001, 0.0002, -0.0002, 0.0001,
                          0.015, 0.014, 0.013, 0.012, 0.011]  # Multiple extreme values (last 5), std > 1%
     })

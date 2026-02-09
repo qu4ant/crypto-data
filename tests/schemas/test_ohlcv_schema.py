@@ -152,7 +152,7 @@ class TestOHLCVStatisticalValidation:
             'exchange': ['binance'] * num_points,
             'symbol': ['BTCUSDT'] * num_points,
             'interval': [Interval.MIN_5.value] * num_points,
-            'timestamp': pd.date_range('2024-01-01', periods=num_points, freq='5T'),
+            'timestamp': pd.date_range('2024-01-01', periods=num_points, freq='5min'),
             'open': [50000.0] * num_points,
             'high': [50100.0] * num_points,
             'low': [49900.0] * num_points,
