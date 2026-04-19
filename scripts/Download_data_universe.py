@@ -26,12 +26,12 @@ def main():
     # 4. Extract symbols from universe using UNION strategy
     # 5. Download Binance spot + futures data for filtered symbols
     populate_database(
-        db_path='crypto_data.db',
+        db_path='crypto_data-new.db',
         start_date='2022-01-01',
-        end_date='2025-11-01',
-        top_n=30,  # Top X coins by market cap
+        end_date='2026-04-01',
+        top_n=50,  # Top X coins by market cap
         interval=Interval.HOUR_4,  # interval : Interval.MIN_1, MIN_5, MIN_15, MIN_30, HOUR_1, HOUR_4, DAY_1
-        data_types=[DataType.SPOT, DataType.FUTURES],# DataType.OPEN_INTEREST, DataType.FUNDING_RATES],
+        data_types=[DataType.SPOT, DataType.FUTURES, DataType.FUNDING_RATES],
         exclude_tags=DEFAULT_EXCLUDE_TAGS,
         exclude_symbols=DEFAULT_EXCLUDE_SYMBOLS
     )
