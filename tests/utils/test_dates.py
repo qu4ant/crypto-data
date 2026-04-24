@@ -8,7 +8,7 @@ monthly snapshots for universe data ingestion.
 import pytest
 from datetime import datetime
 
-from crypto_data.utils.dates import generate_month_list
+from crypto_data.utils.dates import generate_date_list, generate_month_list
 
 
 def test_single_month():
@@ -103,6 +103,71 @@ def test_full_year():
     # Verify all months present
     expected = [f'2024-{str(i).zfill(2)}' for i in range(1, 13)]
     assert result == expected
+
+
+def test_generate_date_list_monthly_matches_month_list():
+    """Monthly frequency should match month list with -01 suffix."""
+    start = datetime(2024, 1, 15)
+    end = datetime(2024, 3, 20)
+
+    monthly = generate_date_list(start, end, frequency='monthly')
+    expected = [f"{month}-01" for month in generate_month_list(start, end)]
+
+    assert monthly == expected
+
+
+def test_generate_date_list_daily_three_days():
+    """Daily frequency should include every day in inclusive range."""
+    start = datetime(2024, 1, 1)
+    end = datetime(2024, 1, 3)
+
+    assert generate_date_list(start, end, frequency='daily') == [
+        '2024-01-01',
+        '2024-01-02',
+        '2024-01-03',
+    ]
+
+
+def test_generate_date_list_daily_year_boundary():
+    """Daily generation should cross year boundaries correctly."""
+    start = datetime(2023, 12, 31)
+    end = datetime(2024, 1, 2)
+
+    assert generate_date_list(start, end, frequency='daily') == [
+        '2023-12-31',
+        '2024-01-01',
+        '2024-01-02',
+    ]
+
+
+def test_generate_date_list_weekly_aligns_on_monday():
+    """Weekly frequency should align snapshots to Mondays."""
+    start = datetime(2024, 1, 2)  # Tuesday
+    end = datetime(2024, 1, 22)
+
+    assert generate_date_list(start, end, frequency='weekly') == [
+        '2024-01-08',
+        '2024-01-15',
+        '2024-01-22',
+    ]
+
+
+def test_generate_date_list_invalid_frequency_raises():
+    """Invalid frequency should raise ValueError."""
+    start = datetime(2024, 1, 1)
+    end = datetime(2024, 1, 2)
+
+    with pytest.raises(ValueError, match="Invalid frequency"):
+        generate_date_list(start, end, frequency='hourly')  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("frequency", ['daily', 'weekly', 'monthly'])
+def test_generate_date_list_backward_returns_empty(frequency):
+    """All frequencies should return empty when start > end."""
+    start = datetime(2024, 2, 1)
+    end = datetime(2024, 1, 1)
+
+    assert generate_date_list(start, end, frequency=frequency) == []
 
 
 if __name__ == "__main__":

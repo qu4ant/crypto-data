@@ -9,7 +9,50 @@ import asyncio
 from unittest.mock import patch, MagicMock, AsyncMock
 import aiohttp
 
-from crypto_data.clients.coinmarketcap import CoinMarketCapClient
+from crypto_data.clients.coinmarketcap import CoinMarketCapClient, _SlidingWindowRateLimiter
+
+
+class TestRateLimiter:
+    """Tests for the internal sliding-window rate limiter."""
+
+    @pytest.mark.asyncio
+    async def test_rate_limiter_allows_burst_up_to_quota(self):
+        """Limiter should allow burst traffic up to configured quota."""
+        limiter = _SlidingWindowRateLimiter(max_calls=3, window_seconds=10.0)
+
+        with patch('crypto_data.clients.coinmarketcap.time.monotonic', side_effect=[100.0, 100.1, 100.2]):
+            await limiter.acquire()
+            await limiter.acquire()
+            await limiter.acquire()
+
+        assert len(limiter._timestamps) == 3
+
+    @pytest.mark.asyncio
+    async def test_rate_limiter_blocks_after_quota_reached(self):
+        """Limiter should sleep when quota is exhausted in the current window."""
+        limiter = _SlidingWindowRateLimiter(max_calls=2, window_seconds=10.0)
+
+        with patch('crypto_data.clients.coinmarketcap.time.monotonic', side_effect=[100.0, 101.0, 103.0, 110.0]):
+            with patch('asyncio.sleep', new_callable=AsyncMock) as mock_sleep:
+                await limiter.acquire()
+                await limiter.acquire()
+                await limiter.acquire()
+
+                mock_sleep.assert_awaited_once_with(7.0)
+
+    @pytest.mark.asyncio
+    async def test_rate_limiter_evicts_old_timestamps(self):
+        """Old entries should be evicted when they leave the sliding window."""
+        limiter = _SlidingWindowRateLimiter(max_calls=2, window_seconds=10.0)
+
+        with patch('crypto_data.clients.coinmarketcap.time.monotonic', side_effect=[100.0, 101.0, 112.0]):
+            with patch('asyncio.sleep', new_callable=AsyncMock) as mock_sleep:
+                await limiter.acquire()
+                await limiter.acquire()
+                await limiter.acquire()
+
+                mock_sleep.assert_not_awaited()
+                assert list(limiter._timestamps) == [112.0]
 
 
 class TestApiCallWithRetry:
@@ -60,6 +103,31 @@ class TestApiCallWithRetry:
                     assert mock_sleep.call_count == 1
                     assert mock_sleep.call_args[0][0] == 60  # Should wait 60 seconds
                     assert result == {'data': []}
+
+    @pytest.mark.asyncio
+    async def test_client_acquires_token_before_each_http_attempt(self):
+        """Rate-limiter token should be acquired for every emitted HTTP GET."""
+        mock_response_429 = AsyncMock()
+        mock_response_429.status = 429
+        mock_response_429.raise_for_status = MagicMock(side_effect=aiohttp.ClientResponseError(
+            request_info=MagicMock(), history=(), status=429
+        ))
+
+        mock_response_200 = AsyncMock()
+        mock_response_200.status = 200
+        mock_response_200.json = AsyncMock(return_value={'data': []})
+        mock_response_200.raise_for_status = MagicMock()
+
+        async with CoinMarketCapClient(max_retries=1) as client:
+            with patch.object(client._session, 'get') as mock_get:
+                client._rate_limiter.acquire = AsyncMock()
+                mock_get.return_value.__aenter__.side_effect = [mock_response_429, mock_response_200]
+
+                with patch('asyncio.sleep', new_callable=AsyncMock):
+                    await client._call_with_retry('https://api.test.com', {}, timeout=10)
+
+                    assert client._rate_limiter.acquire.await_count == 2
+                    assert mock_get.call_count == 2
 
     @pytest.mark.asyncio
     async def test_rate_limit_exhausts_retries(self):

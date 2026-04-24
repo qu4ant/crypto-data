@@ -41,6 +41,48 @@ def datetime_to_utc_ms(dt: datetime) -> int:
     return int(dt.timestamp() * 1000)
 
 
+def interval_to_milliseconds(interval: str) -> int:
+    """
+    Convert Binance interval string to milliseconds.
+
+    Supports intervals used by this package.
+    """
+    if not interval or len(interval) < 2:
+        raise ValueError(f"Invalid interval: {interval}")
+
+    try:
+        value = int(interval[:-1])
+    except ValueError as exc:
+        raise ValueError(f"Invalid interval: {interval}") from exc
+
+    unit = interval[-1]
+    if unit == "m":
+        return value * 60_000
+    if unit == "h":
+        return value * 3_600_000
+    if unit == "d":
+        return value * 86_400_000
+    if unit == "w":
+        return value * 7 * 86_400_000
+    if unit == "M":
+        # Binance month interval is variable length. Validation suite currently
+        # targets minute/hour/day data.
+        raise ValueError("Month interval is not supported by validation client")
+
+    raise ValueError(f"Unsupported interval unit in: {interval}")
+
+
+def stored_close_key_to_open_time_ms(timestamp: datetime, interval: str) -> int:
+    """
+    Convert DB timestamp key to Binance API openTime milliseconds.
+
+    The ingestion pipeline stores candle keys using a normalized close-time key.
+    Binance APIs query candles by openTime, so validation must translate.
+    """
+    close_key_ms = datetime_to_utc_ms(timestamp)
+    return close_key_ms - interval_to_milliseconds(interval)
+
+
 class BinanceAPIError(Exception):
     """Raised when Binance API returns an error"""
 
@@ -108,8 +150,8 @@ class BinanceValidationClient:
         """Fetch single spot kline for exact timestamp"""
         await asyncio.sleep(self.rate_limit_delay)
 
-        # Convert to UTC milliseconds (assumes naive datetime is UTC)
-        timestamp_ms = datetime_to_utc_ms(timestamp)
+        # Convert DB close-time key to API openTime in milliseconds.
+        timestamp_ms = stored_close_key_to_open_time_ms(timestamp, interval)
         url = f"{self.SPOT_BASE_URL}/api/v3/klines"
         params = {
             "symbol": symbol,
@@ -136,8 +178,8 @@ class BinanceValidationClient:
         # Handle 1000-prefix mapping
         api_symbol = self._get_futures_api_symbol(symbol)
 
-        # Convert to UTC milliseconds (assumes naive datetime is UTC)
-        timestamp_ms = datetime_to_utc_ms(timestamp)
+        # Convert DB close-time key to API openTime in milliseconds.
+        timestamp_ms = stored_close_key_to_open_time_ms(timestamp, interval)
         url = f"{self.FUTURES_BASE_URL}/fapi/v1/klines"
         params = {
             "symbol": api_symbol,

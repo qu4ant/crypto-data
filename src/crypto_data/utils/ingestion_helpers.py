@@ -1,8 +1,8 @@
 """
 Ingestion Helpers - Shared utilities for Universe and Binance ingestion
 
-This module contains helper functions used by both ingest_universe() and
-ingest_binance_async() to reduce code duplication and improve maintainability.
+This module contains helper functions used by both update_coinmarketcap_universe() and
+update_binance_market_data() to reduce code duplication and improve maintainability.
 
 Functions:
     - initialize_ingestion_stats(): Create standardized stats tracking dict

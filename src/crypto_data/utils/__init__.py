@@ -8,7 +8,7 @@ Only symbol extraction utilities are public API.
 
 Public API
 ----------
-- get_symbols_from_universe: Extract symbols from universe (UNION strategy)
+- get_binance_symbols_from_universe: Extract Binance symbols from universe
 
 Internal Utilities
 ------------------
@@ -16,8 +16,8 @@ Internal Utilities
 - formatting: Display formatting (format_file_size, format_availability_bar)
 """
 
-from .symbols import get_symbols_from_universe
+from .symbols import get_binance_symbols_from_universe
 
 __all__ = [
-    'get_symbols_from_universe',
+    'get_binance_symbols_from_universe',
 ]

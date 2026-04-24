@@ -38,10 +38,32 @@ def parse_cmc_response(api_response: list) -> dict:
             if quotes and len(quotes) > 0:
                 market_cap = quotes[0].get("marketCap")
 
-            api_by_symbol[symbol] = {
+            candidate = {
                 "rank": item.get("cmcRank"),
                 "market_cap": market_cap,
             }
+
+            existing = api_by_symbol.get(symbol)
+            if existing is None:
+                api_by_symbol[symbol] = candidate
+                continue
+
+            # CMC can return duplicate symbols (e.g., SOL for Solana and Wrapped Solana).
+            # Keep the canonical listing by preferring the lowest rank (best market-cap rank).
+            existing_rank = existing.get("rank")
+            candidate_rank = candidate.get("rank")
+            if candidate_rank is not None and (
+                existing_rank is None or candidate_rank < existing_rank
+            ):
+                api_by_symbol[symbol] = candidate
+            elif candidate_rank == existing_rank:
+                existing_mcap = existing.get("market_cap")
+                candidate_mcap = candidate.get("market_cap")
+                if (
+                    candidate_mcap is not None
+                    and (existing_mcap is None or candidate_mcap > existing_mcap)
+                ):
+                    api_by_symbol[symbol] = candidate
     return api_by_symbol
 
 

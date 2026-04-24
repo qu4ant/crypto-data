@@ -24,11 +24,10 @@ FUNDING_RATES_SCHEMA = DataFrameSchema(
         'exchange': Column(
             str,
             checks=[
-                Check.str_length(min_value=1, max_value=50),  # Any exchange name
-                Check.str_matches(r'^[a-z0-9_-]+$')  # Lowercase alphanumeric + underscore/hyphen
+                Check.isin(['binance'])
             ],
             nullable=False,
-            description="Exchange name (e.g., 'binance', 'bybit', 'kraken')"
+            description="Exchange name (always 'binance')"
         ),
         'symbol': Column(
             str,

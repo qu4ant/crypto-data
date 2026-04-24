@@ -30,6 +30,8 @@ class Period:
         Period string: 'YYYY-MM' for monthly, 'YYYY-MM-DD' for daily
     is_monthly : bool
         True for monthly periods, False for daily periods (default: True)
+    replace_existing : bool
+        True when an existing period should be refreshed instead of skipped.
 
     Examples
     --------
@@ -44,6 +46,7 @@ class Period:
 
     value: str
     is_monthly: bool = True
+    replace_existing: bool = False
 
     def __str__(self) -> str:
         """Return the period value as string."""

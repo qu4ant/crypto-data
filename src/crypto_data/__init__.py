@@ -8,9 +8,9 @@ BREAKING CHANGE (v5.0.0): Type-safe enums
 - All data type and interval parameters now require enums instead of strings
 - Use DataType.SPOT, DataType.FUTURES, Interval.MIN_5, etc.
 
-BREAKING CHANGE (v4.0.0): Multi-exchange schema
+BREAKING CHANGE (v4.0.0): Explicit exchange provenance column
 - Tables renamed: binance_spot → spot, binance_futures → futures
-- New column: exchange (e.g., 'binance')
+- New column: exchange (always 'binance')
 - Primary key now includes exchange: (exchange, symbol, interval, timestamp)
 
 This package ONLY handles data ingestion. For querying, use DuckDB directly:
@@ -21,47 +21,24 @@ This package ONLY handles data ingestion. For querying, use DuckDB directly:
 
 Public API:
     - CryptoDatabase: Database schema management
-    - ingest_universe(): Async download and import CoinMarketCap rankings (parallel)
-    - ingest_binance_async(): Download and import Binance data (parallel, 5-10x faster)
-    - populate_database(): Complete workflow (universe → binance, uses parallel downloads)
+    - update_coinmarketcap_universe(): Async download and import CoinMarketCap rankings
+    - update_binance_market_data(): Download and import Binance market data
+    - create_binance_database(): Complete workflow (universe -> Binance)
     - setup_colored_logging(), get_logger(): Logging utilities
     - Pandera schemas: OHLCV_SCHEMA, OPEN_INTEREST_SCHEMA, FUNDING_RATES_SCHEMA, UNIVERSE_SCHEMA
     - Validation functions: validate_ohlcv_dataframe, validate_open_interest_dataframe, etc.
 
-Note: Client classes (CoinMarketCapClient, BinanceDataVisionClient) are internal
-implementation details and not part of the public API.
+Note: downloader/importer/client/dataset classes are internal implementation
+details and are not re-exported from the package root.
 """
 
 from .database import CryptoDatabase
-from .ingestion import ingest_universe, populate_database
+from .database_builder import create_binance_database, update_coinmarketcap_universe
 from .logging_utils import setup_colored_logging, get_logger
-from .utils.symbols import get_symbols_from_universe
-from .enums import DataType, Interval, Exchange
-
-# Strategy pattern components (new architecture)
-from .strategies import (
-    DataTypeStrategy,
-    Period,
-    DownloadResult,
-    KlinesStrategy,
-    OpenInterestStrategy,
-    FundingRatesStrategy,
-    get_strategy,
-)
-
-from .exchanges import (
-    ExchangeClient,
-    BinanceExchange,
-)
-
-from .core import (
-    DataImporter,
-    BatchDownloader,
-    ingest_binance_async,
-    get_ticker_mapping,
-    set_ticker_mapping,
-    clear_ticker_mappings,
-)
+from .universe_filters import DEFAULT_UNIVERSE_EXCLUDE_SYMBOLS, DEFAULT_UNIVERSE_EXCLUDE_TAGS
+from .utils.symbols import get_binance_symbols_from_universe
+from .enums import DataType, Interval
+from .binance_pipeline import update_binance_market_data
 
 # Import Pandera schemas and validation functions
 from .schemas import (
@@ -89,10 +66,12 @@ __author__ = "Crypto Data Contributors"
 __all__ = [
     # Database & Ingestion
     "CryptoDatabase",
-    "ingest_binance_async",
-    "ingest_universe",
-    "populate_database",
-    "get_symbols_from_universe",
+    "create_binance_database",
+    "update_binance_market_data",
+    "update_coinmarketcap_universe",
+    "get_binance_symbols_from_universe",
+    "DEFAULT_UNIVERSE_EXCLUDE_TAGS",
+    "DEFAULT_UNIVERSE_EXCLUDE_SYMBOLS",
 
     # Logging
     "setup_colored_logging",
@@ -101,27 +80,6 @@ __all__ = [
     # Enums
     "DataType",
     "Interval",
-    "Exchange",
-
-    # Strategy Pattern (new architecture)
-    "DataTypeStrategy",
-    "Period",
-    "DownloadResult",
-    "KlinesStrategy",
-    "OpenInterestStrategy",
-    "FundingRatesStrategy",
-    "get_strategy",
-
-    # Exchange Clients (new architecture)
-    "ExchangeClient",
-    "BinanceExchange",
-
-    # Core Components
-    "DataImporter",
-    "BatchDownloader",
-    "get_ticker_mapping",
-    "set_ticker_mapping",
-    "clear_ticker_mappings",
 
     # Pandera Schemas
     "OHLCV_SCHEMA",

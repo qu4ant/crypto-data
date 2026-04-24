@@ -175,39 +175,5 @@ def test_open_interest_duplicate_key_prevention():
         db.close()
 
 
-def test_open_interest_multi_exchange():
-    """Test that different exchanges can coexist in the same table."""
-    with tempfile.TemporaryDirectory() as tmpdir:
-        db_path = Path(tmpdir) / 'test.db'
-
-        db = CryptoDatabase(str(db_path))
-
-        # Insert data for multiple exchanges
-        db.conn.execute("""
-            INSERT INTO open_interest
-            (exchange, symbol, timestamp, open_interest)
-            VALUES
-                ('binance', 'BTCUSDT', '2024-01-01 00:00:00', 75000.0),
-                ('bybit', 'BTCUSDT', '2024-01-01 00:00:00', 50000.0),
-                ('kraken', 'BTCUSDT', '2024-01-01 00:00:00', 30000.0)
-        """)
-
-        # Query data
-        result = db.execute("""
-            SELECT exchange, open_interest
-            FROM open_interest
-            WHERE symbol = 'BTCUSDT' AND timestamp = '2024-01-01 00:00:00'
-            ORDER BY exchange
-        """).fetchall()
-
-        # Verify all three exchanges
-        assert len(result) == 3
-        assert result[0][0] == 'binance'
-        assert result[1][0] == 'bybit'
-        assert result[2][0] == 'kraken'
-
-        db.close()
-
-
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

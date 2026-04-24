@@ -1,8 +1,7 @@
 """
 Enumerations for crypto-data package.
 
-Defines type-safe enums for data types, intervals, and exchanges
-to prevent typos and provide IDE autocompletion.
+Defines type-safe enums for Binance data types and intervals.
 """
 
 from enum import Enum
@@ -93,33 +92,3 @@ class Interval(str, Enum):
     DAY_3 = '3d'
     WEEK_1 = '1w'
     MONTH_1 = '1M'
-
-
-class Exchange(str, Enum):
-    """
-    Supported exchanges for multi-exchange schema (v4.0.0+).
-
-    Currently only Binance is implemented. Future versions will
-    support additional exchanges.
-
-    Attributes
-    ----------
-    BINANCE : str
-        Binance exchange (current implementation)
-    BYBIT : str
-        Bybit exchange (future support)
-    KRAKEN : str
-        Kraken exchange (future support)
-    COINBASE : str
-        Coinbase exchange (future support)
-
-    Example
-    -------
-    >>> from crypto_data import Exchange
-    >>> exchange = Exchange.BINANCE
-    >>> print(exchange.value)  # 'binance'
-    """
-    BINANCE = 'binance'
-    BYBIT = 'bybit'      # Future
-    KRAKEN = 'kraken'    # Future
-    COINBASE = 'coinbase'  # Future

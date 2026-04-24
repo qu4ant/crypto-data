@@ -7,10 +7,51 @@ Implements automatic retry logic for rate limits and server errors.
 
 import logging
 import asyncio
-from typing import Optional
+from collections import deque
+import time
+from typing import Deque, Optional
 import aiohttp
 
 logger = logging.getLogger(__name__)
+
+_BROWSER_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/131.0.0.0 Safari/537.36"
+)
+
+
+class _SlidingWindowRateLimiter:
+    """Async sliding-window rate limiter."""
+
+    def __init__(self, max_calls: int, window_seconds: float):
+        if max_calls <= 0:
+            raise ValueError("max_calls must be > 0")
+        if window_seconds <= 0:
+            raise ValueError("window_seconds must be > 0")
+
+        self.max_calls = max_calls
+        self.window_seconds = window_seconds
+        self._timestamps: Deque[float] = deque()
+        self._lock = asyncio.Lock()
+
+    async def acquire(self) -> None:
+        while True:
+            wait_for = 0.0
+            async with self._lock:
+                now = time.monotonic()
+                cutoff = now - self.window_seconds
+
+                while self._timestamps and self._timestamps[0] <= cutoff:
+                    self._timestamps.popleft()
+
+                if len(self._timestamps) < self.max_calls:
+                    self._timestamps.append(now)
+                    return
+
+                wait_for = max((self._timestamps[0] + self.window_seconds) - now, 0.0)
+
+            await asyncio.sleep(wait_for)
 
 
 class CoinMarketCapClient:
@@ -37,7 +78,9 @@ class CoinMarketCapClient:
         rate_limit_wait: int = 60,
         server_error_delay: int = 5,
         timeout: int = 10,
-        max_concurrent: int = 10
+        max_concurrent: int = 10,
+        daily_quota: int = 200,
+        quota_window_seconds: float = 86400.0,
     ):
         """
         Initialize CoinMarketCap API client.
@@ -56,6 +99,10 @@ class CoinMarketCapClient:
             Request timeout in seconds (default: 10)
         max_concurrent : int
             Maximum number of concurrent requests (default: 5)
+        daily_quota : int
+            Maximum requests in the sliding window (default: 200)
+        quota_window_seconds : float
+            Sliding window duration in seconds (default: 86400.0)
         """
         self.api_base = api_base or 'https://api.coinmarketcap.com/data-api/v3'
         self.max_retries = max_retries
@@ -63,17 +110,24 @@ class CoinMarketCapClient:
         self.server_error_delay = server_error_delay
         self.timeout = timeout
         self.max_concurrent = max_concurrent
+        self.daily_quota = daily_quota
+        self.quota_window_seconds = quota_window_seconds
 
         self._session = None
         self._semaphore = None  # Created in __aenter__ to ensure event loop exists
+        self._rate_limiter = None
 
         logger.debug(f"Initialized CoinMarketCap client: base={self.api_base}, retries={max_retries}, concurrent={max_concurrent}")
 
     async def __aenter__(self):
         """Async context manager entry."""
-        self._session = aiohttp.ClientSession()
+        self._session = aiohttp.ClientSession(headers={"User-Agent": _BROWSER_USER_AGENT})
         # Create semaphore here to ensure an event loop exists
         self._semaphore = asyncio.Semaphore(self.max_concurrent)
+        self._rate_limiter = _SlidingWindowRateLimiter(
+            max_calls=self.daily_quota,
+            window_seconds=self.quota_window_seconds
+        )
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -162,12 +216,13 @@ class CoinMarketCapClient:
         aiohttp.ClientError
             If all retries exhausted or non-retryable error
         """
-        if not self._session:
+        if not self._session or not self._rate_limiter:
             raise RuntimeError("Client must be used as async context manager (async with)")
 
         async with self._semaphore:  # Limit concurrent requests
             for attempt in range(self.max_retries + 1):  # 0 = initial, 1-3 = retries
                 try:
+                    await self._rate_limiter.acquire()
                     async with self._session.get(
                         url,
                         params=params,

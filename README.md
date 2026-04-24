@@ -5,7 +5,7 @@
 **Cryptocurrency Data Infrastructure** - Automated Binance OHLCV data and market rankings downloader.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.10+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![Version](https://img.shields.io/badge/version-5.0.0-green.svg)](https://github.com/qu4ant/crypto-data/releases/tag/v5.0.0)
 [![codecov](https://codecov.io/gh/qu4ant/crypto-data/branch/main/graph/badge.svg)](https://codecov.io/gh/qu4ant/crypto-data)
 [![Tests](https://github.com/qu4ant/crypto-data/workflows/Tests/badge.svg)](https://github.com/qu4ant/crypto-data/actions)
@@ -97,17 +97,22 @@ Imagine analyzing cryptos by **only taking today's top 100**. Your analysis comp
 
 If you don't include these cryptos in your backtest, your results will be **artificially optimistic** - this is **survivorship bias**.
 
-### The Solution: CoinMarketCap + UNION Strategy
+### The Solution: CoinMarketCap + UNION Approach
 
 ✅ **crypto-data** solves this problem by:
 
-1. **Downloading historical rankings** via CoinMarketCap each month
-2. **Using a UNION strategy**: retrieves ALL symbols that were in the top N **at any point** during the period
+1. **Downloading historical rankings** via CoinMarketCap snapshots (daily/weekly/monthly)
+2. **Using a UNION dataset**: retrieves ALL symbols that were in the top N **at any point** during the period
+
+> **Point-in-time note**: this UNION set is for **download coverage**, not for
+> treating every symbol as tradable from day 1. Safe workflow: download the
+> superset once, then filter snapshot by snapshot (or rebalance by rebalance) with
+> `crypto_universe` when building the investable universe.
 
 **Concrete Example**:
 ```python
 # Top 100 over 12 months
-get_symbols_from_universe(
+get_binance_symbols_from_universe(
     db_path='crypto_data.db',
     start_date='2024-01-01',
     end_date='2024-12-31',
@@ -160,26 +165,26 @@ pip install -e ".[dev]"
 > **Tip**: Download 1-minute data once, then aggregate to your desired timeframe (5m, 1h, 4h...)
 > with SQL. This is faster and more flexible than downloading multiple intervals separately.
 
-### Option 1: Complete Workflow with `populate_database()`
+### Option 1: Complete Workflow with `create_binance_database()`
 
-The `populate_database()` function does everything in one call: downloads universe + OHLCV data.
+The `create_binance_database()` function does everything in one call: downloads universe + OHLCV data.
 
 ```python
-from crypto_data import populate_database, setup_colored_logging, DataType, Interval
+from crypto_data import create_binance_database, setup_colored_logging, DataType, Interval
 
 # Colored logs (optional but recommended)
 setup_colored_logging()
 
 # Complete download
-populate_database(
+create_binance_database(
     db_path='crypto_data.db',
     start_date='2024-01-01',
     end_date='2024-12-31',
     top_n=100,                    # Top 100 by market cap
     interval=Interval.HOUR_1,     # Use Interval enum (MIN_5, HOUR_1, HOUR_4, DAY_1, etc.)
     data_types=[DataType.SPOT, DataType.FUTURES],  # Use DataType enum
-    exclude_tags=['stablecoin', 'wrapped-tokens'],  # Optional filters
-    exclude_symbols=['LUNA', 'FTT', 'UST']
+    # Defaults exclude stablecoins, wrapped tokens, and tokenized assets
+    exclude_symbols=['LUNA', 'FTT', 'UST']  # Optional additional exclusions
 )
 ```
 
@@ -188,9 +193,9 @@ populate_database(
 ```python
 import asyncio
 from crypto_data import (
-    ingest_universe,
-    get_symbols_from_universe,
-    ingest_binance_async,
+    update_coinmarketcap_universe,
+    get_binance_symbols_from_universe,
+    update_binance_market_data,
     setup_colored_logging,
     DataType,
     Interval
@@ -199,24 +204,26 @@ from crypto_data import (
 setup_colored_logging()
 
 # 1. Download CoinMarketCap rankings (async, parallel downloads)
-asyncio.run(ingest_universe(
+asyncio.run(update_coinmarketcap_universe(
     db_path='crypto_data.db',
-    months=['2024-01', '2024-02', '2024-03'],  # List of months to download
+    dates=['2024-01-01', '2024-02-01', '2024-03-01'],  # List of snapshot dates
     top_n=100,
-    exclude_tags=['stablecoin'],
+    # Defaults exclude stablecoins, wrapped tokens, and tokenized assets
     exclude_symbols=[]
 ))
 
-# 2. Extract symbols with UNION strategy
-symbols = get_symbols_from_universe(
+# 2. Extract symbols with UNION dataset
+symbols = get_binance_symbols_from_universe(
     db_path='crypto_data.db',
     start_date='2024-01-01',
     end_date='2024-12-31',
     top_n=100
 )
+# Download-time superset only:
+# keep point-in-time membership by filtering with crypto_universe later.
 
 # 3. Download Binance data (async)
-ingest_binance_async(
+update_binance_market_data(
     db_path='crypto_data.db',
     symbols=symbols,
     start_date='2024-01-01',
@@ -233,7 +240,7 @@ ingest_binance_async(
 All data type and interval parameters use enums for type safety and IDE autocompletion.
 
 ```python
-from crypto_data import DataType, Interval, Exchange
+from crypto_data import DataType, Interval
 
 # DataType enum
 DataType.SPOT           # Spot market OHLCV
@@ -255,6 +262,11 @@ Interval.DAY_1, DAY_3, WEEK_1, MONTH_1
 > **daily ZIP files** for current month days when monthly files aren't yet available.
 > This is important for Open Interest and Funding Rates, as the Binance REST API only provides
 > recent data (~6 months), while Data Vision has years of history.
+>
+> **Automatic kline freshness**: Spot/futures OHLCV ingestion chooses the best
+> archive automatically. Historical months use monthly files; recent days use
+> daily files and the last 3 available daily files are refreshed to pick up late
+> source corrections. No extra parameter is required.
 
 ---
 
@@ -276,6 +288,7 @@ ORDER BY nb_rows DESC;
 ### 2. Bitcoin Price History
 
 ```sql
+-- Note: timestamp is the candle CLOSE time
 SELECT
     timestamp,
     open,
@@ -340,6 +353,10 @@ ORDER BY date;
 ```
 
 > **Important**: Use the `crypto_universe` table to check rankings, NOT the spot/futures tables. Progress bars show Binance data availability (e.g., TON data from August 2024), not when the coin entered top N (June 2024).
+>
+> **PIT reminder**: `get_binance_symbols_from_universe()` is intentionally broader than a
+> tradable universe. Use it to make sure data is downloaded, then apply the
+> actual top N filter from `crypto_universe` on each month/rebalance date.
 
 ### 6. Query Multiple Intervals from Same Database
 
@@ -418,7 +435,7 @@ Stores CoinMarketCap rankings (top N by market cap).
 
 | Column      | Type      | Description                                      |
 |------------|-----------|--------------------------------------------------|
-| `date`       | DATE      | Ranking date (monthly)                          |
+| `date`       | DATE      | Ranking snapshot date                           |
 | `symbol`     | VARCHAR   | Base symbol (BTC, ETH, not BTCUSDT)             |
 | `rank`       | INTEGER   | Market cap ranking                              |
 | `market_cap` | DOUBLE    | Market cap in USD                               |
@@ -427,9 +444,9 @@ Stores CoinMarketCap rankings (top N by market cap).
 **Primary key**: `(date, symbol)`
 **Index**: `(date, rank)`
 
-> **Timestamp Interpretation**: A date like `2024-01-01 00:00:00.000` means the coin was in top N for the **ENTIRE month** of January 2024 (monthly snapshot taken on the 1st).
->
-> **Update Frequency**: Snapshots are taken on the **1st of each month ONLY** (no daily/weekly updates). To backfill 12 months, you need 12 API calls.
+> **Timestamp Interpretation**: `crypto_universe.date` is a snapshot timestamp.
+> With `universe_frequency='monthly'`, `2024-01-01` is the month-start snapshot.
+> With `daily` or `weekly`, it is the exact snapshot day used for that ingestion run.
 
 ### Tables `spot` and `futures` - OHLCV Data
 
@@ -440,7 +457,7 @@ Historical price data from Binance.
 | `exchange`        | VARCHAR   | Exchange ('binance')                         |
 | `symbol`          | VARCHAR   | Trading pair (BTCUSDT, ETHUSDT, etc.)        |
 | `interval`        | VARCHAR   | Interval (5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M) |
-| `timestamp`       | TIMESTAMP | Candle timestamp                             |
+| `timestamp`       | TIMESTAMP | Candle close timestamp                       |
 | `open`            | DOUBLE    | Open price                                   |
 | `high`            | DOUBLE    | High price                                   |
 | `low`             | DOUBLE    | Low price                                    |
@@ -452,6 +469,10 @@ Historical price data from Binance.
 
 **Primary key**: `(exchange, symbol, interval, timestamp)`
 **Index**: `(exchange, symbol, interval, timestamp)`
+
+> **OHLCV Timestamp Interpretation**: `timestamp` is the candle **close time**.
+> Example: for a `5m` candle covering `00:00 -> 00:05`, the stored timestamp is
+> `00:05:00`, not `00:00:00`.
 
 > **Multi-Interval Support**: You can store multiple intervals (5m, 1h, 4h, etc.) in the same database simultaneously. Each interval is stored as a separate row with a different primary key. Query by filtering `WHERE interval = '5m'`.
 
@@ -488,13 +509,13 @@ The pipeline automatically handles several data issues:
 - Reason: trading interruptions, separate files, different liquidity
 - Solution: UNION queries to combine periods
 
-**UNION Strategy**: captures ALL symbols in top N over the period
+**UNION Approach**: captures ALL symbols in top N over the period
 - ~120-150 symbols for top 100 over 12 months
 - Avoids survivorship bias
 
-**Explicit Parameters**: No hidden config files
-- `exclude_tags` and `exclude_symbols` explicit in each call
-- Better testability, zero hidden dependencies
+**Default Universe Filters**: stablecoins, wrapped tokens, and tokenized assets excluded
+- `exclude_tags=[]` explicitly disables these default exclusions
+- `exclude_symbols` lets callers add ticker-level exclusions case by case
 
 ---
 
@@ -527,7 +548,7 @@ The pipeline applies the following transformations to raw Binance data. **No oth
 
 **Single-Writer Only**: DuckDB supports only one write process at a time
 - ✅ Unlimited concurrent reads OK
-- ❌ Running multiple `populate_database()` in parallel → lock error
+- ❌ Running multiple `create_binance_database()` in parallel → lock error
 - **Solution**: Run one instance at a time
 
 **Minimum Disk Space**: ~50GB recommended for top 100 over 1 year
@@ -536,17 +557,21 @@ The pipeline applies the following transformations to raw Binance data. **No oth
 - Temp files during download: +10-20GB additional
 - **Solution**: Use larger interval (1h/4h instead of 5m) or reduce `top_n`
 
-**API Rate Limits**: CoinMarketCap free tier = 333 calls/day
-- Universe ingestion: 1 call per month
-- 12 months = 12 calls → OK
-- **Limitation**: Don't run > 300 months in 1 day
-- **Solution**: Use paid API key for massive historical datasets
+**API Rate Limits**: CoinMarketCap ingestion is guarded by a sliding-window limiter
+- Default limiter: 200 calls per 24h (conservative)
+- Universe ingestion: 1 call per snapshot date
+- **Tip**: Use `skip_existing_universe=True` to resume safely after interruption.
+  This skips universe snapshots by date only. If you change `top_n`,
+  `exclude_tags`, or `exclude_symbols` for dates that already exist, rerun with
+  `skip_existing_universe=False` to rebuild those snapshots.
 
 ### Re-run Behavior (Idempotency)
 
 ✅ **Safe**: Re-running multiple times is safe and idempotent
 
-- **Universe**: DELETE + INSERT atomic per month (clean update)
+- **Universe**: DELETE + INSERT atomic per snapshot date when refreshed. With
+  `skip_existing_universe=True`, existing snapshot dates are skipped without
+  checking whether `top_n` or filters changed.
 - **Binance**: Automatic skip if data exists (`skip_existing=True` by default)
 - **Transactions**: Atomic per symbol (all-or-nothing, automatic rollback on error)
 
@@ -568,7 +593,7 @@ The pipeline applies the following transformations to raw Binance data. **No oth
 ❌ **No Automatic Retry**: Failed downloads require manual re-run
 
 - Partial downloads/corrupt ZIPs → Returns False (not imported)
-- **Solution**: Re-run `populate_database()` or `ingest_binance_async()` → skip existing + retry failed
+- **Solution**: Re-run `create_binance_database()` or `update_binance_market_data()` → skip existing + retry failed
 
 ### Data Source: Binance Data Vision vs REST API
 
@@ -609,20 +634,20 @@ kill <PID>
 df -h  # Check available space
 
 # Option 2: Use larger interval
-populate_database(interval=Interval.HOUR_1)  # Instead of Interval.MIN_5
+create_binance_database(interval=Interval.HOUR_1)  # Instead of Interval.MIN_5
 
 # Option 3: Reduce top_n
-populate_database(top_n=50)  # Instead of 100
+create_binance_database(top_n=50)  # Instead of 100
 ```
 
 ### Error: "429 Too Many Requests" (CoinMarketCap)
 
-**Cause:** API rate limit exceeded (333 calls/day free tier)
+**Cause:** API rate limit exceeded (requested too many snapshots in one 24h window)
 **Solution:**
 ```python
-# Wait 24h OR reduce number of months
-ingest_universe(
-    months=['2024-01', '2024-02'],  # Instead of 12+ months
+# Wait for window reset OR reduce number of requested dates
+update_coinmarketcap_universe(
+    dates=['2024-01-01', '2024-01-02'],  # Instead of very large date ranges
     top_n=100
 )
 ```
@@ -634,7 +659,7 @@ ingest_universe(
 
 ```python
 # To force complete download (ignore gaps)
-ingest_binance_async(
+update_binance_market_data(
     db_path='crypto_data.db',
     symbols=['FTTUSDT'],
     data_types=[DataType.SPOT],  # Use DataType enum
@@ -664,7 +689,7 @@ python scripts/Download_data_universe.py
 **Solution:**
 ```python
 # Reduce concurrency (default: 20 klines, 100 metrics)
-ingest_binance_async(
+update_binance_market_data(
     max_concurrent_klines=10,  # Instead of 20
     max_concurrent_metrics=50   # Instead of 100
 )
@@ -727,7 +752,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
 ✅ **Simple**: One function to download everything
 ✅ **Fast**: 20 parallel downloads
 ✅ **Reliable**: Automatic retry, intelligent error handling
-✅ **Unbiased**: UNION strategy captures all historical symbols
+✅ **Unbiased**: UNION dataset captures all historical symbols
 ✅ **SQL-first**: Direct queries, no unnecessary abstraction
 ✅ **Binance Data Vision**: The richest free historical data source available
 

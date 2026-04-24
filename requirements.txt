@@ -3,3 +3,4 @@ aiohttp>=3.9.0        # Async HTTP requests (CoinMarketCap API, Binance download
 pandas>=2.0.0         # DataFrame operations (data ingestion)
 duckdb>=0.9.0         # Embedded database engine
 pyarrow>=19.0.0       # Parquet file support (required by DuckDB internally)
+pandera[pandas,strategies]>=0.27.0  # Data validation

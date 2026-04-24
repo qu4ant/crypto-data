@@ -192,29 +192,39 @@ mypy src/
 ### Test Example
 
 ```python
-# tests/clients/test_new_feature.py
+# tests/binance_datasets/test_new_feature.py
 import pytest
-from crypto_data.clients.binance_vision_async import BinanceDataVisionClientAsync
+from crypto_data.binance_datasets import BinanceKlinesDataset, Period
+from crypto_data.clients.coinmarketcap import CoinMarketCapClient
+from crypto_data.enums import DataType, Interval
 
 class TestNewFeature:
     def test_basic_functionality(self):
         """Test that basic feature works as expected."""
         # Arrange
-        client = BinanceDataVisionClientAsync()
+        dataset = BinanceKlinesDataset(DataType.SPOT, Interval.MIN_5)
 
         # Act
-        result = client.new_feature()
+        result = dataset.build_temp_filename("BTCUSDT", period=Period("2024-01"))
 
         # Assert
-        assert result is not None
-        assert isinstance(result, str)
+        assert result == "BTCUSDT-spot-5m-2024-01.zip"
 
     @pytest.mark.asyncio
-    async def test_async_functionality(self):
+    async def test_async_functionality(self, monkeypatch):
         """Test async feature."""
-        async with BinanceDataVisionClientAsync() as client:
-            result = await client.async_new_feature()
-            assert result is True
+        async def fake_call(*args, **kwargs):
+            return {
+                "data": [
+                    {"symbol": "BTC", "cmcRank": 1, "quotes": [{"marketCap": 1}], "tags": []}
+                ]
+            }
+
+        async with CoinMarketCapClient() as client:
+            monkeypatch.setattr(client, "_call_with_retry", fake_call)
+            result = await client.get_historical_listings("2024-01-01", 1)
+
+        assert result[0]["symbol"] == "BTC"
 ```
 
 ### Running Tests
@@ -224,7 +234,7 @@ class TestNewFeature:
 pytest tests/ -v
 
 # Run specific test file
-pytest tests/clients/test_binance_client_async.py -v
+pytest tests/binance/test_downloader.py -v
 
 # Run tests with coverage
 pytest tests/ --cov=crypto_data --cov-report=html
@@ -366,7 +376,7 @@ Before submitting, ensure:
 Clear description of what the bug is.
 
 ## Steps to Reproduce
-1. Download data with: `populate_database(...)`
+1. Download data with: `create_binance_database(...)`
 2. Run query: `SELECT ...`
 3. See error
 

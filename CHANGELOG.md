@@ -18,7 +18,7 @@ All data type and interval parameters now require enums instead of strings. This
 **Migration Required:**
 ```python
 # ❌ Old way (v4.x) - strings
-populate_database(
+create_binance_database(
     data_types=['spot', 'futures'],
     interval='5m'
 )
@@ -26,15 +26,15 @@ populate_database(
 # ✅ New way (v5.x) - enums
 from crypto_data import DataType, Interval
 
-populate_database(
+create_binance_database(
     data_types=[DataType.SPOT, DataType.FUTURES],
     interval=Interval.MIN_5
 )
 ```
 
 **Affected functions:**
-- `populate_database()` - `data_types` and `interval` parameters
-- `ingest_binance_async()` - `data_types` and `interval` parameters
+- `create_binance_database()` - `data_types` and `interval` parameters
+- `update_binance_market_data()` - `data_types` and `interval` parameters
 - All internal functions that accept data types or intervals
 
 ### ✨ New Features
@@ -42,7 +42,6 @@ populate_database(
 **Type-Safe Enumerations**
 - **`DataType` enum**: `SPOT`, `FUTURES`, `OPEN_INTEREST`, `FUNDING_RATES`
 - **`Interval` enum**: `MIN_1`, `MIN_5`, `MIN_15`, `MIN_30`, `HOUR_1`, `HOUR_2`, `HOUR_4`, `HOUR_6`, `HOUR_8`, `HOUR_12`, `DAY_1`, `DAY_3`, `WEEK_1`, `MONTH_1`
-- **`Exchange` enum**: `BINANCE`, `BYBIT`, `KRAKEN`, `COINBASE` (only Binance implemented)
 
 **Benefits:**
 - ✅ IDE autocompletion for available options
@@ -84,7 +83,7 @@ populate_database(
 - `src/crypto_data/enums.py` - Contains all enum definitions
 
 **API Exports:**
-- Added to `__all__`: `DataType`, `Interval`, `Exchange`
+- Added to `__all__`: `DataType`, `Interval`
 
 **Test Coverage:**
 - All tests updated to use enums
@@ -97,13 +96,13 @@ populate_database(
 
 ### 🚨 Breaking Changes
 
-**Multi-Exchange Schema**
+**Explicit Exchange Provenance Column**
 - Tables renamed: `binance_spot` → `spot`, `binance_futures` → `futures`
 - New column: `exchange VARCHAR NOT NULL` in all market data tables
 - Primary key now includes exchange: `(exchange, symbol, interval, timestamp)`
 - **Migration required**: If upgrading from v3.x, recreate database from scratch
 
-**Reason**: Prepare for multi-exchange support (Bybit, Kraken, Coinbase in future releases)
+**Reason**: Keep Binance provenance explicit while avoiding Binance-specific table names.
 
 ### ✨ New Features
 
@@ -125,7 +124,7 @@ populate_database(
 - `funding_rates`: Perpetual futures funding rates (8h granularity)
 
 **Async Universe Ingestion**
-- `ingest_universe()` now fully async with parallel downloads (5 concurrent by default)
+- `update_coinmarketcap_universe()` now fully async with parallel downloads (5 concurrent by default)
 - 3-5x faster for multi-month snapshots
 - Single function replaces old sync/async split
 
@@ -165,7 +164,7 @@ populate_database(
 
 - README: Added Known Limitations section
 - README: Added Troubleshooting guide
-- README: Updated schema documentation for multi-exchange
+- README: Updated schema documentation for the explicit `exchange='binance'` column
 - CLAUDE.md: Documented design decisions and limitations
 - Added this CHANGELOG.md
 
@@ -177,15 +176,15 @@ populate_database(
 - Existing: `duckdb`, `pandas`, `requests`
 
 **Database Changes**
-- Schema version: 4.0.0 (multi-exchange)
+- Schema version: 4.0.0 (explicit exchange provenance column)
 - New tables: `open_interest`, `funding_rates`
 - Modified tables: Added `exchange` column to `spot`, `futures`
 - Indexes: Updated to include `exchange` in PK
 
 **API Changes**
-- `ingest_universe()`: Now async (use `asyncio.run()` or `await`)
-- `ingest_binance_async()`: New parameters `max_concurrent_klines`, `max_concurrent_metrics`, `max_concurrent_funding`
-- `populate_database()`: Updated to call async `ingest_universe()` internally
+- `update_coinmarketcap_universe()`: Now async (use `asyncio.run()` or `await`)
+- `update_binance_market_data()`: New parameters `max_concurrent_klines`, `max_concurrent_metrics`, `max_concurrent_funding`
+- `create_binance_database()`: Updated to call async `update_coinmarketcap_universe()` internally
 - All validation functions: New `strict` parameter (default: True)
 
 ---

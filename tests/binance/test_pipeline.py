@@ -11,7 +11,7 @@ import duckdb
 import pytest
 
 from crypto_data.binance_datasets.base import Period
-from crypto_data.binance_pipeline import _period_exists_in_db
+from crypto_data.binance_pipeline import _daily_periods_for_monthly_period, _period_exists_in_db
 from crypto_data.utils.dates import parse_date_range
 
 
@@ -129,7 +129,32 @@ class TestPeriodExistsInDb:
     def test_full_klines_period_is_complete(self, db_conn):
         period = Period('2024-01', is_monthly=True)
         # Daily close keys for a full January monthly window:
-        # 2024-01-02 ... 2024-01-31 (30 rows, contiguous).
+        # 2024-01-02 ... 2024-02-01 (31 rows, contiguous).
+        db_conn.execute("""
+            INSERT INTO spot
+            SELECT
+                'binance' AS exchange,
+                'BTCUSDT' AS symbol,
+                '1d' AS interval,
+                ts AS timestamp
+            FROM generate_series(
+                TIMESTAMP '2024-01-02 00:00:00',
+                TIMESTAMP '2024-02-01 00:00:00',
+                INTERVAL 1 DAY
+            ) AS t(ts)
+        """)
+
+        assert _period_exists_in_db(
+            conn=db_conn,
+            table='spot',
+            symbol='BTCUSDT',
+            interval='1d',
+            period=period,
+        )
+
+    def test_missing_period_end_close_is_incomplete(self, db_conn):
+        period = Period('2024-01', is_monthly=True)
+        # Missing the final Jan 31 candle close at 2024-02-01 00:00:00.
         db_conn.execute("""
             INSERT INTO spot
             SELECT
@@ -144,7 +169,7 @@ class TestPeriodExistsInDb:
             ) AS t(ts)
         """)
 
-        assert _period_exists_in_db(
+        assert not _period_exists_in_db(
             conn=db_conn,
             table='spot',
             symbol='BTCUSDT',
@@ -183,3 +208,17 @@ class TestPeriodExistsInDb:
             interval=None,
             period=period,
         )
+
+
+class TestDailyFallbackPeriods:
+    """Tests for monthly-to-daily fallback period expansion."""
+
+    def test_expands_month_to_requested_daily_range(self):
+        periods = _daily_periods_for_monthly_period(
+            Period('2024-02', is_monthly=True),
+            datetime(2024, 2, 28),
+            datetime(2024, 3, 5),
+        )
+
+        assert [period.value for period in periods] == ['2024-02-28', '2024-02-29']
+        assert all(not period.is_monthly for period in periods)

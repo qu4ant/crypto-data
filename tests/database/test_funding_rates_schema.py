@@ -2,7 +2,7 @@
 Tests for funding_rates table schema in database.py
 
 Tests table creation, column validation, primary key enforcement,
-and multi-exchange support.
+and Binance exchange provenance.
 """
 
 import pytest
@@ -167,39 +167,6 @@ def test_funding_rates_duplicate_key_prevention(tmp_path):
     # Count should still be 1
     count2 = db.conn.execute("SELECT COUNT(*) FROM funding_rates").fetchone()[0]
     assert count2 == 1
-
-    db.close()
-
-
-def test_funding_rates_multi_exchange(tmp_path):
-    """Should support multiple exchanges with same symbol and timestamp."""
-    db_path = tmp_path / "test_schema.db"
-    db = CryptoDatabase(str(db_path))
-
-    # Insert same symbol+timestamp for different exchanges
-    db.conn.execute("""
-        INSERT INTO funding_rates (exchange, symbol, timestamp, funding_rate)
-        VALUES
-            ('binance', 'BTCUSDT', '2024-12-01 00:00:00', 0.0001),
-            ('bybit', 'BTCUSDT', '2024-12-01 00:00:00', 0.00012)
-    """)
-
-    # Should have 2 records
-    count = db.conn.execute("SELECT COUNT(*) FROM funding_rates").fetchone()[0]
-    assert count == 2
-
-    # Query by exchange
-    binance_rate = db.conn.execute("""
-        SELECT funding_rate FROM funding_rates
-        WHERE exchange = 'binance'
-    """).fetchone()[0]
-    assert binance_rate == 0.0001
-
-    bybit_rate = db.conn.execute("""
-        SELECT funding_rate FROM funding_rates
-        WHERE exchange = 'bybit'
-    """).fetchone()[0]
-    assert bybit_rate == 0.00012
 
     db.close()
 

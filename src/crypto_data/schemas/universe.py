@@ -27,7 +27,7 @@ UNIVERSE_SCHEMA = DataFrameSchema(
                 Check(lambda s: s.notna().all(), error="Null dates detected"),
             ],
             nullable=False,
-            description="Snapshot date (first day of month)"
+            description="Snapshot date"
         ),
         'symbol': Column(
             str,

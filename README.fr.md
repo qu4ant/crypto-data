@@ -106,10 +106,16 @@ Si vous n'incluez pas ces cryptos dans votre backtest, vos résultats seront **a
 1. **Téléchargeant les classements historiques** via CoinMarketCap chaque mois
 2. **Utilisant une stratégie UNION** : récupère TOUS les symboles qui ont été dans le top N **à n'importe quel moment** de la période
 
+> **Note point-in-time** : cet ensemble UNION sert à la **couverture de
+> téléchargement**, pas à considérer tous les symboles comme tradables dès le
+> premier jour. Workflow sûr : télécharger le superset une fois, puis filtrer
+> mois par mois (ou rebalancement par rebalancement) avec `crypto_universe`
+> pour construire l'univers investissable.
+
 **Exemple concret** :
 ```python
 # Top 100 sur 12 mois
-get_symbols_from_universe(
+get_binance_symbols_from_universe(
     db_path='crypto_data.db',
     start_date='2024-01-01',
     end_date='2024-12-31',
@@ -162,26 +168,26 @@ pip install -e ".[dev]"
 > **Conseil** : Téléchargez les données 1 minute une fois, puis agrégez vers l'intervalle souhaité (5m, 1h, 4h...)
 > avec SQL. C'est plus rapide et flexible que de télécharger plusieurs intervalles séparément.
 
-### Option 1 : Workflow complet avec `populate_database()`
+### Option 1 : Workflow complet avec `create_binance_database()`
 
-La fonction `populate_database()` fait tout en un appel : télécharge l'univers + données OHLCV.
+La fonction `create_binance_database()` fait tout en un appel : télécharge l'univers + données OHLCV.
 
 ```python
-from crypto_data import populate_database, setup_colored_logging, DataType, Interval
+from crypto_data import create_binance_database, setup_colored_logging, DataType, Interval
 
 # Logs colorés (optionnel mais recommandé)
 setup_colored_logging()
 
 # Téléchargement complet
-populate_database(
+create_binance_database(
     db_path='crypto_data.db',
     start_date='2024-01-01',
     end_date='2024-12-31',
     top_n=100,                    # Top 100 par capitalisation
     interval=Interval.HOUR_1,     # Utiliser l'enum Interval (MIN_5, HOUR_1, HOUR_4, DAY_1, etc.)
     data_types=[DataType.SPOT, DataType.FUTURES],  # Utiliser l'enum DataType
-    exclude_tags=['stablecoin', 'wrapped-tokens'],  # Filtres optionnels
-    exclude_symbols=['LUNA', 'FTT', 'UST']
+    # Par défaut: exclut stablecoins, wrapped tokens et actifs tokenisés
+    exclude_symbols=['LUNA', 'FTT', 'UST']  # Exclusions additionnelles optionnelles
 )
 ```
 
@@ -190,9 +196,9 @@ populate_database(
 ```python
 import asyncio
 from crypto_data import (
-    ingest_universe,
-    get_symbols_from_universe,
-    ingest_binance_async,
+    update_coinmarketcap_universe,
+    get_binance_symbols_from_universe,
+    update_binance_market_data,
     setup_colored_logging,
     DataType,
     Interval
@@ -201,24 +207,26 @@ from crypto_data import (
 setup_colored_logging()
 
 # 1. Télécharger classements CoinMarketCap (async, téléchargements parallèles)
-asyncio.run(ingest_universe(
+asyncio.run(update_coinmarketcap_universe(
     db_path='crypto_data.db',
-    months=['2024-01', '2024-02', '2024-03'],  # Liste de mois à télécharger
+    dates=['2024-01-01', '2024-02-01', '2024-03-01'],  # Liste de dates de snapshots
     top_n=100,
-    exclude_tags=['stablecoin'],
+    # Par défaut: exclut stablecoins, wrapped tokens et actifs tokenisés
     exclude_symbols=[]
 ))
 
 # 2. Extraire symboles avec stratégie UNION
-symbols = get_symbols_from_universe(
+symbols = get_binance_symbols_from_universe(
     db_path='crypto_data.db',
     start_date='2024-01-01',
     end_date='2024-12-31',
     top_n=100
 )
+# Superset pour le téléchargement uniquement :
+# conserver le filtrage point-in-time avec crypto_universe ensuite.
 
 # 3. Télécharger données Binance (asynchrone)
-ingest_binance_async(
+update_binance_market_data(
     db_path='crypto_data.db',
     symbols=symbols,
     start_date='2024-01-01',
@@ -235,7 +243,7 @@ ingest_binance_async(
 Tous les paramètres de type de données et d'intervalle utilisent des énumérations pour la sécurité de type et l'autocomplétion IDE.
 
 ```python
-from crypto_data import DataType, Interval, Exchange
+from crypto_data import DataType, Interval
 
 # Enum DataType
 DataType.SPOT           # OHLCV marché spot
@@ -257,6 +265,12 @@ Interval.DAY_1, DAY_3, WEEK_1, MONTH_1
 > des **fichiers ZIP journaliers** pour les jours du mois en cours lorsque les fichiers mensuels ne sont pas encore disponibles.
 > C'est important pour l'Open Interest et les Funding Rates, car l'API REST Binance ne fournit que les données récentes (~6 mois),
 > tandis que Data Vision a des années d'historique.
+>
+> **Fraîcheur automatique des klines** : l'ingestion OHLCV spot/futures choisit
+> automatiquement la meilleure archive. Les mois historiques utilisent les
+> fichiers mensuels ; les jours récents utilisent les fichiers journaliers, et
+> les 3 derniers fichiers journaliers disponibles sont rafraîchis pour capter
+> d'éventuelles corrections tardives. Aucun paramètre supplémentaire n'est requis.
 
 ---
 
@@ -278,6 +292,7 @@ ORDER BY nb_rows DESC;
 ### 2. Historique de prix Bitcoin
 
 ```sql
+-- Note : timestamp = heure de clôture de la bougie
 SELECT
     timestamp,
     open,
@@ -342,6 +357,11 @@ ORDER BY date;
 ```
 
 > **Important** : Utilisez la table `crypto_universe` pour vérifier les classements, PAS les tables spot/futures. Les barres de progression montrent la disponibilité des données Binance (ex: données TON à partir d'août 2024), pas quand la crypto est entrée dans le top N (juin 2024).
+>
+> **Rappel PIT** : `get_binance_symbols_from_universe()` est volontairement plus large
+> qu'un univers tradable. Utilisez-le pour être sûr de tout télécharger, puis
+> appliquez le vrai filtre top N depuis `crypto_universe` à chaque
+> mois/date de rebalancement.
 
 ### 6. Interroger plusieurs intervalles depuis la même base
 
@@ -442,7 +462,7 @@ Données de prix historiques depuis Binance.
 | `exchange`        | VARCHAR   | Exchange ('binance')                          |
 | `symbol`          | VARCHAR   | Paire de trading (BTCUSDT, ETHUSDT, etc.)     |
 | `interval`        | VARCHAR   | Intervalle (5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M) |
-| `timestamp`       | TIMESTAMP | Timestamp de la bougie                        |
+| `timestamp`       | TIMESTAMP | Timestamp de clôture de la bougie             |
 | `open`            | DOUBLE    | Prix d'ouverture                              |
 | `high`            | DOUBLE    | Prix maximum                                  |
 | `low`             | DOUBLE    | Prix minimum                                  |
@@ -454,6 +474,10 @@ Données de prix historiques depuis Binance.
 
 **Clé primaire** : `(exchange, symbol, interval, timestamp)`
 **Index** : `(exchange, symbol, interval, timestamp)`
+
+> **Interprétation du timestamp OHLCV** : `timestamp` correspond à l'heure de
+> **clôture** de la bougie. Exemple : pour une bougie `5m` couvrant
+> `00:00 -> 00:05`, le timestamp stocké est `00:05:00`, pas `00:00:00`.
 
 > **Support multi-intervalle** : Vous pouvez stocker plusieurs intervalles (5m, 1h, 4h, etc.) dans la même base de données simultanément. Chaque intervalle est stocké comme une ligne séparée avec une clé primaire différente. Interrogez en filtrant avec `WHERE interval = '5m'`.
 
@@ -494,9 +518,9 @@ Le pipeline gère automatiquement plusieurs problèmes de données :
 - ~120-150 symboles pour top 100 sur 12 mois
 - Évite le biais du survivant
 
-**Paramètres explicites** : Pas de fichiers config cachés
-- `exclude_tags` et `exclude_symbols` explicites dans chaque appel
-- Meilleure testabilité, zéro dépendance cachée
+**Filtres d'univers par défaut** : stablecoins, wrapped tokens et actifs tokenisés exclus
+- `exclude_tags=[]` désactive explicitement ces exclusions par défaut
+- `exclude_symbols` permet d'ajouter des tickers à exclure au cas par cas
 
 ---
 
@@ -529,7 +553,7 @@ Le pipeline applique les transformations suivantes aux données brutes Binance. 
 
 **Single-writer only** : DuckDB ne supporte qu'un seul processus d'écriture à la fois
 - ✅ Lectures concurrentes illimitées OK
-- ❌ Exécuter plusieurs `populate_database()` en parallèle → erreur de lock
+- ❌ Exécuter plusieurs `create_binance_database()` en parallèle → erreur de lock
 - **Solution** : Lancer une seule instance à la fois
 
 **Espace disque minimum** : ~50GB recommandé pour top 100 sur 1 an
@@ -538,17 +562,21 @@ Le pipeline applique les transformations suivantes aux données brutes Binance. 
 - Temp files durant téléchargement : +10-20GB additionnels
 - **Solution** : Utiliser interval plus large (1h/4h au lieu de 5m) ou réduire `top_n`
 
-**API Rate Limits** : CoinMarketCap free tier = 333 calls/day
-- Universe ingestion : 1 call par mois
-- 12 mois = 12 calls → OK
-- **Limitation** : Ne pas exécuter > 300 mois en 1 jour
-- **Solution** : Utiliser API key payante pour datasets historiques massifs
+**API Rate Limits** : ingestion CoinMarketCap protégée par un limiteur sliding-window
+- Limiteur par défaut : 200 calls / 24h (conservateur)
+- Universe ingestion : 1 call par date de snapshot
+- **Conseil** : utiliser `skip_existing_universe=True` pour reprendre après interruption.
+  Ce skip se fait uniquement par date. Si vous changez `top_n`,
+  `exclude_tags` ou `exclude_symbols` pour des dates déjà présentes, relancez
+  avec `skip_existing_universe=False` pour reconstruire ces snapshots.
 
 ### Comportement re-run (Idempotency)
 
 ✅ **Safe** : Re-exécuter plusieurs fois est sûr et idempotent
 
-- **Universe** : DELETE + INSERT atomique par mois (mise à jour propre)
+- **Universe** : DELETE + INSERT atomique par date de snapshot quand elle est
+  rafraîchie. Avec `skip_existing_universe=True`, les dates déjà présentes sont
+  skippées sans vérifier si `top_n` ou les filtres ont changé.
 - **Binance** : Skip automatique si données existent (`skip_existing=True` par défaut)
 - **Transactions** : Atomic par symbole (all-or-nothing, rollback automatique si erreur)
 
@@ -570,7 +598,7 @@ Le pipeline applique les transformations suivantes aux données brutes Binance. 
 ❌ **Pas de retry automatique** : Downloads échoués nécessitent re-run manuel
 
 - Partial downloads/corrupt ZIPs → Retourne False (non importé)
-- **Solution** : Re-lancer `populate_database()` ou `ingest_binance_async()` → skip existing + retry failed
+- **Solution** : Re-lancer `create_binance_database()` ou `update_binance_market_data()` → skip existing + retry failed
 
 ### Source de données : Binance Data Vision vs API REST
 
@@ -611,20 +639,20 @@ kill <PID>
 df -h  # Vérifier espace disponible
 
 # Option 2 : Utiliser interval plus large
-populate_database(interval=Interval.HOUR_1)  # Au lieu de Interval.MIN_5
+create_binance_database(interval=Interval.HOUR_1)  # Au lieu de Interval.MIN_5
 
 # Option 3 : Réduire top_n
-populate_database(top_n=50)  # Au lieu de 100
+create_binance_database(top_n=50)  # Au lieu de 100
 ```
 
 ### Erreur : "429 Too Many Requests" (CoinMarketCap)
 
-**Cause :** Rate limit API dépassé (333 calls/jour free tier)
+**Cause :** Rate limit API dépassé (trop de snapshots demandés dans une fenêtre 24h)
 **Solution :**
 ```python
-# Attendre 24h OU réduire le nombre de mois
-ingest_universe(
-    months=['2024-01', '2024-02'],  # Au lieu de 12+ mois
+# Attendre reset de la fenêtre OU réduire le nombre de dates demandées
+update_coinmarketcap_universe(
+    dates=['2024-01-01', '2024-01-02'],  # Au lieu de grosses plages
     top_n=100
 )
 ```
@@ -636,7 +664,7 @@ ingest_universe(
 
 ```python
 # Pour forcer le téléchargement complet (ignorer gaps)
-ingest_binance_async(
+update_binance_market_data(
     db_path='crypto_data.db',
     symbols=['FTTUSDT'],
     data_types=[DataType.SPOT],  # Utiliser l'enum DataType
@@ -666,7 +694,7 @@ python scripts/Download_data_universe.py
 **Solution :**
 ```python
 # Réduire concurrence (par défaut: 20 klines, 100 metrics)
-ingest_binance_async(
+update_binance_market_data(
     max_concurrent_klines=10,  # Au lieu de 20
     max_concurrent_metrics=50   # Au lieu de 100
 )

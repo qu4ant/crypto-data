@@ -1,0 +1,41 @@
+name: Validation
+
+on:
+  workflow_dispatch:
+    inputs:
+      validation_db_path:
+        description: "Optional existing DuckDB path available in the runner"
+        required: false
+        default: ""
+      validation_sample_size:
+        description: "Number of random samples per validation test"
+        required: false
+        default: "10"
+
+jobs:
+  validation:
+    name: Data Validation
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+        cache: "pip"
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -e ".[dev]"
+
+    - name: Run validation tests
+      env:
+        CRYPTO_DATA_DB_PATH: ${{ inputs.validation_db_path }}
+      run: |
+        pytest tests/validation \
+          -v \
+          --validation-sample-size "${{ inputs.validation_sample_size }}"

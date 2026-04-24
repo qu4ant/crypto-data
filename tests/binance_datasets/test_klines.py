@@ -88,6 +88,63 @@ class TestBinanceKlinesDatasetPeriods:
         assert len(periods) == 1
         assert periods[0].value == '2024-06'
 
+    def test_generate_hybrid_periods_before_monthly_archive_available(self):
+        """Use daily files for months whose monthly archive is not published yet."""
+        dataset = BinanceKlinesDataset(
+            DataType.SPOT,
+            Interval.MIN_5,
+            as_of=datetime(2024, 3, 3),
+        )
+
+        periods = dataset.generate_periods(
+            datetime(2024, 1, 15),
+            datetime(2024, 3, 3),
+        )
+
+        monthly_periods = [period.value for period in periods if period.is_monthly]
+        daily_periods = [period.value for period in periods if not period.is_monthly]
+
+        assert monthly_periods == ['2024-01']
+        assert daily_periods[0] == '2024-02-01'
+        assert daily_periods[-1] == '2024-03-02'
+        assert '2024-02-29' in daily_periods
+
+    def test_generate_hybrid_periods_after_monthly_archive_available(self):
+        """Switch to monthly files once the expected monthly archive date is reached."""
+        dataset = BinanceKlinesDataset(
+            DataType.SPOT,
+            Interval.MIN_5,
+            as_of=datetime(2024, 3, 4),
+        )
+
+        periods = dataset.generate_periods(
+            datetime(2024, 1, 15),
+            datetime(2024, 3, 3),
+        )
+
+        monthly_periods = [period.value for period in periods if period.is_monthly]
+        daily_periods = [period.value for period in periods if not period.is_monthly]
+
+        assert monthly_periods == ['2024-01', '2024-02']
+        assert daily_periods == ['2024-03-01', '2024-03-02', '2024-03-03']
+
+    def test_recent_daily_periods_are_marked_for_refresh(self):
+        """The last three available daily files are always refreshed."""
+        dataset = BinanceKlinesDataset(
+            DataType.SPOT,
+            Interval.MIN_5,
+            as_of=datetime(2024, 3, 6),
+        )
+
+        periods = dataset.generate_periods(
+            datetime(2024, 3, 1),
+            datetime(2024, 3, 5),
+        )
+
+        refresh_periods = [period.value for period in periods if period.replace_existing]
+
+        assert refresh_periods == ['2024-03-03', '2024-03-04', '2024-03-05']
+
 
 class TestBinanceKlinesDatasetUrls:
     """Tests for BinanceKlinesDataset URL building."""
@@ -141,6 +198,40 @@ class TestBinanceKlinesDatasetUrls:
         expected = (
             'https://data.binance.vision/'
             'data/spot/monthly/klines/BTCUSDT/1h/BTCUSDT-1h-2024-01.zip'
+        )
+        assert url == expected
+
+    def test_spot_daily_url(self):
+        """Build spot daily klines download URL."""
+        dataset = BinanceKlinesDataset(DataType.SPOT, Interval.MIN_5)
+        period = Period('2024-03-01', is_monthly=False)
+
+        url = dataset.build_download_url(
+            base_url='https://data.binance.vision/',
+            symbol='BTCUSDT',
+            period=period
+        )
+
+        expected = (
+            'https://data.binance.vision/'
+            'data/spot/daily/klines/BTCUSDT/5m/BTCUSDT-5m-2024-03-01.zip'
+        )
+        assert url == expected
+
+    def test_futures_daily_url(self):
+        """Build futures daily klines download URL."""
+        dataset = BinanceKlinesDataset(DataType.FUTURES, Interval.HOUR_1)
+        period = Period('2024-03-01', is_monthly=False)
+
+        url = dataset.build_download_url(
+            base_url='https://data.binance.vision/',
+            symbol='ETHUSDT',
+            period=period
+        )
+
+        expected = (
+            'https://data.binance.vision/'
+            'data/futures/um/daily/klines/ETHUSDT/1h/ETHUSDT-1h-2024-03-01.zip'
         )
         assert url == expected
 

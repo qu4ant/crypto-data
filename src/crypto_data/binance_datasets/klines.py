@@ -7,7 +7,7 @@ markets.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import List, Optional
 
@@ -17,7 +17,7 @@ import pandera.pandas as pa
 from crypto_data.enums import DataType, Interval
 from crypto_data.schemas import OHLCV_SCHEMA
 from crypto_data.binance_datasets.base import BinanceDatasetStrategy, Period
-from crypto_data.utils.dates import generate_month_list
+from crypto_data.utils.dates import generate_day_list, generate_month_list
 
 
 # Column names for headerless Binance klines CSV files
@@ -33,6 +33,25 @@ FINAL_COLUMNS = [
     'open', 'high', 'low', 'close', 'volume', 'quote_volume',
     'trades_count', 'taker_buy_base_volume', 'taker_buy_quote_volume'
 ]
+
+RECENT_DAILY_REFRESH_DAYS = 3
+
+
+def _first_day_next_month(month_start: date) -> date:
+    """Return the first day of the month after month_start."""
+    if month_start.month == 12:
+        return date(month_start.year + 1, 1, 1)
+    return date(month_start.year, month_start.month + 1, 1)
+
+
+def _first_monday_on_or_after(day: date) -> date:
+    """Return the first Monday on or after day."""
+    return day + timedelta(days=(7 - day.weekday()) % 7)
+
+
+def _monthly_file_available_on(month_start: date) -> date:
+    """Return the expected monthly archive availability date."""
+    return _first_monday_on_or_after(_first_day_next_month(month_start))
 
 
 class BinanceKlinesDataset(BinanceDatasetStrategy):
@@ -61,7 +80,12 @@ class BinanceKlinesDataset(BinanceDatasetStrategy):
     'spot'
     """
 
-    def __init__(self, data_type: DataType, interval: Interval) -> None:
+    def __init__(
+        self,
+        data_type: DataType,
+        interval: Interval,
+        as_of: Optional[datetime] = None,
+    ) -> None:
         """Initialize the klines dataset."""
         if data_type not in (DataType.SPOT, DataType.FUTURES):
             raise ValueError(
@@ -69,6 +93,7 @@ class BinanceKlinesDataset(BinanceDatasetStrategy):
             )
         self._data_type = data_type
         self._interval = interval
+        self._as_of = as_of
 
     @property
     def data_type(self) -> DataType:
@@ -97,7 +122,12 @@ class BinanceKlinesDataset(BinanceDatasetStrategy):
 
     def generate_periods(self, start: datetime, end: datetime) -> List[Period]:
         """
-        Generate list of monthly periods for the given date range.
+        Generate monthly or daily periods for the given date range.
+
+        Complete months whose monthly archive should be available are downloaded
+        as monthly files. Recent months whose monthly archive may not exist yet
+        are downloaded as daily files so ingestion can stay fresh without
+        waiting for the monthly archive.
 
         Parameters
         ----------
@@ -111,8 +141,36 @@ class BinanceKlinesDataset(BinanceDatasetStrategy):
         List[Period]
             List of Period objects with monthly granularity
         """
-        months = generate_month_list(start, end)
-        return [Period(month, is_monthly=True) for month in months]
+        periods: List[Period] = []
+        as_of_date = (self._as_of or datetime.utcnow()).date()
+        latest_daily_date = as_of_date - timedelta(days=1)
+
+        for month in generate_month_list(start, end):
+            month_start = datetime.strptime(month, "%Y-%m").date()
+
+            if _monthly_file_available_on(month_start) <= as_of_date:
+                periods.append(Period(month, is_monthly=True))
+                continue
+
+            month_end = _first_day_next_month(month_start) - timedelta(days=1)
+            daily_start = max(start.date(), month_start)
+            daily_end = min(end.date(), month_end, latest_daily_date)
+
+            if daily_start <= daily_end:
+                refresh_start = latest_daily_date - timedelta(days=RECENT_DAILY_REFRESH_DAYS - 1)
+                periods.extend(
+                    Period(
+                        day,
+                        is_monthly=False,
+                        replace_existing=datetime.strptime(day, "%Y-%m-%d").date() >= refresh_start,
+                    )
+                    for day in generate_day_list(
+                        datetime.combine(daily_start, datetime.min.time()),
+                        datetime.combine(daily_end, datetime.min.time()),
+                    )
+                )
+
+        return periods
 
     def get_schema(self) -> pa.DataFrameSchema:
         """
@@ -135,11 +193,17 @@ class BinanceKlinesDataset(BinanceDatasetStrategy):
         """
         Build the download URL for a specific symbol and period.
 
-        URL format for spot:
+        URL format for spot monthly:
             {base_url}data/spot/monthly/klines/{symbol}/{interval}/{symbol}-{interval}-{period}.zip
 
-        URL format for futures:
+        URL format for spot daily:
+            {base_url}data/spot/daily/klines/{symbol}/{interval}/{symbol}-{interval}-{period}.zip
+
+        URL format for futures monthly:
             {base_url}data/futures/um/monthly/klines/{symbol}/{interval}/{symbol}-{interval}-{period}.zip
+
+        URL format for futures daily:
+            {base_url}data/futures/um/daily/klines/{symbol}/{interval}/{symbol}-{interval}-{period}.zip
 
         Parameters
         ----------
@@ -160,11 +224,13 @@ class BinanceKlinesDataset(BinanceDatasetStrategy):
         # Use instance interval if not provided
         interval_str = interval if interval is not None else self._interval.value
 
+        archive_granularity = "monthly" if period.is_monthly else "daily"
+
         # Build path based on data type
         if self._data_type == DataType.SPOT:
-            path = f"data/spot/monthly/klines/{symbol}/{interval_str}"
+            path = f"data/spot/{archive_granularity}/klines/{symbol}/{interval_str}"
         else:  # FUTURES
-            path = f"data/futures/um/monthly/klines/{symbol}/{interval_str}"
+            path = f"data/futures/um/{archive_granularity}/klines/{symbol}/{interval_str}"
 
         filename = f"{symbol}-{interval_str}-{period.value}.zip"
         return f"{base_url}{path}/{filename}"

@@ -20,7 +20,7 @@ from crypto_data.database import CryptoDatabase
 from crypto_data.enums import DataType, Interval
 from crypto_data.binance_datasets.base import DownloadResult, Period
 from crypto_data.binance_datasets.registry import get_binance_dataset_strategy
-from crypto_data.utils.dates import parse_date_range
+from crypto_data.utils.dates import generate_day_list, parse_date_range
 from crypto_data.utils.ingestion_helpers import initialize_ingestion_stats, log_ingestion_summary
 from crypto_data.utils.runtime import run_async_from_sync
 
@@ -115,8 +115,8 @@ def _period_exists_in_db(
             WHERE exchange = ?
               AND symbol = ?
               AND interval = ?
-              AND timestamp >= ?
-              AND timestamp < ?
+              AND timestamp > ?
+              AND timestamp <= ?
         """
         result = conn.execute(query, ['binance', symbol, interval, start, end]).fetchone()
 
@@ -139,10 +139,9 @@ def _period_exists_in_db(
         # Check coverage near both period boundaries.
         edge_tolerance = timedelta(seconds=step_seconds)
         period_start_ceiling = start + edge_tolerance
-        period_end_floor = end - edge_tolerance
 
         covers_period_start = min_ts <= period_start_ceiling
-        covers_period_end = max_ts >= period_end_floor
+        covers_period_end = max_ts >= end
 
         return covers_period_start and covers_period_end
     else:
@@ -191,6 +190,10 @@ def _filter_existing_periods(
     skipped = 0
 
     for period in periods:
+        if getattr(period, 'replace_existing', False):
+            missing.append(period)
+            continue
+
         if _period_exists_in_db(conn, table, symbol, interval, period):
             skipped += 1
         else:
@@ -229,7 +232,16 @@ def _process_results(
             try:
                 # Each import in its own transaction for atomicity
                 conn.execute("BEGIN TRANSACTION")
-                importer.import_file(conn, result.file_path, symbol)
+                importer.import_file(
+                    conn,
+                    result.file_path,
+                    symbol,
+                    period=result.period,
+                    replace_existing=(
+                        importer.dataset.table_name in ('spot', 'futures')
+                        and len(result.period) == 10
+                    ),
+                )
                 conn.execute("COMMIT")
                 stats['downloaded'] += 1
                 logger.debug(f"    Imported {result.period}")
@@ -255,6 +267,26 @@ def _process_results(
                 stats['not_found'] += 1
             else:
                 stats['failed'] += 1
+
+
+def _daily_periods_for_monthly_period(
+    period: Period,
+    start: datetime,
+    end: datetime,
+) -> List[Period]:
+    """Expand one monthly period into daily periods within the requested range."""
+    month_start = datetime.strptime(period.value, '%Y-%m')
+    month_end_exclusive = month_start + relativedelta(months=1)
+    daily_start = max(start, month_start)
+    daily_end = min(end, month_end_exclusive - timedelta(days=1))
+
+    if daily_start > daily_end:
+        return []
+
+    return [
+        Period(day, is_monthly=False)
+        for day in generate_day_list(daily_start, daily_end)
+    ]
 
 
 async def _ingest_symbol_data_type(
@@ -340,8 +372,51 @@ async def _ingest_symbol_data_type(
             symbol=symbol,
             periods=periods_to_download,
             interval=interval_str,
-            failure_threshold=failure_threshold
+            failure_threshold=(
+                0 if data_type in (DataType.SPOT, DataType.FUTURES)
+                else failure_threshold
+            )
         )
+
+        if data_type in (DataType.SPOT, DataType.FUTURES):
+            monthly_not_found = [
+                result for result in results
+                if result.is_not_found and len(result.period) == 7
+            ]
+
+            if monthly_not_found:
+                fallback_periods: List[Period] = []
+                for result in monthly_not_found:
+                    fallback_periods.extend(
+                        _daily_periods_for_monthly_period(
+                            Period(result.period, is_monthly=True),
+                            start,
+                            end,
+                        )
+                    )
+
+                if fallback_periods:
+                    logger.info(
+                        f"  {symbol} {data_type.value}: "
+                        f"falling back to {len(fallback_periods)} daily files"
+                    )
+                    fallback_results = await downloader.download_symbol(
+                        symbol=symbol,
+                        periods=fallback_periods,
+                        interval=interval_str,
+                        failure_threshold=0,
+                    )
+
+                    results = [
+                        result for result in results
+                        if not (result.is_not_found and len(result.period) == 7)
+                    ] + fallback_results
+
+            if failure_threshold > 0:
+                results = downloader._detect_gaps(
+                    sorted(results, key=lambda result: result.period),
+                    failure_threshold,
+                )
 
     if not results:
         logger.debug(f"No results for {symbol} {data_type.value}")

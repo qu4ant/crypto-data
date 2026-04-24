@@ -17,8 +17,7 @@ from pandera.pandas import Column, Check, DataFrameSchema
 from crypto_data.schemas.checks import (
     check_ohlc_relationships,
     check_price_continuity,
-    check_volume_outliers,
-    check_timestamp_monotonic
+    check_volume_outliers
 )
 
 
@@ -33,11 +32,10 @@ OHLCV_SCHEMA = DataFrameSchema(
         'exchange': Column(
             str,
             checks=[
-                Check.str_length(min_value=1, max_value=50),  # Any exchange name
-                Check.str_matches(r'^[a-z0-9_-]+$')  # Lowercase alphanumeric + underscore/hyphen
+                Check.isin(['binance'])
             ],
             nullable=False,
-            description="Exchange name (e.g., 'binance', 'bybit', 'kraken')"
+            description="Exchange name (always 'binance')"
         ),
         'symbol': Column(
             str,
@@ -62,7 +60,7 @@ OHLCV_SCHEMA = DataFrameSchema(
                 Check(lambda s: s.notna().all(), error="Null timestamps detected"),
             ],
             nullable=False,
-            description="Kline open time"
+            description="Normalized candle close-time key (used as primary key)"
         ),
 
         # OHLC price columns

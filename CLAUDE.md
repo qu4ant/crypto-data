@@ -11,11 +11,11 @@
 ## Quick Start
 
 ```python
-from crypto_data import populate_database, DataType, Interval, setup_colored_logging
+from crypto_data import create_binance_database, DataType, Interval, setup_colored_logging
 
 setup_colored_logging()  # Logs to ./logs/crypto_data_YYYY-MM-DD_HH-MM-SS.log
 
-populate_database(
+create_binance_database(
     db_path='crypto_data.db',
     start_date='2024-01-01',
     end_date='2024-12-31',
@@ -33,14 +33,14 @@ populate_database(
 
 | Function | Description |
 |----------|-------------|
-| `populate_database(...)` | End-to-end workflow |
-| `ingest_universe(db_path, months, top_n, ...)` | Async CMC rankings |
-| `ingest_binance_async(db_path, symbols, ...)` | Async Binance OHLCV (20 concurrent) |
-| `get_symbols_from_universe(db_path, start, end, top_n)` | UNION strategy symbol extraction |
+| `create_binance_database(...)` | End-to-end workflow |
+| `update_coinmarketcap_universe(db_path, dates=..., ...)` | Async CMC rankings |
+| `update_binance_market_data(db_path, symbols, ...)` | Async Binance OHLCV (20 concurrent) |
+| `get_binance_symbols_from_universe(db_path, start, end, top_n)` | UNION dataset symbol extraction |
 | `CryptoDatabase` | Schema management, context manager |
 | `setup_colored_logging()` | File + console logging |
 
-**Enums** (v5.0.0+): `DataType`, `Interval`, `Exchange` - required instead of strings.
+**Enums** (v5.0.0+): `DataType`, `Interval` - required instead of strings.
 
 ## Database Schema
 
@@ -48,22 +48,24 @@ populate_database(
 
 | Table | Primary Key | Notes |
 |-------|-------------|-------|
-| `crypto_universe` | `(date, symbol)` | Monthly snapshots (1st of month), base assets (BTC not BTCUSDT) |
-| `spot`, `futures` | `(exchange, symbol, interval, timestamp)` | Multi-exchange ready, currently Binance only |
+| `crypto_universe` | `(date, symbol)` | Snapshot dates (daily/weekly/monthly), base assets (BTC not BTCUSDT) |
+| `spot`, `futures` | `(exchange, symbol, interval, timestamp)` | Binance-only; `exchange` is constrained to `binance`; `timestamp` is candle close time |
 
 **OHLCV columns**: exchange, symbol, interval, timestamp, open, high, low, close, volume, quote_volume, trades_count, taker_buy_*
+- `timestamp` is the normalized candle close-time key
 
 ## Design Decisions
 
-**UNION Strategy**: `get_symbols_from_universe()` returns ALL symbols that appeared in top N at ANY point
+**UNION Approach**: `get_binance_symbols_from_universe()` returns ALL symbols that appeared in top N at ANY point
 - ~120-150 symbols for top 100 over 12 months (captures entries/exits)
 - Avoids survivorship bias - intentional behavior
+- Download coverage only; point-in-time membership must still be filtered from `crypto_universe` snapshot by snapshot / rebalance by rebalance
 
 **Rebrands as Separate Symbols**: MATIC→POL treated as different coins (user must UNION)
 
 **Explicit Parameters Only**: No config files - `exclude_tags` and `exclude_symbols` as direct params
 
-**Multi-Exchange Ready**: Schema supports Bybit, Kraken, etc. (only Binance implemented)
+**Binance-only pipeline**: schema keeps an `exchange` column set to `binance` for explicit provenance.
 
 ## Auto-Handled Edge Cases
 
@@ -82,7 +84,7 @@ populate_database(
 - **Single-writer**: DuckDB allows one writer at a time
 - **No checkpoint/resume**: Re-run uses `skip_existing=True`
 - **No disk space checks**: 5m/100 symbols/1 year ≈ 30GB
-- **CMC rate limit**: 333 calls/day (1 call per month)
+- **CMC rate limit**: configurable sliding-window limiter (default 200 calls/24h)
 - **Memory**: 8GB+ recommended for large imports
 
 ## Validation

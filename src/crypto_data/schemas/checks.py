@@ -7,7 +7,6 @@ These checks are used across multiple schemas for consistency.
 
 import pandas as pd
 import numpy as np
-from typing import Any
 
 
 def check_ohlc_relationships(df: pd.DataFrame) -> bool:

@@ -63,10 +63,10 @@ class CryptoDatabase:
         logger.debug("All tables and indexes created")
 
     def _create_spot(self):
-        """Create spot table for spot OHLCV data (multi-exchange)."""
+        """Create spot table for spot OHLCV data (Binance)."""
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS spot (
-                exchange VARCHAR NOT NULL,
+                exchange VARCHAR NOT NULL CHECK (exchange = 'binance'),
                 symbol VARCHAR NOT NULL,
                 interval VARCHAR NOT NULL,
                 timestamp TIMESTAMP NOT NULL,
@@ -92,10 +92,10 @@ class CryptoDatabase:
         logger.debug("Created spot table")
 
     def _create_futures(self):
-        """Create futures table for futures OHLCV data (multi-exchange)."""
+        """Create futures table for futures OHLCV data (Binance)."""
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS futures (
-                exchange VARCHAR NOT NULL,
+                exchange VARCHAR NOT NULL CHECK (exchange = 'binance'),
                 symbol VARCHAR NOT NULL,
                 interval VARCHAR NOT NULL,
                 timestamp TIMESTAMP NOT NULL,
@@ -121,10 +121,10 @@ class CryptoDatabase:
         logger.debug("Created futures table")
 
     def _create_open_interest(self):
-        """Create open_interest table for futures open interest metrics (multi-exchange)."""
+        """Create open_interest table for futures open interest metrics (Binance)."""
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS open_interest (
-                exchange VARCHAR NOT NULL,
+                exchange VARCHAR NOT NULL CHECK (exchange = 'binance'),
                 symbol VARCHAR NOT NULL,
                 timestamp TIMESTAMP NOT NULL,
                 open_interest DOUBLE,
@@ -141,10 +141,10 @@ class CryptoDatabase:
         logger.debug("Created open_interest table")
 
     def _create_funding_rates(self):
-        """Create funding_rates table for futures funding rate data (multi-exchange)."""
+        """Create funding_rates table for futures funding rate data (Binance)."""
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS funding_rates (
-                exchange VARCHAR NOT NULL,
+                exchange VARCHAR NOT NULL CHECK (exchange = 'binance'),
                 symbol VARCHAR NOT NULL,
                 timestamp TIMESTAMP NOT NULL,
                 funding_rate DOUBLE,

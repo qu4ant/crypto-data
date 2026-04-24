@@ -1,5 +1,12 @@
 # Strategy Pattern Architecture Refactoring Plan
 
+> **Archive note:** This file is a historical implementation plan, not the
+> current package architecture. The refactor that followed consolidated the
+> active Binance ingestion code under `binance_datasets/`,
+> `binance_downloader.py`, `binance_importer.py`, and `binance_pipeline.py`.
+> References below to `core/`, `exchanges/`, and `strategies/` are preserved as
+> plan context only.
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Refactor crypto-data package to Strategy Pattern architecture for better maintainability and extensibility.

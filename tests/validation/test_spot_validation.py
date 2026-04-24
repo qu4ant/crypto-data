@@ -8,7 +8,11 @@ import pytest
 
 from tests.validation.conftest import ValidationCollector, ValidationMismatch
 from tests.validation.utils.binance_api import BinanceKline
-from tests.validation.utils.sampling import OHLCVSample, sample_ohlcv
+from tests.validation.utils.sampling import (
+    OHLCVSample,
+    sample_ohlcv,
+    sample_ohlcv_ratio_by_symbol,
+)
 
 
 # Tolerances
@@ -27,6 +31,12 @@ def compare_spot_kline(
     def check_field(
         field: str, db_val, api_val, tolerance: float, is_relative: bool = False
     ):
+        if db_val is None or api_val is None:
+            collector.record_skip(
+                f"Missing value for {db_kline.symbol} @ {db_kline.timestamp} ({field})"
+            )
+            return
+
         if is_relative and api_val != 0:
             diff = abs(db_val - api_val) / abs(api_val)
         else:
@@ -78,13 +88,28 @@ class TestSpotValidation:
         self,
         validation_db_path,
         binance_client,
-        validation_sample_size,
+        validation_sample_ratio,
+        validation_max_symbols,
+        validation_interval,
     ):
-        """Sample N random candles and verify against Binance API"""
+        """
+        Validate random OHLCV subset against Binance API.
+
+        Sampling approach:
+        - Use a global ratio budget (20% by default) over available points
+        - Split sample budget per symbol
+        - Avoid covering every symbol for faster API validation
+        """
         collector = ValidationCollector()
 
         # Sample from database
-        samples = sample_ohlcv(validation_db_path, "spot", n=validation_sample_size)
+        samples = sample_ohlcv_ratio_by_symbol(
+            validation_db_path,
+            "spot",
+            sample_ratio=validation_sample_ratio,
+            max_symbols=validation_max_symbols,
+            interval=validation_interval,
+        )
 
         if not samples:
             pytest.skip("No spot data in database")
