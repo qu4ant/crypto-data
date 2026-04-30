@@ -4,6 +4,8 @@ CoinMarketCap Universe Data Validation Tests
 Verify that data in `crypto_universe` table matches CoinMarketCap API responses.
 """
 
+from typing import Any
+
 import pytest
 
 from tests.validation.conftest import ValidationCollector, ValidationMismatch
@@ -18,7 +20,7 @@ MARKET_CAP_TOLERANCE = 0.01  # 1% tolerance for market cap rounding
 RANK_TOLERANCE = 0  # Exact match for ranks
 
 
-def parse_cmc_response(api_response: list) -> dict:
+def parse_cmc_response(api_response: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     """
     Parse CoinMarketCap API response into lookup by symbol.
 
@@ -27,7 +29,7 @@ def parse_cmc_response(api_response: list) -> dict:
     - 'cmcRank': ranking by market cap
     - 'quotes': list with market data, first element has 'marketCap'
     """
-    api_by_symbol = {}
+    api_by_symbol: dict[str, dict[str, Any]] = {}
     for item in api_response:
         symbol = item.get("symbol")
         if symbol:

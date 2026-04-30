@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from crypto_data.binance_datasets.base import DownloadResult
+from crypto_data.binance_datasets.base import DownloadResult, Period
 from crypto_data.binance_datasets.klines import BinanceKlinesDataset
 from crypto_data.binance_downloader import (
     BinanceDataVisionDownloader,
@@ -549,6 +549,115 @@ class TestTickerMappingRetryRules:
 
     def test_retries_plausible_futures_symbol(self):
         assert _should_retry_with_1000_prefix(DataType.FUTURES, "PEPEUSDT")
+
+    @pytest.mark.asyncio
+    async def test_spot_ignores_cached_1000_prefix_mapping(self, tmp_path):
+        set_ticker_mapping("PEPEUSDT", "1000PEPEUSDT")
+        dataset = BinanceKlinesDataset(DataType.SPOT, Interval.MIN_5)
+        downloader = BinanceDataVisionDownloader(dataset=dataset, temp_path=tmp_path)
+
+        async def mock_download(symbol, period, interval):
+            return DownloadResult(
+                success=True,
+                symbol=symbol,
+                data_type=DataType.SPOT,
+                period=str(period),
+                file_path=tmp_path / f"{symbol}-{period}.zip",
+            )
+
+        downloader._download_single = mock_download
+
+        results = await downloader.download_symbol(
+            "PEPEUSDT",
+            [Period("2024-01")],
+            interval="5m",
+        )
+
+        assert len(results) == 1
+        assert results[0].symbol == "PEPEUSDT"
+
+    @pytest.mark.asyncio
+    async def test_prefixed_non_not_found_failure_replaces_original_not_found(self, tmp_path):
+        dataset = BinanceKlinesDataset(DataType.FUTURES, Interval.MIN_5)
+        downloader = BinanceDataVisionDownloader(dataset=dataset, temp_path=tmp_path)
+        periods = [Period("2024-01"), Period("2024-02")]
+
+        async def mock_download(symbol, period, interval):
+            if symbol == "PEPEUSDT":
+                return DownloadResult(
+                    success=False,
+                    symbol=symbol,
+                    data_type=DataType.FUTURES,
+                    period=str(period),
+                    error="not_found",
+                )
+            if str(period) == "2024-01":
+                raise RuntimeError("temporary outage")
+            return DownloadResult(
+                success=False,
+                symbol=symbol,
+                data_type=DataType.FUTURES,
+                period=str(period),
+                error="not_found",
+            )
+
+        downloader._download_single = mock_download
+
+        results = await downloader.download_symbol("PEPEUSDT", periods, interval="5m")
+
+        assert [result.error for result in results] == ["temporary outage", "not_found"]
+        assert [result.symbol for result in results] == ["1000PEPEUSDT", "1000PEPEUSDT"]
+        assert get_ticker_mapping("PEPEUSDT") is None
+
+    @pytest.mark.asyncio
+    async def test_successful_1000_prefix_retry_preserves_effective_symbol(self, tmp_path):
+        dataset = BinanceKlinesDataset(DataType.FUTURES, Interval.MIN_5)
+        downloader = BinanceDataVisionDownloader(dataset=dataset, temp_path=tmp_path)
+        periods = [Period("2024-01")]
+
+        async def mock_download(symbol, period, interval):
+            return DownloadResult(
+                success=symbol == "1000PEPEUSDT",
+                symbol=symbol,
+                data_type=DataType.FUTURES,
+                period=str(period),
+                file_path=(tmp_path / f"{symbol}-{period}.zip")
+                if symbol == "1000PEPEUSDT"
+                else None,
+                error=None if symbol == "1000PEPEUSDT" else "not_found",
+            )
+
+        downloader._download_single = mock_download
+
+        results = await downloader.download_symbol("PEPEUSDT", periods, interval="5m")
+
+        assert len(results) == 1
+        assert results[0].success
+        assert results[0].symbol == "1000PEPEUSDT"
+        assert get_ticker_mapping("PEPEUSDT") == "1000PEPEUSDT"
+
+    @pytest.mark.asyncio
+    async def test_cached_1000_prefix_mapping_preserves_effective_symbol(self, tmp_path):
+        set_ticker_mapping("PEPEUSDT", "1000PEPEUSDT")
+        dataset = BinanceKlinesDataset(DataType.FUTURES, Interval.MIN_5)
+        downloader = BinanceDataVisionDownloader(dataset=dataset, temp_path=tmp_path)
+        periods = [Period("2024-01")]
+
+        async def mock_download(symbol, period, interval):
+            return DownloadResult(
+                success=True,
+                symbol=symbol,
+                data_type=DataType.FUTURES,
+                period=str(period),
+                file_path=tmp_path / f"{symbol}-{period}.zip",
+            )
+
+        downloader._download_single = mock_download
+
+        results = await downloader.download_symbol("PEPEUSDT", periods, interval="5m")
+
+        assert len(results) == 1
+        assert results[0].symbol == "1000PEPEUSDT"
 
 
 # -----------------------------------------------------------------------------

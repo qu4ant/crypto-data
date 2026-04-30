@@ -6,12 +6,19 @@ Full integration tests would require mocking network calls.
 """
 
 from datetime import datetime
+from types import SimpleNamespace
+from unittest.mock import patch
 
 import duckdb
 import pytest
 
-from crypto_data.binance_datasets.base import Period
-from crypto_data.binance_pipeline import _period_exists_in_db, _prune_klines_outside_date_range
+from crypto_data.binance_datasets.base import DownloadResult, Period
+from crypto_data.binance_pipeline import (
+    _period_exists_in_db,
+    _process_results,
+    _prune_klines_outside_date_range,
+    update_binance_market_data,
+)
 from crypto_data.enums import DataType, Interval
 from crypto_data.utils.dates import parse_date_range
 
@@ -81,6 +88,133 @@ class TestParseDateRange:
 
         with pytest.raises((ValueError, TypeError)):
             parse_date_range("2024-01-01", None)
+
+
+class TestProcessResults:
+    """Tests for download result import handling."""
+
+    def test_import_exception_rolls_back_and_propagates(self, tmp_path):
+        conn = duckdb.connect(":memory:")
+        conn.execute("CREATE TABLE imported (symbol VARCHAR, period VARCHAR)")
+        file_path = tmp_path / "BTCUSDT-2024-01.zip"
+        file_path.write_text("placeholder")
+        stats = {"downloaded": 0, "skipped": 0, "failed": 0, "not_found": 0}
+
+        class FailingImporter:
+            dataset = SimpleNamespace(table_name="open_interest")
+
+            def import_file(self, conn, file_path, symbol, **kwargs):
+                conn.execute("INSERT INTO imported VALUES (?, ?)", [symbol, kwargs["period"]])
+                raise RuntimeError("import transaction failed")
+
+        with pytest.raises(RuntimeError, match="import transaction failed"):
+            _process_results(
+                [
+                    DownloadResult(
+                        success=True,
+                        symbol="BTCUSDT",
+                        data_type=DataType.OPEN_INTEREST,
+                        period="2024-01",
+                        file_path=file_path,
+                    )
+                ],
+                FailingImporter(),
+                conn,
+                stats,
+                "BTCUSDT",
+            )
+
+        assert conn.execute("SELECT COUNT(*) FROM imported").fetchone()[0] == 0
+        assert not file_path.exists()
+        assert stats["downloaded"] == 0
+        assert stats["failed"] == 0
+        conn.close()
+
+    def test_failed_download_results_update_stats_without_raising(self):
+        stats = {"downloaded": 0, "skipped": 0, "failed": 0, "not_found": 0}
+
+        _process_results(
+            [
+                DownloadResult(
+                    success=False,
+                    symbol="BTCUSDT",
+                    data_type=DataType.OPEN_INTEREST,
+                    period="2024-01",
+                    error="not_found",
+                ),
+                DownloadResult(
+                    success=False,
+                    symbol="BTCUSDT",
+                    data_type=DataType.OPEN_INTEREST,
+                    period="2024-02",
+                    error="network error",
+                ),
+            ],
+            SimpleNamespace(dataset=SimpleNamespace(table_name="open_interest")),
+            None,
+            stats,
+            "BTCUSDT",
+        )
+
+        assert stats["not_found"] == 1
+        assert stats["failed"] == 1
+
+    def test_successful_result_import_uses_effective_download_symbol(self, tmp_path):
+        conn = duckdb.connect(":memory:")
+        conn.execute("CREATE TABLE imported (symbol VARCHAR, period VARCHAR)")
+        file_path = tmp_path / "1000PEPEUSDT-2024-01.zip"
+        file_path.write_text("placeholder")
+        stats = {"downloaded": 0, "skipped": 0, "failed": 0, "not_found": 0}
+
+        class RecordingImporter:
+            dataset = SimpleNamespace(table_name="open_interest")
+
+            def import_file(self, conn, file_path, symbol, **kwargs):
+                conn.execute("INSERT INTO imported VALUES (?, ?)", [symbol, kwargs["period"]])
+
+        _process_results(
+            [
+                DownloadResult(
+                    success=True,
+                    symbol="1000PEPEUSDT",
+                    data_type=DataType.OPEN_INTEREST,
+                    period="2024-01",
+                    file_path=file_path,
+                )
+            ],
+            RecordingImporter(),
+            conn,
+            stats,
+            "PEPEUSDT",
+        )
+
+        imported_symbol = conn.execute("SELECT symbol FROM imported").fetchone()[0]
+        assert imported_symbol == "1000PEPEUSDT"
+        assert stats["downloaded"] == 1
+        assert not file_path.exists()
+        conn.close()
+
+
+def test_update_binance_market_data_propagates_ingestion_errors(tmp_path):
+    def raise_from_ingestion(coro, caller_name):
+        coro.close()
+        raise RuntimeError("import transaction failed")
+
+    with (
+        patch("crypto_data.binance_pipeline.run_async_from_sync") as fake_async,
+        patch("crypto_data.binance_pipeline.log_ingestion_summary") as fake_summary,
+    ):
+        fake_async.side_effect = raise_from_ingestion
+        with pytest.raises(RuntimeError, match="import transaction failed"):
+            update_binance_market_data(
+                db_path=str(tmp_path / "test.db"),
+                symbols=["BTCUSDT"],
+                data_types=[DataType.OPEN_INTEREST],
+                start_date="2024-01-01",
+                end_date="2024-01-01",
+            )
+
+    fake_summary.assert_not_called()
 
 
 class TestPeriodExistsInDb:
@@ -237,37 +371,46 @@ class TestPeriodExistsInDb:
             period=period,
         )
 
-    def test_open_interest_period_requires_complete_daily_coverage(self, db_conn):
+    def test_open_interest_period_requires_complete_5m_daily_coverage(self, db_conn):
         period = Period("2024-01-01", is_monthly=False)
         db_conn.execute("""
-            INSERT INTO open_interest VALUES
-            ('binance', 'BTCUSDT', '2024-01-01 00:00:00'),
-            ('binance', 'BTCUSDT', '2024-01-01 01:00:00'),
-            ('binance', 'BTCUSDT', '2024-01-01 02:00:00'),
-            ('binance', 'BTCUSDT', '2024-01-01 03:00:00'),
-            ('binance', 'BTCUSDT', '2024-01-01 04:00:00'),
-            ('binance', 'BTCUSDT', '2024-01-01 05:00:00'),
-            ('binance', 'BTCUSDT', '2024-01-01 06:00:00'),
-            ('binance', 'BTCUSDT', '2024-01-01 07:00:00'),
-            ('binance', 'BTCUSDT', '2024-01-01 08:00:00'),
-            ('binance', 'BTCUSDT', '2024-01-01 09:00:00'),
-            ('binance', 'BTCUSDT', '2024-01-01 10:00:00'),
-            ('binance', 'BTCUSDT', '2024-01-01 11:00:00'),
-            ('binance', 'BTCUSDT', '2024-01-01 12:00:00'),
-            ('binance', 'BTCUSDT', '2024-01-01 13:00:00'),
-            ('binance', 'BTCUSDT', '2024-01-01 14:00:00'),
-            ('binance', 'BTCUSDT', '2024-01-01 15:00:00'),
-            ('binance', 'BTCUSDT', '2024-01-01 16:00:00'),
-            ('binance', 'BTCUSDT', '2024-01-01 17:00:00'),
-            ('binance', 'BTCUSDT', '2024-01-01 18:00:00'),
-            ('binance', 'BTCUSDT', '2024-01-01 19:00:00'),
-            ('binance', 'BTCUSDT', '2024-01-01 20:00:00'),
-            ('binance', 'BTCUSDT', '2024-01-01 21:00:00'),
-            ('binance', 'BTCUSDT', '2024-01-01 22:00:00'),
-            ('binance', 'BTCUSDT', '2024-01-01 23:00:00')
+            INSERT INTO open_interest
+            SELECT
+                'binance' AS exchange,
+                'BTCUSDT' AS symbol,
+                ts AS timestamp
+            FROM generate_series(
+                TIMESTAMP '2024-01-01 00:00:00',
+                TIMESTAMP '2024-01-01 23:55:00',
+                INTERVAL 5 MINUTE
+            ) AS t(ts)
         """)
 
         assert _period_exists_in_db(
+            conn=db_conn,
+            table="open_interest",
+            symbol="BTCUSDT",
+            interval=None,
+            period=period,
+        )
+
+    def test_open_interest_10_minute_gap_is_incomplete(self, db_conn):
+        period = Period("2024-01-01", is_monthly=False)
+        db_conn.execute("""
+            INSERT INTO open_interest
+            SELECT
+                'binance' AS exchange,
+                'BTCUSDT' AS symbol,
+                ts AS timestamp
+            FROM generate_series(
+                TIMESTAMP '2024-01-01 00:00:00',
+                TIMESTAMP '2024-01-01 23:55:00',
+                INTERVAL 5 MINUTE
+            ) AS t(ts)
+            WHERE ts != TIMESTAMP '2024-01-01 00:05:00'
+        """)
+
+        assert not _period_exists_in_db(
             conn=db_conn,
             table="open_interest",
             symbol="BTCUSDT",

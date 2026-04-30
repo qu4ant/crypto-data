@@ -1035,18 +1035,19 @@ def _check_universe_top_n_coverage(
 
     top_n = int(config.universe_top_n)
     findings: list[QualityFinding] = []
+    date_filter_sql, date_filter_params = _universe_date_filter(conn, config)
 
     row = conn.execute(
-        """
+        f"""
         SELECT
             COUNT(*) AS bad_count,
             MIN(date) AS first_timestamp,
             MAX(date) AS last_timestamp,
             MAX(rank) AS max_rank
         FROM crypto_universe
-        WHERE rank > ?
+        {_append_condition(date_filter_sql, "rank > ?")}
         """,
-        [top_n],
+        [*date_filter_params, top_n],
     ).fetchone()
     bad_count, first_timestamp, last_timestamp, max_rank = row
     if bad_count:
@@ -1064,13 +1065,14 @@ def _check_universe_top_n_coverage(
         )
 
     rows = conn.execute(
-        """
+        f"""
         WITH per_date AS (
             SELECT
                 date,
                 COUNT(*) AS row_count,
                 MAX(rank) AS max_rank
             FROM crypto_universe
+            {date_filter_sql}
             GROUP BY date
             HAVING MAX(rank) < ?
         )
@@ -1083,7 +1085,7 @@ def _check_universe_top_n_coverage(
             MIN(row_count) AS min_row_count
         FROM per_date
         """,
-        [top_n],
+        [*date_filter_params, top_n],
     ).fetchone()
     (
         low_coverage_count,
@@ -1127,16 +1129,19 @@ def _check_universe_duplicates(
     symbols: Sequence[str] | None,
 ) -> list[QualityFinding]:
     filter_sql, params = _filters(symbols=symbols, alias="t")
+    key_columns = _universe_identity_columns(conn)
+    group_sql = ", ".join(f"t.{column}" for column in key_columns)
+    symbol_expr = "t.symbol" if "symbol" in key_columns else "MIN(t.symbol)"
     rows = conn.execute(
         f"""
         WITH duplicates AS (
             SELECT
-                t.symbol,
+                {symbol_expr} AS symbol,
                 t.date,
                 COUNT(*) AS duplicate_count
             FROM crypto_universe AS t
             {filter_sql}
-            GROUP BY t.date, t.symbol
+            GROUP BY {group_sql}
             HAVING COUNT(*) > 1
         )
         SELECT
@@ -1221,9 +1226,9 @@ def _check_universe_invalid_values(
         OR t.symbol IS NULL
         OR t.rank IS NULL
         OR t.rank < 1
-        OR t.market_cap IS NULL
-        OR NOT isfinite(t.market_cap)
-        OR t.market_cap < 0
+        OR (t.market_cap IS NOT NULL AND (
+            NOT isfinite(t.market_cap) OR t.market_cap < 0
+        ))
     """
     where_sql = _append_condition(filter_sql, condition)
     rows = conn.execute(
@@ -1360,6 +1365,40 @@ def _table_exists(conn: duckdb.DuckDBPyConnection, table: str) -> bool:
         [table],
     ).fetchone()
     return bool(row and row[0])
+
+
+def _table_columns(conn: duckdb.DuckDBPyConnection, table: str) -> set[str]:
+    rows = conn.execute(
+        """
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_name = ?
+        """,
+        [table],
+    ).fetchall()
+    return {row[0] for row in rows}
+
+
+def _universe_identity_columns(conn: duckdb.DuckDBPyConnection) -> tuple[str, ...]:
+    columns = _table_columns(conn, "crypto_universe")
+    if {"provider", "provider_id", "date"}.issubset(columns):
+        return ("provider", "provider_id", "date")
+    return ("date", "symbol")
+
+
+def _universe_date_filter(
+    conn: duckdb.DuckDBPyConnection,
+    config: QualityConfig,
+) -> tuple[str, list[Any]]:
+    bounds = _universe_expected_bounds(conn, config)
+    if bounds is None:
+        return "", []
+
+    start_dt, end_dt = bounds
+    if start_dt > end_dt:
+        return "WHERE FALSE", []
+
+    return "WHERE date >= ? AND date <= ?", [start_dt.date(), end_dt.date()]
 
 
 def _filters(

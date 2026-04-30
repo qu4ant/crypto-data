@@ -182,7 +182,19 @@ def test_repair_1000_prefix_probe(empty_db):
 
     assert any("1000PEPEUSDT" in call for call in client.calls)
     assert report.inserted_rows == {"futures": 3}
-    assert report.gaps_fully_repaired == 1
+    assert report.gaps_fully_repaired == 0
+    assert len(report.unrecoverable_gaps) == 1
+    assert report.unrecoverable_gaps[0].symbol == "PEPEUSDT"
+    assert report.unrecoverable_gaps[0].missing_count == 3
+
+    pepe_rows = empty_db.conn.execute(
+        "SELECT COUNT(*) FROM futures WHERE symbol = 'PEPEUSDT'"
+    ).fetchone()[0]
+    prefixed_rows = empty_db.conn.execute(
+        "SELECT COUNT(*) FROM futures WHERE symbol = '1000PEPEUSDT'"
+    ).fetchone()[0]
+    assert pepe_rows == 6
+    assert prefixed_rows == 3
 
 
 def test_repair_idempotent_second_run(db_with_kline_gap, mock_rest_client):

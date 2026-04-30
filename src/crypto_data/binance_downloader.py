@@ -193,8 +193,12 @@ class BinanceDataVisionDownloader:
             logger.debug(f"No periods to download for {symbol}")
             return []
 
-        # Check for cached 1000-prefix mapping
-        cached_mapping = get_ticker_mapping(symbol)
+        # Check for cached 1000-prefix mapping only for futures-style datasets.
+        cached_mapping = (
+            get_ticker_mapping(symbol)
+            if _should_retry_with_1000_prefix(self.dataset.data_type, symbol)
+            else None
+        )
         download_symbol = cached_mapping or symbol
 
         if cached_mapping:
@@ -215,7 +219,7 @@ class BinanceDataVisionDownloader:
                 results.append(
                     DownloadResult(
                         success=False,
-                        symbol=symbol,
+                        symbol=download_symbol,
                         data_type=self.dataset.data_type,
                         period=str(period),
                         file_path=None,
@@ -223,16 +227,15 @@ class BinanceDataVisionDownloader:
                     )
                 )
             else:
-                # Update symbol to original (for 1000-prefix normalization)
-                result_with_original = DownloadResult(
+                result_with_effective_symbol = DownloadResult(
                     success=result.success,
-                    symbol=symbol,
+                    symbol=download_symbol,
                     data_type=result.data_type,
                     period=result.period,
                     file_path=result.file_path,
                     error=result.error,
                 )
-                results.append(result_with_original)
+                results.append(result_with_effective_symbol)
 
         # Apply gap detection
         if failure_threshold > 0:
@@ -472,7 +475,7 @@ class BinanceDataVisionDownloader:
                 results.append(
                     DownloadResult(
                         success=False,
-                        symbol=symbol,  # Use original symbol
+                        symbol=prefixed_symbol,
                         data_type=self.dataset.data_type,
                         period=str(period),
                         file_path=None,
@@ -480,11 +483,10 @@ class BinanceDataVisionDownloader:
                     )
                 )
             else:
-                # Update symbol to original (for normalization)
                 results.append(
                     DownloadResult(
                         success=result.success,
-                        symbol=symbol,  # Use original symbol
+                        symbol=prefixed_symbol,
                         data_type=result.data_type,
                         period=result.period,
                         file_path=result.file_path,
@@ -502,6 +504,13 @@ class BinanceDataVisionDownloader:
             if failure_threshold > 0:
                 results = self._detect_gaps(results, failure_threshold)
 
+            return results
+
+        if any(not r.is_not_found for r in results):
+            logger.warning(
+                f"Retry with {prefixed_symbol} failed with non-404 errors; "
+                "returning prefixed retry results"
+            )
             return results
 
         logger.debug(f"Retry with {prefixed_symbol} also failed")

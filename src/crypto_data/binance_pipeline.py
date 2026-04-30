@@ -111,7 +111,7 @@ def _process_results(
                 importer.import_file(
                     conn,
                     result.file_path,
-                    symbol,
+                    result.symbol,
                     period=result.period,
                     replace_existing=(
                         is_kline_table(importer.dataset.table_name) and len(result.period) == 10
@@ -134,11 +134,11 @@ def _process_results(
                 except Exception as rollback_error:
                     logger.warning(f"Failed to rollback transaction: {rollback_error}")
                 logger.error(f"Import failed {result.period}: {e}")
-                stats["failed"] += 1
 
                 # Clean up temp file on failure
                 if result.file_path and result.file_path.exists():
                     result.file_path.unlink()
+                raise
         else:
             if result.is_not_found:
                 stats["not_found"] += 1

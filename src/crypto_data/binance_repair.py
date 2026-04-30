@@ -392,9 +392,6 @@ async def _fetch_with_prefix_probe(
         df = await strategy.fetch_repair_rows(client, _replace_symbol(gap, prefixed_symbol))
         prefix_cache[gap.symbol] = prefixed_symbol
 
-    if (not df.empty and cached_symbol) or (not df.empty and df["symbol"].iloc[0] != gap.symbol):
-        df = df.copy()
-        df["symbol"] = gap.symbol
     return df
 
 
@@ -449,6 +446,8 @@ def _missing_count_after_fetch(gap: GapBoundary, df: pd.DataFrame) -> int:
     expected = _expected_timestamps(gap)
     if not expected:
         return 0
+    if not df.empty and "symbol" in df.columns:
+        df = df[df["symbol"] == gap.symbol]
     observed = (
         {timestamp.to_pydatetime() for timestamp in pd.to_datetime(df["timestamp"])}
         if not df.empty

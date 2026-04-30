@@ -305,7 +305,7 @@ def sample_universe(
 
 def group_samples_by_date(samples: list[UniverseSample]) -> dict:
     """Group universe samples by date to minimize API calls"""
-    grouped = {}
+    grouped: dict[object, list[UniverseSample]] = {}
     for sample in samples:
         # Normalize date to date-only (no time component)
         date_key = sample.date.date() if isinstance(sample.date, datetime) else sample.date

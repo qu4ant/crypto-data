@@ -48,6 +48,19 @@ def create_funding_rates_table(conn):
     )
 
 
+def create_open_interest_table(conn):
+    conn.execute(
+        """
+        CREATE TABLE open_interest (
+            exchange VARCHAR,
+            symbol VARCHAR,
+            timestamp TIMESTAMP,
+            open_interest DOUBLE
+        )
+        """
+    )
+
+
 def create_universe_table(conn):
     conn.execute(
         """
@@ -57,6 +70,21 @@ def create_universe_table(conn):
             rank INTEGER,
             market_cap DOUBLE,
             categories VARCHAR
+        )
+        """
+    )
+
+
+def create_universe_v6_table(conn):
+    conn.execute(
+        """
+        CREATE TABLE crypto_universe (
+            provider VARCHAR,
+            provider_id BIGINT,
+            date DATE,
+            symbol VARCHAR,
+            rank INTEGER,
+            market_cap DOUBLE
         )
         """
     )
@@ -222,6 +250,29 @@ def test_funding_rate_gap_is_error():
     assert gap.metadata["max_delta_seconds"] == 16 * 3600
 
 
+def test_open_interest_10_minute_gap_is_error():
+    conn = duckdb.connect(":memory:")
+    create_open_interest_table(conn)
+    start = datetime(2024, 1, 1)
+    conn.executemany(
+        "INSERT INTO open_interest VALUES (?, ?, ?, ?)",
+        [
+            ("binance", "BTCUSDT", start, 100.0),
+            ("binance", "BTCUSDT", start + timedelta(minutes=10), 101.0),
+            ("binance", "BTCUSDT", start + timedelta(minutes=15), 102.0),
+        ],
+    )
+
+    findings = audit_connection(conn, tables=["open_interest"])
+
+    assert ("open_interest", "BTCUSDT", None, "time_gaps") in finding_names(findings)
+    gap = next(finding for finding in findings if finding.check_name == "time_gaps")
+    assert gap.severity == "ERROR"
+    assert gap.count == 1
+    assert gap.metadata["expected_seconds"] == 5 * 60
+    assert gap.metadata["max_delta_seconds"] == 10 * 60
+
+
 def test_universe_missing_daily_snapshot_is_error():
     conn = duckdb.connect(":memory:")
     create_universe_table(conn)
@@ -278,6 +329,63 @@ def test_universe_top_n_rank_checks():
     )
     assert above.severity == "ERROR"
     assert below.severity == "WARN"
+
+
+def test_universe_top_n_rank_checks_respect_config_date_bounds():
+    conn = duckdb.connect(":memory:")
+    create_universe_table(conn)
+    conn.executemany(
+        "INSERT INTO crypto_universe VALUES (?, ?, ?, ?, ?)",
+        [
+            ("2024-01-01", "BTC", 1, 1_000_000.0, ""),
+            ("2024-01-01", "ETH", 2, 900_000.0, ""),
+            ("2024-01-01", "SOL", 3, 800_000.0, ""),
+            ("2025-01-01", "OLD", 99, 1_000.0, ""),
+        ],
+    )
+
+    findings = audit_connection(
+        conn,
+        tables=["crypto_universe"],
+        config=QualityConfig(
+            universe_top_n=3,
+            universe_start_date="2024-01-01",
+            universe_end_date="2024-12-31",
+        ),
+    )
+
+    names = finding_names(findings)
+    assert ("crypto_universe", None, None, "rank_above_top_n") not in names
+    assert ("crypto_universe", None, None, "rank_coverage_below_top_n") not in names
+
+
+def test_universe_v6_same_symbol_different_provider_ids_is_not_duplicate_primary_key():
+    conn = duckdb.connect(":memory:")
+    create_universe_v6_table(conn)
+    conn.executemany(
+        "INSERT INTO crypto_universe VALUES (?, ?, ?, ?, ?, ?)",
+        [
+            ("coinmarketcap", 1, "2024-01-01", "AAA", 1, 100.0),
+            ("coinmarketcap", 2, "2024-01-01", "AAA", 2, 90.0),
+        ],
+    )
+
+    findings = audit_connection(conn, tables=["crypto_universe"])
+
+    assert ("crypto_universe", "AAA", None, "duplicate_primary_key") not in finding_names(findings)
+
+
+def test_universe_nullable_market_cap_is_not_invalid_value():
+    conn = duckdb.connect(":memory:")
+    create_universe_table(conn)
+    conn.execute(
+        "INSERT INTO crypto_universe VALUES (?, ?, ?, ?, ?)",
+        ["2024-01-01", "BTC", 1, None, ""],
+    )
+
+    findings = audit_connection(conn, tables=["crypto_universe"])
+
+    assert ("crypto_universe", "BTC", None, "invalid_values") not in finding_names(findings)
 
 
 def test_findings_report_schema_and_formatting():

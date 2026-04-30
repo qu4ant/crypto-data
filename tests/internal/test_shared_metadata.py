@@ -21,6 +21,7 @@ from crypto_data.tables import (
     FUNDING_RATES_EXPECTED_SECONDS,
     KLINE_PRIMARY_KEY,
     KLINE_TABLE_COLUMNS,
+    OPEN_INTEREST_EXPECTED_SECONDS,
     get_table_spec,
     primary_key_for,
 )
@@ -35,6 +36,7 @@ def test_interval_metadata_matches_public_enum() -> None:
 
 def test_table_specs_expose_stable_table_facts() -> None:
     spot = get_table_spec("spot")
+    open_interest = get_table_spec("open_interest")
     funding = get_table_spec("funding_rates")
 
     assert spot.kind == "kline"
@@ -42,6 +44,10 @@ def test_table_specs_expose_stable_table_facts() -> None:
     assert spot.columns == KLINE_TABLE_COLUMNS
     assert spot.requires_interval is True
     assert spot.repair_supported is True
+
+    assert open_interest.kind == "metric"
+    assert open_interest.expected_seconds == OPEN_INTEREST_EXPECTED_SECONDS
+    assert OPEN_INTEREST_EXPECTED_SECONDS == 5 * 60
 
     assert funding.kind == "metric"
     assert funding.expected_seconds == FUNDING_RATES_EXPECTED_SECONDS

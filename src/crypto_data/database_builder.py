@@ -51,14 +51,25 @@ def _get_existing_universe_dates(db_path: str) -> set[str]:
 
     If the database/table is not available yet, returns an empty set.
     """
-    try:
-        with duckdb.connect(db_path, read_only=True) as conn:
-            rows = conn.execute(
-                "SELECT DISTINCT strftime(date, '%Y-%m-%d') FROM crypto_universe"
-            ).fetchall()
-        return {row[0] for row in rows if row and row[0]}
-    except Exception:
+    if db_path != ":memory:" and not Path(db_path).exists():
         return set()
+
+    with duckdb.connect(db_path, read_only=True) as conn:
+        table_exists = conn.execute(
+            """
+            SELECT 1
+            FROM information_schema.tables
+            WHERE table_name = 'crypto_universe'
+            LIMIT 1
+            """
+        ).fetchone()
+        if table_exists is None:
+            return set()
+
+        rows = conn.execute(
+            "SELECT DISTINCT strftime(date, '%Y-%m-%d') FROM crypto_universe"
+        ).fetchall()
+    return {row[0] for row in rows if row and row[0]}
 
 
 async def _fetch_snapshot(
@@ -286,7 +297,7 @@ async def update_coinmarketcap_universe(
     # Write to database sequentially (avoid write conflicts)
     db = None
     success_count = 0
-    fail_count = 0
+    fetch_fail_count = 0
     all_excluded_by_tag: set[str] = set()
     all_excluded_by_symbol: set[str] = set()
 
@@ -299,7 +310,7 @@ async def update_coinmarketcap_universe(
             # Handle exceptions
             if isinstance(result, Exception):
                 logger.error(f"  ⚠ Warning: Failed {date_str}: {result}")
-                fail_count += 1
+                fetch_fail_count += 1
                 continue
 
             # result is a tuple: (DataFrame, excluded_by_tag, excluded_by_symbol)
@@ -346,25 +357,23 @@ async def update_coinmarketcap_universe(
                         )
                     logger.debug(f"Transaction rolled back for {date_str}")
                 logger.error(f"Failed to update universe for {date_str}: {e}")
-                fail_count += 1
-                # Continue with other dates instead of raising
-                continue
+                raise
 
     finally:
         if db:
             db.close()
 
     # Check if ALL fetches failed
-    if fail_count == len(tasks) and len(tasks) > 0:
+    if fetch_fail_count == len(tasks) and len(tasks) > 0:
         raise RuntimeError(
-            f"All {fail_count} universe fetches failed. Check network connectivity "
+            f"All {fetch_fail_count} universe fetches failed. Check network connectivity "
             f"and CoinMarketCap API status."
         )
 
     # Summary log
     logger.info(
         f"✓ Downloaded {success_count}/{len(tasks)} snapshots successfully"
-        + (f" ({fail_count} failed)" if fail_count > 0 else "")
+        + (f" ({fetch_fail_count} failed)" if fetch_fail_count > 0 else "")
     )
 
     # Return exclusion summary

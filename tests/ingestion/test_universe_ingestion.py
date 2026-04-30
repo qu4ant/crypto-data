@@ -6,6 +6,7 @@ only occurs when the transaction has not been committed.
 """
 
 import asyncio
+import datetime
 import logging
 import tempfile
 from dataclasses import dataclass
@@ -16,7 +17,7 @@ import duckdb
 import pytest
 
 from crypto_data import CryptoDatabase
-from crypto_data.database_builder import update_coinmarketcap_universe
+from crypto_data.database_builder import _get_existing_universe_dates, update_coinmarketcap_universe
 
 # =============================================================================
 # Fixture helpers — v6 schema
@@ -59,6 +60,63 @@ def _insert_universe_row(conn: duckdb.DuckDBPyConnection, row: UniverseRowFixtur
 # =============================================================================
 # Tests
 # =============================================================================
+
+
+def test_get_existing_universe_dates_missing_database_returns_empty():
+    """A first-run database path should not block universe ingestion startup."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = Path(tmpdir) / "missing.db"
+
+        assert _get_existing_universe_dates(str(db_path)) == set()
+
+
+def test_get_existing_universe_dates_missing_table_returns_empty():
+    """An existing DB without crypto_universe is an expected startup state."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = Path(tmpdir) / "test.db"
+        conn = duckdb.connect(str(db_path))
+        conn.execute("CREATE TABLE unrelated_table (date DATE)")
+        conn.close()
+
+        assert _get_existing_universe_dates(str(db_path)) == set()
+
+
+def test_get_existing_universe_dates_unexpected_connect_failure_propagates():
+    """Unexpected DuckDB/runtime failures should not be treated as no existing dates."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = Path(tmpdir) / "test.db"
+        conn = duckdb.connect(str(db_path))
+        conn.close()
+
+        with patch(
+            "crypto_data.database_builder.duckdb.connect",
+            side_effect=RuntimeError("connect failed"),
+        ):
+            with pytest.raises(RuntimeError, match="connect failed"):
+                _get_existing_universe_dates(str(db_path))
+
+
+def test_get_existing_universe_dates_unexpected_query_failure_propagates():
+    """Unexpected query failures should not be treated as no existing dates."""
+
+    class FailingConnection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            return False
+
+        def execute(self, query):
+            raise RuntimeError("query failed")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = Path(tmpdir) / "test.db"
+        conn = duckdb.connect(str(db_path))
+        conn.close()
+
+        with patch("crypto_data.database_builder.duckdb.connect", return_value=FailingConnection()):
+            with pytest.raises(RuntimeError, match="query failed"):
+                _get_existing_universe_dates(str(db_path))
 
 
 def test_universe_rollback_on_error():
@@ -171,6 +229,98 @@ def test_universe_no_rollback_after_commit():
         db.close()
 
         assert result[0] == "BTC", "Data should be committed and replaced"
+
+
+def test_update_coinmarketcap_universe_write_failure_rolls_back_and_raises():
+    """Unexpected write failures should rollback the current date and abort the batch."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = Path(tmpdir) / "test.db"
+
+        conn = duckdb.connect(str(db_path))
+        conn.execute("""
+            CREATE TABLE crypto_universe (
+                provider                 VARCHAR  NOT NULL CHECK (provider = 'coinmarketcap'),
+                provider_id              BIGINT   NOT NULL,
+                date                     DATE     NOT NULL,
+                symbol                   VARCHAR  NOT NULL CHECK (symbol != 'ETH'),
+                name                     VARCHAR  NOT NULL,
+                slug                     VARCHAR,
+                rank                     INTEGER  NOT NULL,
+                market_cap               DOUBLE,
+                fully_diluted_market_cap DOUBLE,
+                circulating_supply       DOUBLE,
+                max_supply               DOUBLE,
+                tags                     VARCHAR,
+                platform                 VARCHAR,
+                date_added               DATE,
+                PRIMARY KEY (provider, provider_id, date)
+            )
+        """)
+        _insert_universe_row(
+            conn,
+            UniverseRowFixture(
+                provider_id=99002,
+                date="2024-01-02",
+                symbol="OLD",
+                name="Legacy Asset",
+                rank=1,
+                market_cap=1_000.0,
+            ),
+        )
+        conn.close()
+
+        async def fake_historical_listings(date_str, top_n):
+            if date_str == "2024-01-01":
+                return [
+                    {
+                        "id": 1,
+                        "symbol": "BTC",
+                        "name": "Bitcoin",
+                        "cmcRank": 1,
+                        "quotes": [{"marketCap": 2000000}],
+                        "tags": [],
+                    }
+                ]
+            return [
+                {
+                    "id": 1027,
+                    "symbol": "ETH",
+                    "name": "Ethereum",
+                    "cmcRank": 1,
+                    "quotes": [{"marketCap": 1000000}],
+                    "tags": [],
+                }
+            ]
+
+        with patch("crypto_data.database_builder.CoinMarketCapClient") as MockClient:
+            mock_instance = AsyncMock()
+            mock_instance.__aenter__.return_value = mock_instance
+            mock_instance.__aexit__.return_value = None
+            mock_instance.get_historical_listings = AsyncMock(side_effect=fake_historical_listings)
+            MockClient.return_value = mock_instance
+
+            with pytest.raises(duckdb.ConstraintException):
+                asyncio.run(
+                    update_coinmarketcap_universe(
+                        db_path=str(db_path),
+                        dates=["2024-01-01", "2024-01-02"],
+                        top_n=1,
+                        skip_existing=False,
+                    )
+                )
+
+        conn = duckdb.connect(str(db_path))
+        rows = conn.execute("""
+            SELECT date, symbol
+            FROM crypto_universe
+            ORDER BY date, symbol
+        """).fetchall()
+        conn.close()
+
+        assert rows == [
+            (datetime.date(2024, 1, 1), "BTC"),
+            (datetime.date(2024, 1, 2), "OLD"),
+        ]
 
 
 def test_universe_idempotent():
