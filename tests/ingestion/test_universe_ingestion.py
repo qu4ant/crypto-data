@@ -8,12 +8,57 @@ only occurs when the transaction has not been committed.
 import pytest
 import asyncio
 import tempfile
+import logging
+from dataclasses import dataclass
 from pathlib import Path
-import pandas as pd
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import patch, AsyncMock
+
+import duckdb
 
 from crypto_data import CryptoDatabase
 from crypto_data.database_builder import update_coinmarketcap_universe
+
+
+# =============================================================================
+# Fixture helpers — v6 schema
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class UniverseRowFixture:
+    """Test fixture for a single crypto_universe v6 row.
+
+    All fields are required so test intent stays explicit at the call site.
+    The fixture only covers the identity + selection columns; nullable
+    metadata (slug, FDMC, supplies, tags, platform, date_added) is set to
+    NULL in the helper.
+    """
+    provider_id: int
+    date: str
+    symbol: str
+    name: str
+    rank: int
+    market_cap: float
+
+
+def _insert_universe_row(conn: duckdb.DuckDBPyConnection, row: UniverseRowFixture) -> None:
+    """Insert a single universe row into a freshly created v6 schema."""
+    conn.execute(
+        """
+        INSERT INTO crypto_universe
+        (provider, provider_id, date, symbol, name, slug, rank,
+         market_cap, fully_diluted_market_cap,
+         circulating_supply, max_supply, tags, platform, date_added)
+        VALUES
+        ('coinmarketcap', ?, ?, ?, ?, NULL, ?, ?, NULL, NULL, NULL, '', NULL, NULL)
+        """,
+        [row.provider_id, row.date, row.symbol, row.name, row.rank, row.market_cap],
+    )
+
+
+# =============================================================================
+# Tests
+# =============================================================================
 
 
 def test_universe_rollback_on_error():
@@ -25,10 +70,10 @@ def test_universe_rollback_on_error():
         db = CryptoDatabase(str(db_path))
         conn = db.conn
 
-        initial_data = pd.DataFrame([
-            {'date': pd.Timestamp('2024-01-01'), 'symbol': 'BTC', 'rank': 1, 'market_cap': 1000000, 'categories': ''}
-        ])
-        conn.execute("INSERT INTO crypto_universe SELECT * FROM initial_data")
+        _insert_universe_row(conn, UniverseRowFixture(
+            provider_id=1, date='2024-01-01', symbol='BTC',
+            name='Bitcoin', rank=1, market_cap=1_000_000.0,
+        ))
         db.close()
 
         # Mock API to simulate error
@@ -65,15 +110,16 @@ def test_universe_no_rollback_after_commit():
         db = CryptoDatabase(str(db_path))
         conn = db.conn
 
-        initial_data = pd.DataFrame([
-            {'date': pd.Timestamp('2024-01-01'), 'symbol': 'OLD', 'rank': 1, 'market_cap': 1000, 'categories': ''}
-        ])
-        conn.execute("INSERT INTO crypto_universe SELECT * FROM initial_data")
+        _insert_universe_row(conn, UniverseRowFixture(
+            provider_id=99001, date='2024-01-01', symbol='OLD',
+            name='Legacy Asset', rank=1, market_cap=1_000.0,
+        ))
         db.close()
 
         # Mock API to return new data
         new_data = [
-            {'symbol': 'BTC', 'cmcRank': 1, 'quotes': [{'marketCap': 2000000}], 'tags': []}
+            {'id': 1, 'symbol': 'BTC', 'name': 'Bitcoin', 'cmcRank': 1,
+             'quotes': [{'marketCap': 2000000}], 'tags': []}
         ]
 
         with patch('crypto_data.database_builder.CoinMarketCapClient') as MockClient:
@@ -108,8 +154,8 @@ def test_universe_idempotent():
 
         # Mock API
         new_data = [
-            {'symbol': 'BTC', 'cmcRank': 1, 'quotes': [{'marketCap': 1000000}], 'tags': []},
-            {'symbol': 'ETH', 'cmcRank': 2, 'quotes': [{'marketCap': 500000}], 'tags': []}
+            {'id': 1, 'symbol': 'BTC', 'name': 'Bitcoin', 'cmcRank': 1, 'quotes': [{'marketCap': 1000000}], 'tags': []},
+            {'id': 1027, 'symbol': 'ETH', 'name': 'Ethereum', 'cmcRank': 2, 'quotes': [{'marketCap': 500000}], 'tags': []},
         ]
 
         with patch('crypto_data.database_builder.CoinMarketCapClient') as MockClient:
@@ -137,11 +183,11 @@ def test_update_coinmarketcap_universe_excludes_synthetic_assets_by_default():
         db_path = Path(tmpdir) / 'test.db'
 
         new_data = [
-            {'symbol': 'BTC', 'cmcRank': 1, 'quotes': [{'marketCap': 1000000}], 'tags': ['mineable']},
-            {'symbol': 'USDT', 'cmcRank': 2, 'quotes': [{'marketCap': 900000}], 'tags': ['stablecoin']},
-            {'symbol': 'WBTC', 'cmcRank': 3, 'quotes': [{'marketCap': 800000}], 'tags': ['wrapped-tokens']},
-            {'symbol': 'PAXG', 'cmcRank': 4, 'quotes': [{'marketCap': 700000}], 'tags': ['tokenized-gold']},
-            {'symbol': 'TSLA', 'cmcRank': 5, 'quotes': [{'marketCap': 600000}], 'tags': ['tokenized-stock']},
+            {'id': 1,     'symbol': 'BTC',  'name': 'Bitcoin',           'cmcRank': 1, 'quotes': [{'marketCap': 1000000}], 'tags': ['mineable']},
+            {'id': 825,   'symbol': 'USDT', 'name': 'Tether USDt',       'cmcRank': 2, 'quotes': [{'marketCap': 900000}],  'tags': ['stablecoin']},
+            {'id': 3717,  'symbol': 'WBTC', 'name': 'Wrapped Bitcoin',   'cmcRank': 3, 'quotes': [{'marketCap': 800000}],  'tags': ['wrapped-tokens']},
+            {'id': 4705,  'symbol': 'PAXG', 'name': 'PAX Gold',          'cmcRank': 4, 'quotes': [{'marketCap': 700000}],  'tags': ['tokenized-gold']},
+            {'id': 12345, 'symbol': 'TSLA', 'name': 'Tesla Tokenized',   'cmcRank': 5, 'quotes': [{'marketCap': 600000}],  'tags': ['tokenized-stock']},
         ]
 
         with patch('crypto_data.database_builder.CoinMarketCapClient') as MockClient:
@@ -173,7 +219,8 @@ def test_update_coinmarketcap_universe_allows_explicit_filter_opt_out():
         db_path = Path(tmpdir) / 'test.db'
 
         new_data = [
-            {'symbol': 'USDT', 'cmcRank': 1, 'quotes': [{'marketCap': 1000000}], 'tags': ['stablecoin']},
+            {'id': 825, 'symbol': 'USDT', 'name': 'Tether USDt', 'cmcRank': 1,
+             'quotes': [{'marketCap': 1000000}], 'tags': ['stablecoin']},
         ]
 
         with patch('crypto_data.database_builder.CoinMarketCapClient') as MockClient:
@@ -200,6 +247,88 @@ def test_update_coinmarketcap_universe_allows_explicit_filter_opt_out():
         assert result[0] == 'USDT'
 
 
+def test_update_coinmarketcap_universe_rejects_invalid_snapshot_data():
+    """Malformed CMC rows should not replace an existing universe snapshot."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = Path(tmpdir) / 'test.db'
+
+        db = CryptoDatabase(str(db_path))
+        _insert_universe_row(db.conn, UniverseRowFixture(
+            provider_id=1, date='2024-01-01', symbol='BTC',
+            name='Bitcoin', rank=1, market_cap=1_000_000.0,
+        ))
+        db.close()
+
+        invalid_data = [
+            # Missing cmcRank and marketCap should fail schema validation
+            # instead of being coerced to rank=0 / market_cap=0.
+            {'id': 1027, 'symbol': 'ETH', 'name': 'Ethereum', 'quotes': [{}], 'tags': []}
+        ]
+
+        with patch('crypto_data.database_builder.CoinMarketCapClient') as MockClient:
+            mock_instance = AsyncMock()
+            mock_instance.__aenter__.return_value = mock_instance
+            mock_instance.__aexit__.return_value = None
+            mock_instance.get_historical_listings = AsyncMock(return_value=invalid_data)
+            MockClient.return_value = mock_instance
+
+            with pytest.raises(RuntimeError, match="All .* universe fetches failed"):
+                asyncio.run(update_coinmarketcap_universe(
+                    db_path=str(db_path),
+                    dates=['2024-01-01'],
+                    top_n=1,
+                    skip_existing=False,
+                ))
+
+        db = CryptoDatabase(str(db_path))
+        result = db.execute("""
+            SELECT symbol, rank, market_cap
+            FROM crypto_universe
+            WHERE date = '2024-01-01'
+        """).fetchone()
+        db.close()
+
+        assert result == ('BTC', 1, 1000000.0)
+
+
+def test_update_coinmarketcap_universe_warns_on_duplicate_symbols(caplog):
+    """Duplicate CMC symbols are deduplicated deterministically and logged."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = Path(tmpdir) / 'test.db'
+        caplog.set_level(logging.WARNING)
+
+        # Both rows share id=5426 so the v6 dedup key (provider, provider_id, date) triggers.
+        duplicate_data = [
+            {'id': 5426, 'symbol': 'SOL', 'name': 'Solana', 'cmcRank': 10, 'quotes': [{'marketCap': 1000}], 'tags': []},
+            {'id': 5426, 'symbol': 'SOL', 'name': 'Solana', 'cmcRank': 20, 'quotes': [{'marketCap': 500}],  'tags': []},
+        ]
+
+        with patch('crypto_data.database_builder.CoinMarketCapClient') as MockClient:
+            mock_instance = AsyncMock()
+            mock_instance.__aenter__.return_value = mock_instance
+            mock_instance.__aexit__.return_value = None
+            mock_instance.get_historical_listings = AsyncMock(return_value=duplicate_data)
+            MockClient.return_value = mock_instance
+
+            asyncio.run(update_coinmarketcap_universe(
+                db_path=str(db_path),
+                dates=['2024-01-01'],
+                top_n=2,
+                skip_existing=False,
+            ))
+
+        db = CryptoDatabase(str(db_path))
+        rows = db.execute("""
+            SELECT symbol, rank, market_cap
+            FROM crypto_universe
+            WHERE date = '2024-01-01'
+        """).fetchall()
+        db.close()
+
+        assert rows == [('SOL', 10, 1000.0)]
+        assert "Dropped 1 duplicate universe rows" in caplog.text
+
+
 def test_universe_transaction_atomicity():
     """
     Test transaction atomicity: DELETE + INSERT are atomic.
@@ -214,11 +343,14 @@ def test_universe_transaction_atomicity():
         db = CryptoDatabase(str(db_path))
         conn = db.conn
 
-        initial_data = pd.DataFrame([
-            {'date': pd.Timestamp('2024-01-01'), 'symbol': 'BTC', 'rank': 1, 'market_cap': 1000000, 'categories': 'original'},
-            {'date': pd.Timestamp('2024-01-01'), 'symbol': 'ETH', 'rank': 2, 'market_cap': 500000, 'categories': 'original'}
-        ])
-        conn.execute("INSERT INTO crypto_universe SELECT * FROM initial_data")
+        _insert_universe_row(conn, UniverseRowFixture(
+            provider_id=1, date='2024-01-01', symbol='BTC',
+            name='Bitcoin', rank=1, market_cap=1_000_000.0,
+        ))
+        _insert_universe_row(conn, UniverseRowFixture(
+            provider_id=1027, date='2024-01-01', symbol='ETH',
+            name='Ethereum', rank=2, market_cap=500_000.0,
+        ))
 
         # Test Case 1: Transaction with ROLLBACK - data should be preserved
         conn.execute("BEGIN TRANSACTION")
@@ -240,10 +372,10 @@ def test_universe_transaction_atomicity():
         conn.execute("DELETE FROM crypto_universe WHERE date = '2024-01-01'")
 
         # New data to insert
-        new_data = pd.DataFrame([
-            {'date': pd.Timestamp('2024-01-01'), 'symbol': 'SOL', 'rank': 1, 'market_cap': 2000000, 'categories': 'new'}
-        ])
-        conn.execute("INSERT INTO crypto_universe SELECT * FROM new_data")
+        _insert_universe_row(conn, UniverseRowFixture(
+            provider_id=5426, date='2024-01-01', symbol='SOL',
+            name='Solana', rank=1, market_cap=2_000_000.0,
+        ))
         conn.execute("COMMIT")
 
         # Verify data is replaced after commit
@@ -261,7 +393,7 @@ def test_update_coinmarketcap_universe_accepts_dates_kwarg():
         db_path = Path(tmpdir) / 'test.db'
 
         new_data = [
-            {'symbol': 'BTC', 'cmcRank': 1, 'quotes': [{'marketCap': 1000000}], 'tags': []}
+            {'id': 1, 'symbol': 'BTC', 'name': 'Bitcoin', 'cmcRank': 1, 'quotes': [{'marketCap': 1000000}], 'tags': []}
         ]
 
         with patch('crypto_data.database_builder.CoinMarketCapClient') as MockClient:
@@ -298,14 +430,14 @@ def test_update_coinmarketcap_universe_skip_existing_filters_present_dates():
         db_path = Path(tmpdir) / 'test.db'
 
         db = CryptoDatabase(str(db_path))
-        db.conn.execute("""
-            INSERT INTO crypto_universe (date, symbol, rank, market_cap, categories)
-            VALUES ('2024-01-01', 'BTC', 1, 1000000, NULL)
-        """)
+        _insert_universe_row(db.conn, UniverseRowFixture(
+            provider_id=1, date='2024-01-01', symbol='BTC',
+            name='Bitcoin', rank=1, market_cap=1_000_000.0,
+        ))
         db.close()
 
         new_data = [
-            {'symbol': 'ETH', 'cmcRank': 1, 'quotes': [{'marketCap': 500000}], 'tags': []}
+            {'id': 1027, 'symbol': 'ETH', 'name': 'Ethereum', 'cmcRank': 1, 'quotes': [{'marketCap': 500000}], 'tags': []}
         ]
 
         with patch('crypto_data.database_builder.CoinMarketCapClient') as MockClient:
@@ -331,15 +463,15 @@ def test_update_coinmarketcap_universe_skip_existing_is_date_only():
         db_path = Path(tmpdir) / 'test.db'
 
         db = CryptoDatabase(str(db_path))
-        db.conn.execute("""
-            INSERT INTO crypto_universe (date, symbol, rank, market_cap, categories)
-            VALUES ('2024-01-01', 'BTC', 1, 1000000, NULL)
-        """)
+        _insert_universe_row(db.conn, UniverseRowFixture(
+            provider_id=1, date='2024-01-01', symbol='BTC',
+            name='Bitcoin', rank=1, market_cap=1_000_000.0,
+        ))
         db.close()
 
         new_data = [
-            {'symbol': 'BTC', 'cmcRank': 1, 'quotes': [{'marketCap': 1000000}], 'tags': []},
-            {'symbol': 'ETH', 'cmcRank': 2, 'quotes': [{'marketCap': 500000}], 'tags': []}
+            {'id': 1, 'symbol': 'BTC', 'name': 'Bitcoin', 'cmcRank': 1, 'quotes': [{'marketCap': 1000000}], 'tags': []},
+            {'id': 1027, 'symbol': 'ETH', 'name': 'Ethereum', 'cmcRank': 2, 'quotes': [{'marketCap': 500000}], 'tags': []},
         ]
 
         with patch('crypto_data.database_builder.CoinMarketCapClient') as MockClient:
@@ -373,14 +505,14 @@ def test_update_coinmarketcap_universe_skip_existing_disabled_fetches_all():
         db_path = Path(tmpdir) / 'test.db'
 
         db = CryptoDatabase(str(db_path))
-        db.conn.execute("""
-            INSERT INTO crypto_universe (date, symbol, rank, market_cap, categories)
-            VALUES ('2024-01-01', 'BTC', 1, 1000000, NULL)
-        """)
+        _insert_universe_row(db.conn, UniverseRowFixture(
+            provider_id=1, date='2024-01-01', symbol='BTC',
+            name='Bitcoin', rank=1, market_cap=1_000_000.0,
+        ))
         db.close()
 
         new_data = [
-            {'symbol': 'ETH', 'cmcRank': 1, 'quotes': [{'marketCap': 500000}], 'tags': []}
+            {'id': 1027, 'symbol': 'ETH', 'name': 'Ethereum', 'cmcRank': 1, 'quotes': [{'marketCap': 500000}], 'tags': []}
         ]
 
         with patch('crypto_data.database_builder.CoinMarketCapClient') as MockClient:
