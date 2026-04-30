@@ -14,7 +14,6 @@ from tests.validation.utils.sampling import (
     sample_ohlcv_ratio_by_symbol,
 )
 
-
 # Tolerances
 PRICE_TOLERANCE = 1e-8  # Exact match for prices (8 decimal places)
 VOLUME_TOLERANCE = 1e-4  # 0.01% for volumes
@@ -28,9 +27,7 @@ def compare_futures_kline(
 ) -> None:
     """Compare DB futures kline with API kline, collect mismatches"""
 
-    def check_field(
-        field: str, db_val, api_val, tolerance: float, is_relative: bool = False
-    ):
+    def check_field(field: str, db_val, api_val, tolerance: float, is_relative: bool = False):
         if db_val is None or api_val is None:
             collector.record_skip(
                 f"Missing value for {db_kline.symbol} @ {db_kline.timestamp} ({field})"
@@ -74,7 +71,9 @@ def compare_futures_kline(
     check_field("quote_volume", db_kline.quote_volume, api_kline.quote_volume, quote_vol_tol)
 
     # Trades count - exact match
-    check_field("trades_count", db_kline.trades_count, api_kline.trades_count, TRADES_COUNT_TOLERANCE)
+    check_field(
+        "trades_count", db_kline.trades_count, api_kline.trades_count, TRADES_COUNT_TOLERANCE
+    )
 
 
 @pytest.mark.validation
@@ -121,18 +120,14 @@ class TestFuturesValidation:
                 )
 
                 if api_kline is None:
-                    collector.record_skip(
-                        f"No API data for {sample.symbol} @ {sample.timestamp}"
-                    )
+                    collector.record_skip(f"No API data for {sample.symbol} @ {sample.timestamp}")
                     continue
 
                 compare_futures_kline(sample, api_kline, collector)
                 collector.record_success()
 
             except Exception as e:
-                collector.record_skip(
-                    f"API error for {sample.symbol} @ {sample.timestamp}: {str(e)}"
-                )
+                collector.record_skip(f"API error for {sample.symbol} @ {sample.timestamp}: {e!s}")
 
         # Report results
         print(f"\n{collector.get_summary()}")
@@ -193,7 +188,7 @@ class TestFuturesValidation:
 
                 except Exception as e:
                     collector.record_skip(
-                        f"API error for {sample.symbol} @ {sample.timestamp}: {str(e)}"
+                        f"API error for {sample.symbol} @ {sample.timestamp}: {e!s}"
                     )
 
         print(f"\n{collector.get_summary()}")
@@ -222,18 +217,14 @@ class TestFuturesValidation:
                 )
 
                 if api_kline is None:
-                    collector.record_skip(
-                        f"No API data for BTCUSDT futures @ {sample.timestamp}"
-                    )
+                    collector.record_skip(f"No API data for BTCUSDT futures @ {sample.timestamp}")
                     continue
 
                 compare_futures_kline(sample, api_kline, collector)
                 collector.record_success()
 
             except Exception as e:
-                collector.record_skip(
-                    f"API error for BTCUSDT futures @ {sample.timestamp}: {str(e)}"
-                )
+                collector.record_skip(f"API error for BTCUSDT futures @ {sample.timestamp}: {e!s}")
 
         print(f"\n{collector.get_summary()}")
         collector.assert_no_mismatches()
@@ -253,9 +244,7 @@ class TestFuturesValidation:
         conn = duckdb.connect(validation_db_path, read_only=True)
         try:
             # Get available intervals
-            intervals = conn.execute(
-                "SELECT DISTINCT interval FROM futures LIMIT 5"
-            ).fetchall()
+            intervals = conn.execute("SELECT DISTINCT interval FROM futures LIMIT 5").fetchall()
             intervals = [row[0] for row in intervals]
         finally:
             conn.close()
@@ -265,9 +254,7 @@ class TestFuturesValidation:
 
         # Sample from each interval
         for interval in intervals[:3]:  # Limit to 3 intervals
-            samples = sample_ohlcv(
-                validation_db_path, "futures", n=2, interval=interval
-            )
+            samples = sample_ohlcv(validation_db_path, "futures", n=2, interval=interval)
 
             for sample in samples:
                 try:
@@ -288,7 +275,7 @@ class TestFuturesValidation:
                 except Exception as e:
                     collector.record_skip(
                         f"API error for {sample.symbol} ({sample.interval}) "
-                        f"@ {sample.timestamp}: {str(e)}"
+                        f"@ {sample.timestamp}: {e!s}"
                     )
 
         print(f"\n{collector.get_summary()}")

@@ -28,10 +28,11 @@ class DataType(str, Enum):
     >>> data_types = [DataType.SPOT, DataType.FUTURES]
     >>> print(data_types[0].value)  # 'spot'
     """
-    SPOT = 'spot'
-    FUTURES = 'futures'
-    OPEN_INTEREST = 'open_interest'
-    FUNDING_RATES = 'funding_rates'
+
+    SPOT = "spot"
+    FUTURES = "futures"
+    OPEN_INTEREST = "open_interest"
+    FUNDING_RATES = "funding_rates"
 
 
 class Interval(str, Enum):
@@ -78,17 +79,18 @@ class Interval(str, Enum):
     >>> interval = Interval.MIN_5
     >>> print(interval.value)  # '5m'
     """
-    MIN_1 = '1m'
-    MIN_5 = '5m'
-    MIN_15 = '15m'
-    MIN_30 = '30m'
-    HOUR_1 = '1h'
-    HOUR_2 = '2h'
-    HOUR_4 = '4h'
-    HOUR_6 = '6h'
-    HOUR_8 = '8h'
-    HOUR_12 = '12h'
-    DAY_1 = '1d'
-    DAY_3 = '3d'
-    WEEK_1 = '1w'
-    MONTH_1 = '1M'
+
+    MIN_1 = "1m"
+    MIN_5 = "5m"
+    MIN_15 = "15m"
+    MIN_30 = "30m"
+    HOUR_1 = "1h"
+    HOUR_2 = "2h"
+    HOUR_4 = "4h"
+    HOUR_6 = "6h"
+    HOUR_8 = "8h"
+    HOUR_12 = "12h"
+    DAY_1 = "1d"
+    DAY_3 = "3d"
+    WEEK_1 = "1w"
+    MONTH_1 = "1M"

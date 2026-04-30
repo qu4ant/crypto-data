@@ -2,15 +2,10 @@
 Tests for Crypto Universe Schema
 """
 
-import pytest
-import pandas as pd
 import pandera.pandas as pa
-from datetime import datetime
+import pytest
 
-from crypto_data.schemas import (
-    UNIVERSE_SCHEMA,
-    validate_universe_dataframe
-)
+from crypto_data.schemas import UNIVERSE_SCHEMA
 
 
 @pytest.mark.schema
@@ -30,7 +25,7 @@ class TestUniverseSchema:
     def test_negative_market_cap_fails(self, valid_universe_df):
         """Test that negative market cap fails"""
         df = valid_universe_df.head(3).copy()
-        df['market_cap'] = [800000000000.0, -400000000000.0, 80000000000.0]
+        df["market_cap"] = [800000000000.0, -400000000000.0, 80000000000.0]
 
         with pytest.raises(pa.errors.SchemaError):
             UNIVERSE_SCHEMA.validate(df)
@@ -38,7 +33,7 @@ class TestUniverseSchema:
     def test_null_symbol_fails(self, valid_universe_df):
         """Test that null symbol fails"""
         df = valid_universe_df.head(3).copy()
-        df['symbol'] = ['BTC', None, 'BNB']
+        df["symbol"] = ["BTC", None, "BNB"]
 
         with pytest.raises(pa.errors.SchemaError):
             UNIVERSE_SCHEMA.validate(df)
@@ -46,7 +41,7 @@ class TestUniverseSchema:
     def test_rank_less_than_one_fails(self, valid_universe_df):
         """Test that rank < 1 fails"""
         df = valid_universe_df.head(3).copy()
-        df['rank'] = [0, 1, 2]
+        df["rank"] = [0, 1, 2]
 
         with pytest.raises(pa.errors.SchemaError):
             UNIVERSE_SCHEMA.validate(df)

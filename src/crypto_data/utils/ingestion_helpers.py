@@ -11,17 +11,23 @@ Functions:
 """
 
 import logging
-from pathlib import Path
-from typing import Dict, List, Tuple, Optional
+from collections.abc import Sequence
 from datetime import date
+from pathlib import Path
 
-from crypto_data.enums import Interval
-from crypto_data.utils.formatting import format_file_size, format_availability_bar, format_availability_bar_daily
+from crypto_data.enums import DataType, Interval
+from crypto_data.utils.formatting import (
+    format_availability_bar,
+    format_availability_bar_daily,
+    format_file_size,
+)
 
 logger = logging.getLogger(__name__)
 
+ALL_DATA_TYPES = ("spot", "futures", "open_interest", "funding_rates")
 
-def initialize_ingestion_stats() -> Dict[str, int]:
+
+def initialize_ingestion_stats() -> dict[str, int]:
     """
     Create standardized statistics tracking dictionary.
 
@@ -38,19 +44,15 @@ def initialize_ingestion_stats() -> Dict[str, int]:
     >>> stats
     {'downloaded': 1, 'skipped': 0, 'failed': 0, 'not_found': 0}
     """
-    return {
-        'downloaded': 0,
-        'skipped': 0,
-        'failed': 0,
-        'not_found': 0
-    }
+    return {"downloaded": 0, "skipped": 0, "failed": 0, "not_found": 0}
 
 
 def query_data_availability(
     conn,
-    symbols: List[str],
-    interval: Interval
-) -> List[Tuple[str, str, date, date]]:
+    symbols: list[str],
+    interval: Interval,
+    data_types: Sequence[DataType | str] | None = None,
+) -> list[tuple[str, str, date, date]]:
     """
     Query availability summary from ALL data tables.
 
@@ -67,6 +69,8 @@ def query_data_availability(
         List of symbols to query (e.g., ['BTCUSDT', 'ETHUSDT'])
     interval : Interval
         Kline interval (e.g., Interval.MIN_5) - only applies to spot/futures
+    data_types : Sequence[DataType | str], optional
+        Data types to return. Defaults to all supported Binance data tables.
 
     Returns
     -------
@@ -89,7 +93,7 @@ def query_data_availability(
     if not symbols:
         return []
 
-    placeholders = ','.join('?' * len(symbols))
+    placeholders = ",".join("?" * len(symbols))
 
     query = f"""
         SELECT
@@ -132,20 +136,26 @@ def query_data_availability(
 
     # Parameters: symbols twice for spot+futures (with interval), symbols twice for OI+FR (no interval)
     result = conn.execute(
-        query,
-        symbols + [interval.value] + symbols + [interval.value] + symbols + symbols
+        query, symbols + [interval.value] + symbols + [interval.value] + symbols + symbols
     ).fetchall()
+
+    requested_data_types = _normalize_data_types(data_types)
+    if requested_data_types != ALL_DATA_TYPES:
+        requested = set(requested_data_types)
+        result = [row for row in result if row[1] in requested]
+
     return result
 
 
 def log_ingestion_summary(
-    stats: Dict[str, int],
+    stats: dict[str, int],
     db_path: str,
-    symbols: Optional[List[str]] = None,
-    start_date: Optional[str] = None,
-    end_date: Optional[str] = None,
-    interval: Optional[Interval] = None,
-    show_availability: bool = False
+    symbols: list[str] | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    interval: Interval | None = None,
+    show_availability: bool = False,
+    data_types: Sequence[DataType | str] | None = None,
 ) -> None:
     """
     Log ingestion summary with statistics and optional availability visualization.
@@ -174,6 +184,9 @@ def log_ingestion_summary(
     show_availability : bool
         If True, shows detailed availability bars (async mode)
         If False, shows simple stats only (sync mode)
+    data_types : Sequence[DataType | str], optional
+        Data types requested by the ingestion. Availability warnings are limited
+        to this set so unrequested tables are not reported as missing.
 
     Logs
     ----
@@ -211,43 +224,46 @@ def log_ingestion_summary(
             db = CryptoDatabase(db_path)
             conn = db.conn
 
-            availability_result = query_data_availability(conn, symbols, interval)
+            requested_data_types = _normalize_data_types(data_types)
+            availability_result = query_data_availability(
+                conn,
+                symbols,
+                interval,
+                data_types=requested_data_types,
+            )
 
             if availability_result:
                 logger.info("")
                 logger.info(f"Data Availability ({start_date} → {end_date}):")
 
                 # Group results by symbol
-                symbol_data = {}
+                symbol_data: dict[str, dict[str, tuple[date, date]]] = {}
                 for symbol, data_type, first_date, last_date in availability_result:
                     if symbol not in symbol_data:
                         symbol_data[symbol] = {}
                     symbol_data[symbol][data_type] = (first_date, last_date)
 
                 # ANSI color for warnings
-                YELLOW = '\033[33m'
-                RESET = '\033[0m'
-
-                # All possible data types
-                ALL_DATA_TYPES = ['spot', 'futures', 'open_interest', 'funding_rates']
+                YELLOW = "\033[33m"
+                RESET = "\033[0m"
 
                 # Display hierarchically grouped by symbol
-                for idx, symbol in enumerate(sorted(symbol_data.keys())):
+                for symbol in sorted(symbol_data.keys()):
                     # Symbol header with consistent indentation
                     separator = "  "
                     logger.info(f"{separator}───────────── {symbol} ─────────────")
 
                     # Detect missing data types for this symbol
                     available_types = set(symbol_data[symbol].keys())
-                    missing_types = set(ALL_DATA_TYPES) - available_types
+                    missing_types = set(requested_data_types) - available_types
 
                     # Display each available data type with indentation
-                    for data_type in ALL_DATA_TYPES:
+                    for data_type in requested_data_types:
                         if data_type in symbol_data[symbol]:
                             first_date, last_date = symbol_data[symbol][data_type]
 
                             # Use daily formatting for open_interest, monthly for others
-                            if data_type == 'open_interest':
+                            if data_type == "open_interest":
                                 bar, pct, covered, total, dates = format_availability_bar_daily(
                                     first_date, last_date, start_date, end_date
                                 )
@@ -261,12 +277,16 @@ def log_ingestion_summary(
                             # Add warning if ANY data type is missing for this symbol
                             warning = ""
                             if missing_types:
-                                missing_list = ', '.join(sorted(missing_types)).replace('_', ' ').upper()
+                                missing_list = (
+                                    ", ".join(sorted(missing_types)).replace("_", " ").upper()
+                                )
                                 warning = f" {YELLOW}⚠ MISSING: {missing_list}{RESET}"
 
                             # Only show warning on the first line for this symbol
                             if data_type == min(available_types):
-                                logger.info(f"    {data_type:<15} {bar} {coverage_str} {dates}{warning}")
+                                logger.info(
+                                    f"    {data_type:<15} {bar} {coverage_str} {dates}{warning}"
+                                )
                             else:
                                 logger.info(f"    {data_type:<15} {bar} {coverage_str} {dates}")
 
@@ -283,3 +303,17 @@ def log_ingestion_summary(
         logger.warning(f"Could not determine database size: {e}")
 
     logger.info("=" * 60)
+
+
+def _normalize_data_types(data_types: Sequence[DataType | str] | None) -> tuple[str, ...]:
+    if not data_types:
+        return ALL_DATA_TYPES
+
+    normalized: list[str] = []
+    for data_type in data_types:
+        value = data_type.value if isinstance(data_type, DataType) else str(data_type)
+        if value not in ALL_DATA_TYPES:
+            raise ValueError(f"Unsupported data type for availability summary: {value}")
+        normalized.append(value)
+
+    return tuple(dict.fromkeys(normalized))

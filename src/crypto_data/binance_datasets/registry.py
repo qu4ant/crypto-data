@@ -4,18 +4,15 @@ Binance dataset registry.
 Provides the factory that maps DataType enums to Binance dataset classes.
 """
 
-from typing import Optional
-
-from crypto_data.enums import DataType, Interval
 from crypto_data.binance_datasets.base import BinanceDatasetStrategy
 from crypto_data.binance_datasets.funding_rates import BinanceFundingRatesDataset
 from crypto_data.binance_datasets.klines import BinanceKlinesDataset
 from crypto_data.binance_datasets.open_interest import BinanceOpenInterestDataset
+from crypto_data.enums import DataType, Interval
 
 
 def get_binance_dataset_strategy(
-    data_type: DataType,
-    interval: Optional[Interval] = None
+    data_type: DataType, interval: Interval | None = None
 ) -> BinanceDatasetStrategy:
     """
     Get the Binance dataset handler for a data type.
@@ -54,16 +51,15 @@ def get_binance_dataset_strategy(
             raise ValueError("interval is required for SPOT data type")
         return BinanceKlinesDataset(DataType.SPOT, interval)
 
-    elif data_type == DataType.FUTURES:
+    if data_type == DataType.FUTURES:
         if interval is None:
             raise ValueError("interval is required for FUTURES data type")
         return BinanceKlinesDataset(DataType.FUTURES, interval)
 
-    elif data_type == DataType.OPEN_INTEREST:
+    if data_type == DataType.OPEN_INTEREST:
         return BinanceOpenInterestDataset()
 
-    elif data_type == DataType.FUNDING_RATES:
+    if data_type == DataType.FUNDING_RATES:
         return BinanceFundingRatesDataset()
 
-    else:
-        raise ValueError(f"Unknown data type: {data_type}")
+    raise ValueError(f"Unknown data type: {data_type}")

@@ -5,11 +5,11 @@ Handles API communication with CoinMarketCap's historical listings endpoint.
 Implements automatic retry logic for rate limits and server errors.
 """
 
-import logging
 import asyncio
-from collections import deque
+import logging
 import time
-from typing import Deque, Optional
+from collections import deque
+
 import aiohttp
 
 logger = logging.getLogger(__name__)
@@ -32,7 +32,7 @@ class _SlidingWindowRateLimiter:
 
         self.max_calls = max_calls
         self.window_seconds = window_seconds
-        self._timestamps: Deque[float] = deque()
+        self._timestamps: deque[float] = deque()
         self._lock = asyncio.Lock()
 
     async def acquire(self) -> None:
@@ -73,7 +73,7 @@ class CoinMarketCapClient:
 
     def __init__(
         self,
-        api_base: Optional[str] = None,
+        api_base: str | None = None,
         max_retries: int = 3,
         rate_limit_wait: int = 60,
         server_error_delay: int = 5,
@@ -104,7 +104,7 @@ class CoinMarketCapClient:
         quota_window_seconds : float
             Sliding window duration in seconds (default: 86400.0)
         """
-        self.api_base = api_base or 'https://api.coinmarketcap.com/data-api/v3'
+        self.api_base = api_base or "https://api.coinmarketcap.com/data-api/v3"
         self.max_retries = max_retries
         self.rate_limit_wait = rate_limit_wait
         self.server_error_delay = server_error_delay
@@ -117,7 +117,9 @@ class CoinMarketCapClient:
         self._semaphore = None  # Created in __aenter__ to ensure event loop exists
         self._rate_limiter = None
 
-        logger.debug(f"Initialized CoinMarketCap client: base={self.api_base}, retries={max_retries}, concurrent={max_concurrent}")
+        logger.debug(
+            f"Initialized CoinMarketCap client: base={self.api_base}, retries={max_retries}, concurrent={max_concurrent}"
+        )
 
     async def __aenter__(self):
         """Async context manager entry."""
@@ -125,8 +127,7 @@ class CoinMarketCapClient:
         # Create semaphore here to ensure an event loop exists
         self._semaphore = asyncio.Semaphore(self.max_concurrent)
         self._rate_limiter = _SlidingWindowRateLimiter(
-            max_calls=self.daily_quota,
-            window_seconds=self.quota_window_seconds
+            max_calls=self.daily_quota, window_seconds=self.quota_window_seconds
         )
         return self
 
@@ -168,25 +169,24 @@ class CoinMarketCapClient:
         """
         url = f"{self.api_base}/cryptocurrency/listings/historical"
         params = {
-            'date': date,
-            'limit': limit,
-            'start': 1,
-            'convertId': 2781,  # USD
-            'sort': 'cmc_rank',
-            'sort_dir': 'asc'
+            "date": date,
+            "limit": limit,
+            "start": 1,
+            "convertId": 2781,  # USD
+            "sort": "cmc_rank",
+            "sort_dir": "asc",
         }
 
         logger.debug(f"Fetching historical listings: date={date}, limit={limit}")
 
         response_data = await self._call_with_retry(url, params, self.timeout)
 
-        if 'data' in response_data:
+        if "data" in response_data:
             logger.debug(f"Successfully fetched {len(response_data['data'])} coins")
-            return response_data['data']
-        else:
-            error_msg = f"Unexpected API response format (missing 'data' key): {response_data}"
-            logger.error(error_msg)
-            raise ValueError(error_msg)
+            return response_data["data"]
+        error_msg = f"Unexpected API response format (missing 'data' key): {response_data}"
+        logger.error(error_msg)
+        raise ValueError(error_msg)
 
     async def _call_with_retry(self, url: str, params: dict, timeout: int) -> dict:
         """
@@ -224,9 +224,7 @@ class CoinMarketCapClient:
                 try:
                     await self._rate_limiter.acquire()
                     async with self._session.get(
-                        url,
-                        params=params,
-                        timeout=aiohttp.ClientTimeout(total=timeout)
+                        url, params=params, timeout=aiohttp.ClientTimeout(total=timeout)
                     ) as response:
                         # Check for HTTP errors
                         if response.status == 429:
@@ -238,9 +236,10 @@ class CoinMarketCapClient:
                                 )
                                 await asyncio.sleep(self.rate_limit_wait)
                                 continue
-                            else:
-                                logger.error(f"Rate limit error - all {self.max_retries} retries exhausted")
-                                response.raise_for_status()
+                            logger.error(
+                                f"Rate limit error - all {self.max_retries} retries exhausted"
+                            )
+                            response.raise_for_status()
 
                         elif response.status in [500, 503]:
                             # Server errors - wait and retry
@@ -251,9 +250,8 @@ class CoinMarketCapClient:
                                 )
                                 await asyncio.sleep(self.server_error_delay)
                                 continue
-                            else:
-                                logger.error(f"Server error - all {self.max_retries} retries exhausted")
-                                response.raise_for_status()
+                            logger.error(f"Server error - all {self.max_retries} retries exhausted")
+                            response.raise_for_status()
 
                         # Other status codes
                         response.raise_for_status()
@@ -267,9 +265,8 @@ class CoinMarketCapClient:
                         logger.warning(f"Request failed, retrying: {e}")
                         await asyncio.sleep(self.server_error_delay)
                         continue
-                    else:
-                        logger.error(f"Request failed - all {self.max_retries} retries exhausted: {e}")
-                        raise
+                    logger.error(f"Request failed - all {self.max_retries} retries exhausted: {e}")
+                    raise
 
             # Should never reach here, but just in case
             raise Exception("Unexpected error in retry logic")

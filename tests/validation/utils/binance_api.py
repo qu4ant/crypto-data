@@ -6,7 +6,6 @@ Uses public endpoints, no authentication required.
 import asyncio
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Optional
 
 import aiohttp
 
@@ -104,7 +103,7 @@ class BinanceValidationClient:
     def __init__(self, rate_limit_delay: float = 0.1, max_retries: int = 3):
         self.rate_limit_delay = rate_limit_delay
         self.max_retries = max_retries
-        self._session: Optional[aiohttp.ClientSession] = None
+        self._session: aiohttp.ClientSession | None = None
 
     async def __aenter__(self):
         self._session = aiohttp.ClientSession()
@@ -121,23 +120,22 @@ class BinanceValidationClient:
                 async with self._session.get(url, params=params) as response:
                     if response.status == 200:
                         return await response.json()
-                    elif response.status == 429:
+                    if response.status == 429:
                         # Rate limited - wait and retry
                         wait_time = 60 if attempt == 0 else 60 * (attempt + 1)
                         await asyncio.sleep(wait_time)
                         continue
-                    elif response.status in (500, 503):
+                    if response.status in (500, 503):
                         # Server error - wait and retry
                         await asyncio.sleep(5 * (attempt + 1))
                         continue
-                    elif response.status == 400:
+                    if response.status == 400:
                         # Bad request - symbol may be delisted
                         text = await response.text()
                         raise BinanceAPIError(response.status, text)
-                    else:
-                        text = await response.text()
-                        raise BinanceAPIError(response.status, text)
-            except aiohttp.ClientError as e:
+                    text = await response.text()
+                    raise BinanceAPIError(response.status, text)
+            except aiohttp.ClientError:
                 if attempt == self.max_retries - 1:
                     raise
                 await asyncio.sleep(2 * (attempt + 1))
@@ -146,7 +144,7 @@ class BinanceValidationClient:
 
     async def get_spot_kline(
         self, symbol: str, interval: str, timestamp: datetime
-    ) -> Optional[BinanceKline]:
+    ) -> BinanceKline | None:
         """Fetch single spot kline for exact timestamp"""
         await asyncio.sleep(self.rate_limit_delay)
 
@@ -171,7 +169,7 @@ class BinanceValidationClient:
 
     async def get_futures_kline(
         self, symbol: str, interval: str, timestamp: datetime
-    ) -> Optional[BinanceKline]:
+    ) -> BinanceKline | None:
         """Fetch single futures kline for exact timestamp"""
         await asyncio.sleep(self.rate_limit_delay)
 

@@ -4,10 +4,11 @@ API interaction and retry logic tests for universe ingestion (Async).
 Tests CoinMarketCap API calls, retry mechanisms, and error handling.
 """
 
-import pytest
 import asyncio
-from unittest.mock import patch, MagicMock, AsyncMock
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import aiohttp
+import pytest
 
 from crypto_data.clients.coinmarketcap import CoinMarketCapClient, _SlidingWindowRateLimiter
 
@@ -20,7 +21,9 @@ class TestRateLimiter:
         """Limiter should allow burst traffic up to configured quota."""
         limiter = _SlidingWindowRateLimiter(max_calls=3, window_seconds=10.0)
 
-        with patch('crypto_data.clients.coinmarketcap.time.monotonic', side_effect=[100.0, 100.1, 100.2]):
+        with patch(
+            "crypto_data.clients.coinmarketcap.time.monotonic", side_effect=[100.0, 100.1, 100.2]
+        ):
             await limiter.acquire()
             await limiter.acquire()
             await limiter.acquire()
@@ -32,27 +35,37 @@ class TestRateLimiter:
         """Limiter should sleep when quota is exhausted in the current window."""
         limiter = _SlidingWindowRateLimiter(max_calls=2, window_seconds=10.0)
 
-        with patch('crypto_data.clients.coinmarketcap.time.monotonic', side_effect=[100.0, 101.0, 103.0, 110.0]):
-            with patch('asyncio.sleep', new_callable=AsyncMock) as mock_sleep:
-                await limiter.acquire()
-                await limiter.acquire()
-                await limiter.acquire()
+        with (
+            patch(
+                "crypto_data.clients.coinmarketcap.time.monotonic",
+                side_effect=[100.0, 101.0, 103.0, 110.0],
+            ),
+            patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+        ):
+            await limiter.acquire()
+            await limiter.acquire()
+            await limiter.acquire()
 
-                mock_sleep.assert_awaited_once_with(7.0)
+            mock_sleep.assert_awaited_once_with(7.0)
 
     @pytest.mark.asyncio
     async def test_rate_limiter_evicts_old_timestamps(self):
         """Old entries should be evicted when they leave the sliding window."""
         limiter = _SlidingWindowRateLimiter(max_calls=2, window_seconds=10.0)
 
-        with patch('crypto_data.clients.coinmarketcap.time.monotonic', side_effect=[100.0, 101.0, 112.0]):
-            with patch('asyncio.sleep', new_callable=AsyncMock) as mock_sleep:
-                await limiter.acquire()
-                await limiter.acquire()
-                await limiter.acquire()
+        with (
+            patch(
+                "crypto_data.clients.coinmarketcap.time.monotonic",
+                side_effect=[100.0, 101.0, 112.0],
+            ),
+            patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep,
+        ):
+            await limiter.acquire()
+            await limiter.acquire()
+            await limiter.acquire()
 
-                mock_sleep.assert_not_awaited()
-                assert list(limiter._timestamps) == [112.0]
+            mock_sleep.assert_not_awaited()
+            assert list(limiter._timestamps) == [112.0]
 
 
 class TestApiCallWithRetry:
@@ -63,18 +76,20 @@ class TestApiCallWithRetry:
         """Test that successful request returns response immediately."""
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.json = AsyncMock(return_value={'data': []})
+        mock_response.json = AsyncMock(return_value={"data": []})
         mock_response.raise_for_status = MagicMock()
 
         async with CoinMarketCapClient() as client:
-            with patch.object(client._session, 'get') as mock_get:
+            with patch.object(client._session, "get") as mock_get:
                 mock_get.return_value.__aenter__.return_value = mock_response
 
-                result = await client._call_with_retry('https://api.test.com', {'param': 'value'}, timeout=10)
+                result = await client._call_with_retry(
+                    "https://api.test.com", {"param": "value"}, timeout=10
+                )
 
                 # Should call once and return
                 assert mock_get.call_count == 1
-                assert result == {'data': []}
+                assert result == {"data": []}
 
     @pytest.mark.asyncio
     async def test_rate_limit_429_retries(self):
@@ -82,49 +97,59 @@ class TestApiCallWithRetry:
         # First call fails with 429, second succeeds
         mock_response_429 = AsyncMock()
         mock_response_429.status = 429
-        mock_response_429.raise_for_status = MagicMock(side_effect=aiohttp.ClientResponseError(
-            request_info=MagicMock(), history=(), status=429
-        ))
+        mock_response_429.raise_for_status = MagicMock(
+            side_effect=aiohttp.ClientResponseError(
+                request_info=MagicMock(), history=(), status=429
+            )
+        )
 
         mock_response_200 = AsyncMock()
         mock_response_200.status = 200
-        mock_response_200.json = AsyncMock(return_value={'data': []})
+        mock_response_200.json = AsyncMock(return_value={"data": []})
         mock_response_200.raise_for_status = MagicMock()
 
         async with CoinMarketCapClient() as client:
-            with patch.object(client._session, 'get') as mock_get:
-                mock_get.return_value.__aenter__.side_effect = [mock_response_429, mock_response_200]
+            with patch.object(client._session, "get") as mock_get:
+                mock_get.return_value.__aenter__.side_effect = [
+                    mock_response_429,
+                    mock_response_200,
+                ]
 
-                with patch('asyncio.sleep') as mock_sleep:
-                    result = await client._call_with_retry('https://api.test.com', {}, timeout=10)
+                with patch("asyncio.sleep") as mock_sleep:
+                    result = await client._call_with_retry("https://api.test.com", {}, timeout=10)
 
                     # Should retry once
                     assert mock_get.call_count == 2
                     assert mock_sleep.call_count == 1
                     assert mock_sleep.call_args[0][0] == 60  # Should wait 60 seconds
-                    assert result == {'data': []}
+                    assert result == {"data": []}
 
     @pytest.mark.asyncio
     async def test_client_acquires_token_before_each_http_attempt(self):
         """Rate-limiter token should be acquired for every emitted HTTP GET."""
         mock_response_429 = AsyncMock()
         mock_response_429.status = 429
-        mock_response_429.raise_for_status = MagicMock(side_effect=aiohttp.ClientResponseError(
-            request_info=MagicMock(), history=(), status=429
-        ))
+        mock_response_429.raise_for_status = MagicMock(
+            side_effect=aiohttp.ClientResponseError(
+                request_info=MagicMock(), history=(), status=429
+            )
+        )
 
         mock_response_200 = AsyncMock()
         mock_response_200.status = 200
-        mock_response_200.json = AsyncMock(return_value={'data': []})
+        mock_response_200.json = AsyncMock(return_value={"data": []})
         mock_response_200.raise_for_status = MagicMock()
 
         async with CoinMarketCapClient(max_retries=1) as client:
-            with patch.object(client._session, 'get') as mock_get:
+            with patch.object(client._session, "get") as mock_get:
                 client._rate_limiter.acquire = AsyncMock()
-                mock_get.return_value.__aenter__.side_effect = [mock_response_429, mock_response_200]
+                mock_get.return_value.__aenter__.side_effect = [
+                    mock_response_429,
+                    mock_response_200,
+                ]
 
-                with patch('asyncio.sleep', new_callable=AsyncMock):
-                    await client._call_with_retry('https://api.test.com', {}, timeout=10)
+                with patch("asyncio.sleep", new_callable=AsyncMock):
+                    await client._call_with_retry("https://api.test.com", {}, timeout=10)
 
                     assert client._rate_limiter.acquire.await_count == 2
                     assert mock_get.call_count == 2
@@ -134,38 +159,45 @@ class TestApiCallWithRetry:
         """Test that 429 error exhausts retries and raises exception."""
         mock_response_429 = AsyncMock()
         mock_response_429.status = 429
-        mock_response_429.raise_for_status = MagicMock(side_effect=aiohttp.ClientResponseError(
-            request_info=MagicMock(), history=(), status=429
-        ))
+        mock_response_429.raise_for_status = MagicMock(
+            side_effect=aiohttp.ClientResponseError(
+                request_info=MagicMock(), history=(), status=429
+            )
+        )
 
         async with CoinMarketCapClient() as client:
-            with patch.object(client._session, 'get') as mock_get:
+            with patch.object(client._session, "get") as mock_get:
                 mock_get.return_value.__aenter__.return_value = mock_response_429
 
-                with patch('asyncio.sleep'):
+                with patch("asyncio.sleep"):
                     with pytest.raises(aiohttp.ClientResponseError):
-                        await client._call_with_retry('https://api.test.com', {}, timeout=10)
+                        await client._call_with_retry("https://api.test.com", {}, timeout=10)
 
     @pytest.mark.asyncio
     async def test_server_error_500_retries(self):
         """Test that 500 (server error) triggers retry with 5s wait."""
         mock_response_500 = AsyncMock()
         mock_response_500.status = 500
-        mock_response_500.raise_for_status = MagicMock(side_effect=aiohttp.ClientResponseError(
-            request_info=MagicMock(), history=(), status=500
-        ))
+        mock_response_500.raise_for_status = MagicMock(
+            side_effect=aiohttp.ClientResponseError(
+                request_info=MagicMock(), history=(), status=500
+            )
+        )
 
         mock_response_200 = AsyncMock()
         mock_response_200.status = 200
-        mock_response_200.json = AsyncMock(return_value={'data': []})
+        mock_response_200.json = AsyncMock(return_value={"data": []})
         mock_response_200.raise_for_status = MagicMock()
 
         async with CoinMarketCapClient() as client:
-            with patch.object(client._session, 'get') as mock_get:
-                mock_get.return_value.__aenter__.side_effect = [mock_response_500, mock_response_200]
+            with patch.object(client._session, "get") as mock_get:
+                mock_get.return_value.__aenter__.side_effect = [
+                    mock_response_500,
+                    mock_response_200,
+                ]
 
-                with patch('asyncio.sleep') as mock_sleep:
-                    result = await client._call_with_retry('https://api.test.com', {}, timeout=10)
+                with patch("asyncio.sleep") as mock_sleep:
+                    result = await client._call_with_retry("https://api.test.com", {}, timeout=10)
 
                     assert mock_get.call_count == 2
                     assert mock_sleep.call_count == 1
@@ -176,21 +208,26 @@ class TestApiCallWithRetry:
         """Test that 503 (service unavailable) triggers retry with 5s wait."""
         mock_response_503 = AsyncMock()
         mock_response_503.status = 503
-        mock_response_503.raise_for_status = MagicMock(side_effect=aiohttp.ClientResponseError(
-            request_info=MagicMock(), history=(), status=503
-        ))
+        mock_response_503.raise_for_status = MagicMock(
+            side_effect=aiohttp.ClientResponseError(
+                request_info=MagicMock(), history=(), status=503
+            )
+        )
 
         mock_response_200 = AsyncMock()
         mock_response_200.status = 200
-        mock_response_200.json = AsyncMock(return_value={'data': []})
+        mock_response_200.json = AsyncMock(return_value={"data": []})
         mock_response_200.raise_for_status = MagicMock()
 
         async with CoinMarketCapClient() as client:
-            with patch.object(client._session, 'get') as mock_get:
-                mock_get.return_value.__aenter__.side_effect = [mock_response_503, mock_response_200]
+            with patch.object(client._session, "get") as mock_get:
+                mock_get.return_value.__aenter__.side_effect = [
+                    mock_response_503,
+                    mock_response_200,
+                ]
 
-                with patch('asyncio.sleep') as mock_sleep:
-                    result = await client._call_with_retry('https://api.test.com', {}, timeout=10)
+                with patch("asyncio.sleep") as mock_sleep:
+                    result = await client._call_with_retry("https://api.test.com", {}, timeout=10)
 
                     assert mock_get.call_count == 2
                     assert mock_sleep.call_count == 1
@@ -201,17 +238,19 @@ class TestApiCallWithRetry:
         """Test that 400 (client error) retries but eventually raises."""
         mock_response_400 = AsyncMock()
         mock_response_400.status = 400
-        mock_response_400.raise_for_status = MagicMock(side_effect=aiohttp.ClientResponseError(
-            request_info=MagicMock(), history=(), status=400
-        ))
+        mock_response_400.raise_for_status = MagicMock(
+            side_effect=aiohttp.ClientResponseError(
+                request_info=MagicMock(), history=(), status=400
+            )
+        )
 
         async with CoinMarketCapClient() as client:
-            with patch.object(client._session, 'get') as mock_get:
+            with patch.object(client._session, "get") as mock_get:
                 mock_get.return_value.__aenter__.return_value = mock_response_400
 
-                with patch('asyncio.sleep') as mock_sleep:
+                with patch("asyncio.sleep") as mock_sleep:
                     with pytest.raises(aiohttp.ClientResponseError):
-                        await client._call_with_retry('https://api.test.com', {}, timeout=10)
+                        await client._call_with_retry("https://api.test.com", {}, timeout=10)
 
                     # In async version, client errors are retried via except clause
                     assert mock_get.call_count == 4  # Initial + 3 retries
@@ -222,17 +261,19 @@ class TestApiCallWithRetry:
         """Test that 404 (not found) retries but eventually raises."""
         mock_response_404 = AsyncMock()
         mock_response_404.status = 404
-        mock_response_404.raise_for_status = MagicMock(side_effect=aiohttp.ClientResponseError(
-            request_info=MagicMock(), history=(), status=404
-        ))
+        mock_response_404.raise_for_status = MagicMock(
+            side_effect=aiohttp.ClientResponseError(
+                request_info=MagicMock(), history=(), status=404
+            )
+        )
 
         async with CoinMarketCapClient() as client:
-            with patch.object(client._session, 'get') as mock_get:
+            with patch.object(client._session, "get") as mock_get:
                 mock_get.return_value.__aenter__.return_value = mock_response_404
 
-                with patch('asyncio.sleep') as mock_sleep:
+                with patch("asyncio.sleep") as mock_sleep:
                     with pytest.raises(aiohttp.ClientResponseError):
-                        await client._call_with_retry('https://api.test.com', {}, timeout=10)
+                        await client._call_with_retry("https://api.test.com", {}, timeout=10)
 
                     # In async version, client errors are retried via except clause
                     assert mock_get.call_count == 4  # Initial + 3 retries
@@ -242,13 +283,13 @@ class TestApiCallWithRetry:
     async def test_network_timeout_no_retry(self):
         """Test that network timeout is not retried (asyncio.TimeoutError not caught)."""
         async with CoinMarketCapClient() as client:
-            with patch.object(client._session, 'get') as mock_get:
+            with patch.object(client._session, "get") as mock_get:
                 # asyncio.TimeoutError is raised before entering context manager
                 mock_get.side_effect = asyncio.TimeoutError("Connection timeout")
 
-                with patch('asyncio.sleep') as mock_sleep:
+                with patch("asyncio.sleep") as mock_sleep:
                     with pytest.raises(asyncio.TimeoutError):
-                        await client._call_with_retry('https://api.test.com', {}, timeout=10)
+                        await client._call_with_retry("https://api.test.com", {}, timeout=10)
 
                     # asyncio.TimeoutError is not caught by except clause, no retry
                     assert mock_get.call_count == 1  # Only initial attempt
@@ -258,12 +299,14 @@ class TestApiCallWithRetry:
     async def test_connection_error_no_retry(self):
         """Test that connection error retries with server_error_delay."""
         async with CoinMarketCapClient() as client:
-            with patch.object(client._session, 'get') as mock_get:
-                mock_get.return_value.__aenter__.side_effect = aiohttp.ClientError("Connection refused")
+            with patch.object(client._session, "get") as mock_get:
+                mock_get.return_value.__aenter__.side_effect = aiohttp.ClientError(
+                    "Connection refused"
+                )
 
-                with patch('asyncio.sleep') as mock_sleep:
+                with patch("asyncio.sleep") as mock_sleep:
                     with pytest.raises(aiohttp.ClientError):
-                        await client._call_with_retry('https://api.test.com', {}, timeout=10)
+                        await client._call_with_retry("https://api.test.com", {}, timeout=10)
 
                     # Should retry (client errors are retryable in async version)
                     assert mock_get.call_count == 4  # Initial + 3 retries
@@ -275,37 +318,48 @@ class TestApiCallWithRetry:
         # 500 -> 429 -> 503 -> 200 (3 retries, should succeed)
         mock_500 = AsyncMock()
         mock_500.status = 500
-        mock_500.raise_for_status = MagicMock(side_effect=aiohttp.ClientResponseError(
-            request_info=MagicMock(), history=(), status=500
-        ))
+        mock_500.raise_for_status = MagicMock(
+            side_effect=aiohttp.ClientResponseError(
+                request_info=MagicMock(), history=(), status=500
+            )
+        )
 
         mock_429 = AsyncMock()
         mock_429.status = 429
-        mock_429.raise_for_status = MagicMock(side_effect=aiohttp.ClientResponseError(
-            request_info=MagicMock(), history=(), status=429
-        ))
+        mock_429.raise_for_status = MagicMock(
+            side_effect=aiohttp.ClientResponseError(
+                request_info=MagicMock(), history=(), status=429
+            )
+        )
 
         mock_503 = AsyncMock()
         mock_503.status = 503
-        mock_503.raise_for_status = MagicMock(side_effect=aiohttp.ClientResponseError(
-            request_info=MagicMock(), history=(), status=503
-        ))
+        mock_503.raise_for_status = MagicMock(
+            side_effect=aiohttp.ClientResponseError(
+                request_info=MagicMock(), history=(), status=503
+            )
+        )
 
         mock_200 = AsyncMock()
         mock_200.status = 200
-        mock_200.json = AsyncMock(return_value={'data': []})
+        mock_200.json = AsyncMock(return_value={"data": []})
         mock_200.raise_for_status = MagicMock()
 
         async with CoinMarketCapClient() as client:
-            with patch.object(client._session, 'get') as mock_get:
-                mock_get.return_value.__aenter__.side_effect = [mock_500, mock_429, mock_503, mock_200]
+            with patch.object(client._session, "get") as mock_get:
+                mock_get.return_value.__aenter__.side_effect = [
+                    mock_500,
+                    mock_429,
+                    mock_503,
+                    mock_200,
+                ]
 
-                with patch('asyncio.sleep') as mock_sleep:
-                    result = await client._call_with_retry('https://api.test.com', {}, timeout=10)
+                with patch("asyncio.sleep") as mock_sleep:
+                    result = await client._call_with_retry("https://api.test.com", {}, timeout=10)
 
                     assert mock_get.call_count == 4  # Initial + 3 retries
                     assert mock_sleep.call_count == 3
-                    assert result == {'data': []}
+                    assert result == {"data": []}
 
 
 class TestApiGetHistoricalListings:
@@ -315,44 +369,44 @@ class TestApiGetHistoricalListings:
     async def test_successful_api_call(self, sample_cmc_api_response):
         """Test successful API call returns data correctly."""
         async with CoinMarketCapClient() as client:
-            with patch.object(client, '_call_with_retry', new_callable=AsyncMock) as mock_api:
+            with patch.object(client, "_call_with_retry", new_callable=AsyncMock) as mock_api:
                 mock_api.return_value = sample_cmc_api_response
 
-                result = await client.get_historical_listings('2024-01-01', 100)
+                result = await client.get_historical_listings("2024-01-01", 100)
 
                 assert isinstance(result, list)
                 assert len(result) == 3  # From sample_cmc_api_response
-                assert result[0]['symbol'] == 'BTC'
-                assert result[0]['cmcRank'] == 1
+                assert result[0]["symbol"] == "BTC"
+                assert result[0]["cmcRank"] == 1
 
     @pytest.mark.asyncio
     async def test_api_called_with_correct_params(self):
         """Test that API is called with correct parameters."""
         async with CoinMarketCapClient() as client:
-            with patch.object(client, '_call_with_retry', new_callable=AsyncMock) as mock_api:
-                mock_api.return_value = {'data': []}
+            with patch.object(client, "_call_with_retry", new_callable=AsyncMock) as mock_api:
+                mock_api.return_value = {"data": []}
 
-                await client.get_historical_listings('2024-01-01', 100)
+                await client.get_historical_listings("2024-01-01", 100)
 
                 # Verify API was called with correct params
                 call_args = mock_api.call_args
-                assert 'cryptocurrency/listings/historical' in call_args[0][0]  # URL
+                assert "cryptocurrency/listings/historical" in call_args[0][0]  # URL
                 params = call_args[0][1]  # Params
-                assert params['date'] == '2024-01-01'
-                assert params['limit'] == 100
-                assert params['start'] == 1
-                assert params['convertId'] == 2781  # USD
-                assert params['sort'] == 'cmc_rank'
-                assert params['sort_dir'] == 'asc'
+                assert params["date"] == "2024-01-01"
+                assert params["limit"] == 100
+                assert params["start"] == 1
+                assert params["convertId"] == 2781  # USD
+                assert params["sort"] == "cmc_rank"
+                assert params["sort_dir"] == "asc"
 
     @pytest.mark.asyncio
     async def test_empty_api_response(self, empty_cmc_api_response):
         """Test handling of empty API response."""
         async with CoinMarketCapClient() as client:
-            with patch.object(client, '_call_with_retry', new_callable=AsyncMock) as mock_api:
+            with patch.object(client, "_call_with_retry", new_callable=AsyncMock) as mock_api:
                 mock_api.return_value = empty_cmc_api_response
 
-                result = await client.get_historical_listings('2024-01-01', 100)
+                result = await client.get_historical_listings("2024-01-01", 100)
 
                 assert isinstance(result, list)
                 assert len(result) == 0
@@ -361,34 +415,34 @@ class TestApiGetHistoricalListings:
     async def test_malformed_api_response(self, malformed_cmc_api_response):
         """Test handling of malformed API response (missing 'data' key)."""
         async with CoinMarketCapClient() as client:
-            with patch.object(client, '_call_with_retry', new_callable=AsyncMock) as mock_api:
+            with patch.object(client, "_call_with_retry", new_callable=AsyncMock) as mock_api:
                 mock_api.return_value = malformed_cmc_api_response
 
                 # Should raise ValueError for malformed response (missing 'data' key)
                 with pytest.raises(ValueError, match="missing 'data' key"):
-                    await client.get_historical_listings('2024-01-01', 100)
+                    await client.get_historical_listings("2024-01-01", 100)
 
     @pytest.mark.asyncio
     async def test_api_timeout_propagates(self):
         """Test that API timeout error propagates correctly."""
         async with CoinMarketCapClient() as client:
-            with patch.object(client, '_call_with_retry', new_callable=AsyncMock) as mock_api:
+            with patch.object(client, "_call_with_retry", new_callable=AsyncMock) as mock_api:
                 mock_api.side_effect = asyncio.TimeoutError
 
                 with pytest.raises(asyncio.TimeoutError):
-                    await client.get_historical_listings('2024-01-01', 100)
+                    await client.get_historical_listings("2024-01-01", 100)
 
     @pytest.mark.asyncio
     async def test_api_rate_limit_propagates(self):
         """Test that API rate limit error propagates after exhausting retries."""
         async with CoinMarketCapClient() as client:
-            with patch.object(client, '_call_with_retry', new_callable=AsyncMock) as mock_api:
+            with patch.object(client, "_call_with_retry", new_callable=AsyncMock) as mock_api:
                 mock_api.side_effect = aiohttp.ClientResponseError(
                     request_info=MagicMock(), history=(), status=429
                 )
 
                 with pytest.raises(aiohttp.ClientResponseError):
-                    await client.get_historical_listings('2024-01-01', 100)
+                    await client.get_historical_listings("2024-01-01", 100)
 
 
 class TestDateRangeValidation:
@@ -401,17 +455,14 @@ class TestDateRangeValidation:
         # Note: This would actually hit the real API
         # In practice, we mock this to avoid real API calls
         async with CoinMarketCapClient() as client:
-            with patch.object(client, '_call_with_retry', new_callable=AsyncMock) as mock_api:
+            with patch.object(client, "_call_with_retry", new_callable=AsyncMock) as mock_api:
                 mock_api.return_value = {
-                    'status': {
-                        'error_code': '500',
-                        'error_message': 'Search query is out of range'
-                    }
+                    "status": {"error_code": "500", "error_message": "Search query is out of range"}
                 }
 
                 # Should raise ValueError for API response without 'data' key
                 with pytest.raises(ValueError, match="missing 'data' key"):
-                    await client.get_historical_listings('2099-01-01', 100)
+                    await client.get_historical_listings("2099-01-01", 100)
 
 
 class TestApiPerformance:
@@ -422,21 +473,23 @@ class TestApiPerformance:
         """Test that retry delays match expected values (60s for 429, 5s for 500/503)."""
         mock_429 = AsyncMock()
         mock_429.status = 429
-        mock_429.raise_for_status = MagicMock(side_effect=aiohttp.ClientResponseError(
-            request_info=MagicMock(), history=(), status=429
-        ))
+        mock_429.raise_for_status = MagicMock(
+            side_effect=aiohttp.ClientResponseError(
+                request_info=MagicMock(), history=(), status=429
+            )
+        )
 
         mock_200 = AsyncMock()
         mock_200.status = 200
-        mock_200.json = AsyncMock(return_value={'data': []})
+        mock_200.json = AsyncMock(return_value={"data": []})
         mock_200.raise_for_status = MagicMock()
 
         async with CoinMarketCapClient() as client:
-            with patch.object(client._session, 'get') as mock_get:
+            with patch.object(client._session, "get") as mock_get:
                 mock_get.return_value.__aenter__.side_effect = [mock_429, mock_200]
 
-                with patch('asyncio.sleep') as mock_sleep:
-                    await client._call_with_retry('https://api.test.com', {}, timeout=10)
+                with patch("asyncio.sleep") as mock_sleep:
+                    await client._call_with_retry("https://api.test.com", {}, timeout=10)
 
                     # Verify sleep was called with 60 seconds for 429
                     mock_sleep.assert_called_once_with(60)
@@ -446,15 +499,15 @@ class TestApiPerformance:
         """Test that successful requests have no artificial delay."""
         mock_200 = AsyncMock()
         mock_200.status = 200
-        mock_200.json = AsyncMock(return_value={'data': []})
+        mock_200.json = AsyncMock(return_value={"data": []})
         mock_200.raise_for_status = MagicMock()
 
         async with CoinMarketCapClient() as client:
-            with patch.object(client._session, 'get') as mock_get:
+            with patch.object(client._session, "get") as mock_get:
                 mock_get.return_value.__aenter__.return_value = mock_200
 
-                with patch('asyncio.sleep') as mock_sleep:
-                    await client._call_with_retry('https://api.test.com', {}, timeout=10)
+                with patch("asyncio.sleep") as mock_sleep:
+                    await client._call_with_retry("https://api.test.com", {}, timeout=10)
 
                     # Should not sleep on success
                     mock_sleep.assert_not_called()

@@ -4,17 +4,17 @@ Tests for Custom Check Functions
 Tests individual check functions used in schemas.
 """
 
-import pytest
-import pandas as pd
-import numpy as np
 from datetime import datetime
 
+import pandas as pd
+import pytest
+
 from crypto_data.schemas.checks import (
+    check_no_duplicate_ranks_per_date,
     check_ohlc_relationships,
     check_price_continuity,
-    check_volume_outliers,
     check_timestamp_monotonic,
-    check_no_duplicate_ranks_per_date
+    check_volume_outliers,
 )
 
 
@@ -24,52 +24,55 @@ class TestOHLCRelationshipsCheck:
 
     def test_valid_ohlc_passes(self):
         """Test that valid OHLC relationships pass"""
-        df = pd.DataFrame({
-            'open': [100.0, 200.0],
-            'high': [110.0, 210.0],
-            'low': [90.0, 190.0],
-            'close': [105.0, 205.0]
-        })
+        df = pd.DataFrame(
+            {
+                "open": [100.0, 200.0],
+                "high": [110.0, 210.0],
+                "low": [90.0, 190.0],
+                "close": [105.0, 205.0],
+            }
+        )
         assert check_ohlc_relationships(df) is True
 
     def test_high_less_than_low_fails(self):
         """Test that high < low fails"""
-        df = pd.DataFrame({
-            'open': [100.0],
-            'high': [90.0],  # Less than low
-            'low': [95.0],
-            'close': [105.0]
-        })
+        df = pd.DataFrame(
+            {
+                "open": [100.0],
+                "high": [90.0],  # Less than low
+                "low": [95.0],
+                "close": [105.0],
+            }
+        )
         assert check_ohlc_relationships(df) is False
 
     def test_high_less_than_open_fails(self):
         """Test that high < open fails"""
-        df = pd.DataFrame({
-            'open': [110.0],  # Greater than high
-            'high': [105.0],
-            'low': [90.0],
-            'close': [100.0]
-        })
+        df = pd.DataFrame(
+            {
+                "open": [110.0],  # Greater than high
+                "high": [105.0],
+                "low": [90.0],
+                "close": [100.0],
+            }
+        )
         assert check_ohlc_relationships(df) is False
 
     def test_low_greater_than_close_fails(self):
         """Test that low > close fails"""
-        df = pd.DataFrame({
-            'open': [100.0],
-            'high': [110.0],
-            'low': [105.0],  # Greater than close
-            'close': [100.0]
-        })
+        df = pd.DataFrame(
+            {
+                "open": [100.0],
+                "high": [110.0],
+                "low": [105.0],  # Greater than close
+                "close": [100.0],
+            }
+        )
         assert check_ohlc_relationships(df) is False
 
     def test_empty_dataframe_passes(self):
         """Test that empty DataFrame passes"""
-        df = pd.DataFrame({
-            'open': [],
-            'high': [],
-            'low': [],
-            'close': []
-        })
+        df = pd.DataFrame({"open": [], "high": [], "low": [], "close": []})
         assert check_ohlc_relationships(df) is True
 
 
@@ -79,32 +82,28 @@ class TestPriceContinuityCheck:
 
     def test_normal_returns_pass(self):
         """Test that normal returns pass"""
-        df = pd.DataFrame({
-            'close': [100.0, 101.0, 99.5, 100.5, 102.0]
-        })
+        df = pd.DataFrame({"close": [100.0, 101.0, 99.5, 100.5, 102.0]})
         assert check_price_continuity(df, sigma=5.0)
 
     def test_extreme_jump_fails(self):
         """Test that extreme price jump fails"""
         # Need many normal points + one huge jump for z-score > 5 sigma
-        df = pd.DataFrame({
-            'close': list(range(100, 150)) + [10000.0]  # 50 normal points, then 100x jump
-        })
+        df = pd.DataFrame(
+            {
+                "close": list(range(100, 150)) + [10000.0]  # 50 normal points, then 100x jump
+            }
+        )
         # Should fail (100x jump with tight distribution is way beyond 5 sigma)
         assert not check_price_continuity(df, sigma=5.0)
 
     def test_single_row_passes(self):
         """Test that single row passes (no returns to check)"""
-        df = pd.DataFrame({
-            'close': [100.0]
-        })
+        df = pd.DataFrame({"close": [100.0]})
         assert check_price_continuity(df, sigma=5.0) is True
 
     def test_empty_dataframe_passes(self):
         """Test that empty DataFrame passes"""
-        df = pd.DataFrame({
-            'close': []
-        })
+        df = pd.DataFrame({"close": []})
         assert check_price_continuity(df, sigma=5.0) is True
 
 
@@ -114,16 +113,16 @@ class TestVolumeOutliersCheck:
 
     def test_normal_volumes_pass(self):
         """Test that normal volumes pass"""
-        df = pd.DataFrame({
-            'volume': [100.0, 110.0, 95.0, 105.0, 98.0]
-        })
+        df = pd.DataFrame({"volume": [100.0, 110.0, 95.0, 105.0, 98.0]})
         assert check_volume_outliers(df, iqr_multiplier=3.0)
 
     def test_extreme_outlier_fails(self):
         """Test that extreme outlier fails"""
-        df = pd.DataFrame({
-            'volume': [100.0, 110.0, 95.0, 10000.0, 98.0]  # Huge outlier
-        })
+        df = pd.DataFrame(
+            {
+                "volume": [100.0, 110.0, 95.0, 10000.0, 98.0]  # Huge outlier
+            }
+        )
         assert not check_volume_outliers(df, iqr_multiplier=3.0)
 
 
@@ -133,21 +132,21 @@ class TestTimestampMonotonicCheck:
 
     def test_monotonic_timestamps_pass(self):
         """Test that monotonic increasing timestamps pass"""
-        df = pd.DataFrame({
-            'timestamp': pd.date_range('2024-01-01', periods=5, freq='5min')
-        })
+        df = pd.DataFrame({"timestamp": pd.date_range("2024-01-01", periods=5, freq="5min")})
         assert check_timestamp_monotonic(df) is True
 
     def test_decreasing_timestamps_fail(self):
         """Test that decreasing timestamps fail"""
-        df = pd.DataFrame({
-            'timestamp': [
-                pd.Timestamp('2024-01-01 00:00:00'),
-                pd.Timestamp('2024-01-01 00:05:00'),
-                pd.Timestamp('2024-01-01 00:03:00'),  # Goes backwards
-                pd.Timestamp('2024-01-01 00:10:00')
-            ]
-        })
+        df = pd.DataFrame(
+            {
+                "timestamp": [
+                    pd.Timestamp("2024-01-01 00:00:00"),
+                    pd.Timestamp("2024-01-01 00:05:00"),
+                    pd.Timestamp("2024-01-01 00:03:00"),  # Goes backwards
+                    pd.Timestamp("2024-01-01 00:10:00"),
+                ]
+            }
+        )
         assert check_timestamp_monotonic(df) is False
 
 
@@ -157,16 +156,15 @@ class TestRankChecks:
 
     def test_no_duplicate_ranks_passes(self):
         """Test that unique ranks pass"""
-        df = pd.DataFrame({
-            'date': [datetime(2024, 1, 1)] * 3,
-            'rank': [1, 2, 3]
-        })
+        df = pd.DataFrame({"date": [datetime(2024, 1, 1)] * 3, "rank": [1, 2, 3]})
         assert check_no_duplicate_ranks_per_date(df)
 
     def test_duplicate_ranks_fails(self):
         """Test that duplicate ranks fail"""
-        df = pd.DataFrame({
-            'date': [datetime(2024, 1, 1)] * 3,
-            'rank': [1, 1, 3]  # Duplicate rank 1
-        })
+        df = pd.DataFrame(
+            {
+                "date": [datetime(2024, 1, 1)] * 3,
+                "rank": [1, 1, 3],  # Duplicate rank 1
+            }
+        )
         assert not check_no_duplicate_ranks_per_date(df)

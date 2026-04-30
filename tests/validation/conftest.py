@@ -7,7 +7,7 @@ import random
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, List
+from typing import Any
 
 import pytest
 from dateutil.relativedelta import relativedelta
@@ -24,7 +24,7 @@ DEFAULT_VALIDATION_MAX_SYMBOLS = 8
 
 # Default universe filters (same intent as user script)
 DEFAULT_VALIDATION_EXCLUDE_TAGS = DEFAULT_UNIVERSE_EXCLUDE_TAGS
-DEFAULT_VALIDATION_EXCLUDE_SYMBOLS: List[str] = []
+DEFAULT_VALIDATION_EXCLUDE_SYMBOLS: list[str] = []
 
 
 # Validation tolerances
@@ -55,10 +55,10 @@ class ValidationMismatch:
 class ValidationCollector:
     """Collects mismatches during test run"""
 
-    mismatches: List[ValidationMismatch] = field(default_factory=list)
+    mismatches: list[ValidationMismatch] = field(default_factory=list)
     validated_count: int = 0
     skipped_count: int = 0
-    skip_reasons: List[str] = field(default_factory=list)
+    skip_reasons: list[str] = field(default_factory=list)
 
     def add_mismatch(self, mismatch: ValidationMismatch) -> None:
         self.mismatches.append(mismatch)
@@ -184,10 +184,7 @@ def pytest_addoption(parser):
         action="store",
         default=None,
         type=int,
-        help=(
-            "Optional RNG seed for random month selection "
-            "(default: unset = non-deterministic)"
-        ),
+        help=("Optional RNG seed for random month selection (default: unset = non-deterministic)"),
     )
     parser.addoption(
         "--validation-sample-ratio",
@@ -254,8 +251,7 @@ def _resolve_validation_interval(interval_value: str):
     except ValueError as exc:
         valid_values = ", ".join(interval.value for interval in Interval)
         raise pytest.UsageError(
-            f"Invalid --validation-interval '{interval_value}'. "
-            f"Expected one of: {valid_values}"
+            f"Invalid --validation-interval '{interval_value}'. Expected one of: {valid_values}"
         ) from exc
 
 
@@ -278,7 +274,9 @@ def _pick_random_closed_month_range(
     current_month_start = now_utc.replace(day=1)
 
     # Candidate months are fully closed months before current month.
-    candidates = [current_month_start - relativedelta(months=i) for i in range(1, lookback_months + 1)]
+    candidates = [
+        current_month_start - relativedelta(months=i) for i in range(1, lookback_months + 1)
+    ]
     month_start = rng.choice(candidates)
     month_end = (month_start + relativedelta(months=1)) - relativedelta(days=1)
     return month_start.isoformat(), month_end.isoformat()

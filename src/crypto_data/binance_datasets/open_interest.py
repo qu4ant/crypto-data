@@ -6,21 +6,23 @@ Downloads and parses daily open interest metrics from Binance futures markets.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
 
 import pandas as pd
 import pandera.pandas as pa
 
+from crypto_data.binance_datasets.base import BinanceDatasetStrategy, Period
 from crypto_data.enums import DataType
 from crypto_data.schemas import OPEN_INTEREST_SCHEMA
-from crypto_data.binance_datasets.base import BinanceDatasetStrategy, Period
 from crypto_data.utils.dates import generate_day_list
+
+logger = logging.getLogger(__name__)
 
 
 # Final columns for database import
-FINAL_COLUMNS = ['exchange', 'symbol', 'timestamp', 'open_interest']
+FINAL_COLUMNS = ["exchange", "symbol", "timestamp", "open_interest"]
 
 
 class BinanceOpenInterestDataset(BinanceDatasetStrategy):
@@ -47,7 +49,7 @@ class BinanceOpenInterestDataset(BinanceDatasetStrategy):
     @property
     def table_name(self) -> str:
         """Return the target database table name."""
-        return 'open_interest'
+        return "open_interest"
 
     @property
     def is_monthly(self) -> bool:
@@ -59,7 +61,7 @@ class BinanceOpenInterestDataset(BinanceDatasetStrategy):
         """Return the default maximum concurrent downloads (100 for daily metrics)."""
         return 100
 
-    def generate_periods(self, start: datetime, end: datetime) -> List[Period]:
+    def generate_periods(self, start: datetime, end: datetime) -> list[Period]:
         """
         Generate list of daily periods for the given date range.
 
@@ -90,11 +92,7 @@ class BinanceOpenInterestDataset(BinanceDatasetStrategy):
         return OPEN_INTEREST_SCHEMA
 
     def build_download_url(
-        self,
-        base_url: str,
-        symbol: str,
-        period: Period,
-        interval: Optional[str] = None
+        self, base_url: str, symbol: str, period: Period, interval: str | None = None
     ) -> str:
         """
         Build the download URL for a specific symbol and period.
@@ -122,12 +120,7 @@ class BinanceOpenInterestDataset(BinanceDatasetStrategy):
         filename = f"{symbol}-metrics-{period.value}.zip"
         return f"{base_url}{path}/{filename}"
 
-    def build_temp_filename(
-        self,
-        symbol: str,
-        period: Period,
-        interval: Optional[str] = None
-    ) -> str:
+    def build_temp_filename(self, symbol: str, period: Period, interval: str | None = None) -> str:
         """
         Build the temporary filename for a download.
 
@@ -149,11 +142,7 @@ class BinanceOpenInterestDataset(BinanceDatasetStrategy):
         """
         return f"{symbol}-metrics-{period.value}.zip"
 
-    def parse_csv(
-        self,
-        csv_path: Path,
-        symbol: str
-    ) -> pd.DataFrame:
+    def parse_csv(self, csv_path: Path, symbol: str) -> pd.DataFrame:
         """
         Parse a metrics CSV file into a DataFrame ready for database import.
 
@@ -176,7 +165,7 @@ class BinanceOpenInterestDataset(BinanceDatasetStrategy):
         df = pd.read_csv(csv_path)
 
         # Validate required columns exist
-        required_cols = ['create_time', 'sum_open_interest']
+        required_cols = ["create_time", "sum_open_interest"]
         missing = [c for c in required_cols if c not in df.columns]
         if missing:
             raise ValueError(
@@ -185,36 +174,46 @@ class BinanceOpenInterestDataset(BinanceDatasetStrategy):
             )
 
         # Add exchange column
-        df['exchange'] = 'binance'
+        df["exchange"] = "binance"
 
         # Override symbol column (for 1000-prefix normalization)
-        df['symbol'] = symbol
+        df["symbol"] = symbol
 
         # Convert timestamp with auto-detection for format
-        create_time = df['create_time']
+        create_time = df["create_time"]
         if pd.api.types.is_numeric_dtype(create_time):
             # Numeric timestamps: detect ms vs μs (same logic as klines)
             # timestamps >= 5e12 are microseconds
             if (create_time >= 5e12).any():
                 # Microseconds
-                df['timestamp'] = pd.to_datetime(create_time / 1_000_000, unit='s')
+                df["timestamp"] = pd.to_datetime(create_time / 1_000_000, unit="s")
             else:
                 # Milliseconds
-                df['timestamp'] = pd.to_datetime(create_time / 1_000, unit='s')
+                df["timestamp"] = pd.to_datetime(create_time / 1_000, unit="s")
         else:
             # String timestamps (e.g., '2024-01-01 00:00:00')
-            df['timestamp'] = pd.to_datetime(create_time)
+            df["timestamp"] = pd.to_datetime(create_time)
 
         # Rename sum_open_interest to open_interest
-        df = df.rename(columns={'sum_open_interest': 'open_interest'})
+        df = df.rename(columns={"sum_open_interest": "open_interest"})
 
         # Select final columns
         df = df[FINAL_COLUMNS]
 
         # Filter out rows where open_interest == 0 (erroneous data)
-        df = df[df['open_interest'] != 0]
+        df = df[df["open_interest"] != 0]
 
-        # Drop duplicates on primary key columns
-        df = df.drop_duplicates(subset=['exchange', 'symbol', 'timestamp'])
+        # Drop duplicates on primary key columns, but make the data issue visible.
+        key_columns = ["exchange", "symbol", "timestamp"]
+        before_dedup = len(df)
+        df = df.drop_duplicates(subset=key_columns)
+        dropped = before_dedup - len(df)
+        if dropped:
+            logger.warning(
+                "Dropped %s duplicate open interest rows for %s on key %s",
+                dropped,
+                symbol,
+                key_columns,
+            )
 
         return df

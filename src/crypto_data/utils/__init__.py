@@ -19,5 +19,5 @@ Internal Utilities
 from .symbols import get_binance_symbols_from_universe
 
 __all__ = [
-    'get_binance_symbols_from_universe',
+    "get_binance_symbols_from_universe",
 ]

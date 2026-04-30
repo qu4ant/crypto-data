@@ -10,10 +10,9 @@ Features:
 - Statistical outlier detection
 """
 
-import pandera.pandas as pa
-from pandera.pandas import Column, Check, DataFrameSchema
 import numpy as np
-
+import pandera.pandas as pa
+from pandera.pandas import Check, Column, DataFrameSchema
 
 # =============================================================================
 # Open Interest Schema
@@ -22,83 +21,81 @@ import numpy as np
 OPEN_INTEREST_SCHEMA = DataFrameSchema(
     columns={
         # Primary key columns
-        'exchange': Column(
+        "exchange": Column(
+            str,
+            checks=[Check.isin(["binance"])],
+            nullable=False,
+            description="Exchange name (always 'binance')",
+        ),
+        "symbol": Column(
             str,
             checks=[
-                Check.isin(['binance'])
+                Check.str_matches(r"^[A-Z0-9]+$"),  # Uppercase alphanumeric
+                Check.str_length(min_value=3, max_value=20),
             ],
             nullable=False,
-            description="Exchange name (always 'binance')"
+            description="Futures contract symbol (e.g., 'BTCUSDT')",
         ),
-        'symbol': Column(
-            str,
-            checks=[
-                Check.str_matches(r'^[A-Z0-9]+$'),  # Uppercase alphanumeric
-                Check.str_length(min_value=3, max_value=20)
-            ],
-            nullable=False,
-            description="Futures contract symbol (e.g., 'BTCUSDT')"
-        ),
-        'timestamp': Column(
-            'datetime64[ns]',
+        "timestamp": Column(
+            "datetime64[ns]",
             checks=[
                 Check(lambda s: s.notna().all(), error="Null timestamps detected"),
             ],
             nullable=False,
-            description="Metric timestamp"
+            description="Metric timestamp",
         ),
-
         # Metric columns
-        'open_interest': Column(
+        "open_interest": Column(
             float,
             checks=[
-                Check.greater_than(0, error="Open interest must be positive (zero values filtered during import)"),
+                Check.greater_than(
+                    0, error="Open interest must be positive (zero values filtered during import)"
+                ),
                 Check(lambda s: s.notna().all(), error="Null open interest detected"),
-                Check(lambda s: ~np.isinf(s).any(), error="Infinite open interest values detected")
+                Check(lambda s: ~np.isinf(s).any(), error="Infinite open interest values detected"),
             ],
             nullable=False,
-            description="Open interest value (sum of all open positions)"
+            description="Open interest value (sum of all open positions)",
         ),
     },
-
     # DataFrame-level checks (relationships between rows)
     checks=[
         Check(
-            lambda df: ~df.duplicated(subset=['exchange', 'symbol', 'timestamp']).any(),
-            name='no_duplicate_primary_keys',
-            error="Duplicate records detected for same exchange+symbol+timestamp (violates PRIMARY KEY constraint)"
+            lambda df: ~df.duplicated(subset=["exchange", "symbol", "timestamp"]).any(),
+            name="no_duplicate_primary_keys",
+            error="Duplicate records detected for same exchange+symbol+timestamp (violates PRIMARY KEY constraint)",
         )
     ],
-
     # Schema-level settings
     strict=True,  # Reject columns not defined in schema
     coerce=True,  # Coerce data types
     ordered=False,  # Column order doesn't matter
-    description="Schema for open interest metrics from Binance Futures"
+    description="Schema for open interest metrics from Binance Futures",
 )
 
 
 # Statistical validation schema (warnings only, not errors)
 OPEN_INTEREST_STATISTICAL_SCHEMA = DataFrameSchema(
     columns={
-        'open_interest': Column(float),
+        "open_interest": Column(float),
     },
     checks=[
         Check(
             lambda df: check_open_interest_outliers(df, z_threshold=5.0),
-            name='open_interest_outliers',
+            name="open_interest_outliers",
             error="Extreme open interest outliers detected (>5 sigma)",
             # This will be a warning in quality checks, not a hard failure
         ),
     ],
     strict=False,  # Allow other columns
-    description="Statistical validation for open interest data (warning level)"
+    description="Statistical validation for open interest data (warning level)",
 )
 
 
 # =============================================================================
 # Statistical Check Functions
 # =============================================================================
+
 
 def check_open_interest_outliers(df: pa.typing.DataFrame, z_threshold: float = 5.0) -> bool:
     """
@@ -122,7 +119,7 @@ def check_open_interest_outliers(df: pa.typing.DataFrame, z_threshold: float = 5
     if df.empty or len(df) < 3:
         return True
 
-    oi = df['open_interest']
+    oi = df["open_interest"]
 
     # Calculate z-scores
     mean_oi = oi.mean()
@@ -142,7 +139,10 @@ def check_open_interest_outliers(df: pa.typing.DataFrame, z_threshold: float = 5
 # Validation Functions
 # =============================================================================
 
-def validate_open_interest_dataframe(df: pa.typing.DataFrame, strict: bool = True) -> pa.typing.DataFrame:
+
+def validate_open_interest_dataframe(
+    df: pa.typing.DataFrame, strict: bool = True
+) -> pa.typing.DataFrame:
     """
     Validate open interest DataFrame against schema.
 
@@ -165,12 +165,11 @@ def validate_open_interest_dataframe(df: pa.typing.DataFrame, strict: bool = Tru
     """
     if strict:
         return OPEN_INTEREST_SCHEMA.validate(df, lazy=False)
-    else:
-        try:
-            return OPEN_INTEREST_SCHEMA.validate(df, lazy=True)
-        except pa.errors.SchemaErrors as e:
-            # Return errors for inspection
-            return e
+    try:
+        return OPEN_INTEREST_SCHEMA.validate(df, lazy=True)
+    except pa.errors.SchemaErrors as e:
+        # Return errors for inspection
+        return e
 
 
 def validate_open_interest_statistical(df: pa.typing.DataFrame) -> tuple:
@@ -196,20 +195,22 @@ def validate_open_interest_statistical(df: pa.typing.DataFrame) -> tuple:
         return (True, [])
     except pa.errors.SchemaErrors as e:
         # Convert schema errors to warnings
-        if hasattr(e, 'failure_cases') and not e.failure_cases.empty:
+        if hasattr(e, "failure_cases") and not e.failure_cases.empty:
             for _, row in e.failure_cases.iterrows():
-                warnings.append({
-                    'check': row.get('check', 'N/A'),
-                    'column': row.get('column', 'DataFrame'),
-                    'error': str(row.get('failure_case', 'N/A'))
-                })
+                warnings.append(
+                    {
+                        "check": row.get("check", "N/A"),
+                        "column": row.get("column", "DataFrame"),
+                        "error": str(row.get("failure_case", "N/A")),
+                    }
+                )
         return (False, warnings)
 
 
 # Export schemas
 __all__ = [
-    'OPEN_INTEREST_SCHEMA',
-    'OPEN_INTEREST_STATISTICAL_SCHEMA',
-    'validate_open_interest_dataframe',
-    'validate_open_interest_statistical'
+    "OPEN_INTEREST_SCHEMA",
+    "OPEN_INTEREST_STATISTICAL_SCHEMA",
+    "validate_open_interest_dataframe",
+    "validate_open_interest_statistical",
 ]

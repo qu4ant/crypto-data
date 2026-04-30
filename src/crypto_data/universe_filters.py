@@ -5,9 +5,7 @@ The defaults keep synthetic/pegged assets out of both universe ingestion and
 download symbol extraction: stablecoins, wrapped assets, and tokenized assets.
 """
 
-from collections.abc import Iterable
-from typing import List, Optional, Sequence
-
+from collections.abc import Iterable, Sequence
 
 DEFAULT_UNIVERSE_EXCLUDE_TAGS = [
     "stablecoin",
@@ -16,17 +14,17 @@ DEFAULT_UNIVERSE_EXCLUDE_TAGS = [
     "tokenised",
 ]
 
-DEFAULT_UNIVERSE_EXCLUDE_SYMBOLS: List[str] = []
+DEFAULT_UNIVERSE_EXCLUDE_SYMBOLS: list[str] = []
 
 
-def resolve_exclude_tags(exclude_tags: Optional[Sequence[str]]) -> List[str]:
+def resolve_exclude_tags(exclude_tags: Sequence[str] | None) -> list[str]:
     """Return default tags unless the caller explicitly provides a list."""
     if exclude_tags is None:
         return list(DEFAULT_UNIVERSE_EXCLUDE_TAGS)
     return list(exclude_tags)
 
 
-def resolve_exclude_symbols(exclude_symbols: Optional[Sequence[str]]) -> List[str]:
+def resolve_exclude_symbols(exclude_symbols: Sequence[str] | None) -> list[str]:
     """Return default symbols unless the caller explicitly provides a list."""
     if exclude_symbols is None:
         return list(DEFAULT_UNIVERSE_EXCLUDE_SYMBOLS)

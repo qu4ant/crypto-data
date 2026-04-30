@@ -5,29 +5,24 @@ Provides utilities for date and time manipulation in the crypto-data package.
 """
 
 from datetime import datetime, timedelta
-from typing import List, Literal, Tuple
+from typing import Literal
+
+Frequency = Literal["daily", "weekly", "monthly"]
 
 
-Frequency = Literal['daily', 'weekly', 'monthly']
-
-
-def parse_date_range(start_date: str, end_date: str) -> Tuple[datetime, datetime]:
+def parse_date_range(start_date: str, end_date: str) -> tuple[datetime, datetime]:
     """
     Parse and validate YYYY-MM-DD start/end dates.
     """
     try:
         start = datetime.strptime(start_date, "%Y-%m-%d")
     except ValueError as e:
-        raise ValueError(
-            f"Invalid start_date format '{start_date}': expected YYYY-MM-DD"
-        ) from e
+        raise ValueError(f"Invalid start_date format '{start_date}': expected YYYY-MM-DD") from e
 
     try:
         end = datetime.strptime(end_date, "%Y-%m-%d")
     except ValueError as e:
-        raise ValueError(
-            f"Invalid end_date format '{end_date}': expected YYYY-MM-DD"
-        ) from e
+        raise ValueError(f"Invalid end_date format '{end_date}': expected YYYY-MM-DD") from e
 
     if start > end:
         raise ValueError(f"start_date ({start_date}) cannot be after end_date ({end_date})")
@@ -35,7 +30,7 @@ def parse_date_range(start_date: str, end_date: str) -> Tuple[datetime, datetime
     return start, end
 
 
-def generate_month_list(start: datetime, end: datetime) -> List[str]:
+def generate_month_list(start: datetime, end: datetime) -> list[str]:
     """
     Generate list of YYYY-MM strings between start and end dates.
 
@@ -77,7 +72,7 @@ def generate_month_list(start: datetime, end: datetime) -> List[str]:
     return months
 
 
-def generate_day_list(start: datetime, end: datetime) -> List[str]:
+def generate_day_list(start: datetime, end: datetime) -> list[str]:
     """
     Generate list of YYYY-MM-DD strings between start and end dates.
 
@@ -115,8 +110,8 @@ def generate_day_list(start: datetime, end: datetime) -> List[str]:
 def generate_date_list(
     start: datetime,
     end: datetime,
-    frequency: Frequency = 'monthly',
-) -> List[str]:
+    frequency: Frequency = "monthly",
+) -> list[str]:
     """
     Generate list of YYYY-MM-DD strings between start and end dates.
 
@@ -140,20 +135,20 @@ def generate_date_list(
     if start > end:
         return []
 
-    if frequency == 'monthly':
+    if frequency == "monthly":
         return [f"{month}-01" for month in generate_month_list(start, end)]
 
-    if frequency == 'weekly':
+    if frequency == "weekly":
         # Monday = 0; advance to first Monday on/after start.
         days_until_monday = (7 - start.weekday()) % 7
         current = start + timedelta(days=days_until_monday)
-        dates: List[str] = []
+        dates: list[str] = []
         while current <= end:
             dates.append(current.strftime("%Y-%m-%d"))
             current += timedelta(days=7)
         return dates
 
-    if frequency == 'daily':
+    if frequency == "daily":
         return generate_day_list(start, end)
 
     raise ValueError(f"Invalid frequency '{frequency}'. Expected one of: daily, weekly, monthly")

@@ -16,11 +16,11 @@ from crypto_data.binance_datasets.open_interest import BinanceOpenInterestDatase
 from crypto_data.binance_datasets.registry import get_binance_dataset_strategy
 
 __all__ = [
-    'BinanceDatasetStrategy',
-    'DownloadResult',
-    'Period',
-    'BinanceFundingRatesDataset',
-    'BinanceKlinesDataset',
-    'BinanceOpenInterestDataset',
-    'get_binance_dataset_strategy',
+    "BinanceDatasetStrategy",
+    "BinanceFundingRatesDataset",
+    "BinanceKlinesDataset",
+    "BinanceOpenInterestDataset",
+    "DownloadResult",
+    "Period",
+    "get_binance_dataset_strategy",
 ]

@@ -5,29 +5,27 @@ Tests the generic data importer with different strategies (klines, open_interest
 funding_rates) using in-memory DuckDB and test ZIP files.
 """
 
-import tempfile
 import zipfile
-from pathlib import Path
+from datetime import datetime
 
 import duckdb
-import pandas as pd
 import pytest
 
-from crypto_data.binance_importer import BinanceDuckDBImporter
-from crypto_data.enums import DataType, Interval
+from crypto_data.binance_datasets.funding_rates import BinanceFundingRatesDataset
 from crypto_data.binance_datasets.klines import BinanceKlinesDataset
 from crypto_data.binance_datasets.open_interest import BinanceOpenInterestDataset
-from crypto_data.binance_datasets.funding_rates import BinanceFundingRatesDataset
-
+from crypto_data.binance_importer import BinanceDuckDBImporter
+from crypto_data.enums import DataType, Interval
 
 # -----------------------------------------------------------------------------
 # Fixtures
 # -----------------------------------------------------------------------------
 
+
 @pytest.fixture
 def db_conn_spot():
     """Create in-memory DuckDB with spot table schema."""
-    conn = duckdb.connect(':memory:')
+    conn = duckdb.connect(":memory:")
     conn.execute("""
         CREATE TABLE spot (
             exchange VARCHAR NOT NULL,
@@ -53,7 +51,7 @@ def db_conn_spot():
 @pytest.fixture
 def db_conn_futures():
     """Create in-memory DuckDB with futures table schema."""
-    conn = duckdb.connect(':memory:')
+    conn = duckdb.connect(":memory:")
     conn.execute("""
         CREATE TABLE futures (
             exchange VARCHAR NOT NULL,
@@ -79,7 +77,7 @@ def db_conn_futures():
 @pytest.fixture
 def db_conn_open_interest():
     """Create in-memory DuckDB with open_interest table schema."""
-    conn = duckdb.connect(':memory:')
+    conn = duckdb.connect(":memory:")
     conn.execute("""
         CREATE TABLE open_interest (
             exchange VARCHAR NOT NULL,
@@ -96,7 +94,7 @@ def db_conn_open_interest():
 @pytest.fixture
 def db_conn_funding_rates():
     """Create in-memory DuckDB with funding_rates table schema."""
-    conn = duckdb.connect(':memory:')
+    conn = duckdb.connect(":memory:")
     conn.execute("""
         CREATE TABLE funding_rates (
             exchange VARCHAR NOT NULL,
@@ -121,7 +119,7 @@ def klines_zip(tmp_path):
     csv_path.write_text(csv_content)
 
     zip_path = tmp_path / "BTCUSDT-5m-2024-01.zip"
-    with zipfile.ZipFile(zip_path, 'w') as zf:
+    with zipfile.ZipFile(zip_path, "w") as zf:
         zf.write(csv_path, csv_path.name)
 
     csv_path.unlink()  # Clean up CSV, keep only ZIP
@@ -140,7 +138,7 @@ def klines_zip_with_header(tmp_path):
     csv_path.write_text(csv_content)
 
     zip_path = tmp_path / "BTCUSDT-header-5m-2024-01.zip"
-    with zipfile.ZipFile(zip_path, 'w') as zf:
+    with zipfile.ZipFile(zip_path, "w") as zf:
         zf.write(csv_path, csv_path.name)
 
     csv_path.unlink()
@@ -159,7 +157,7 @@ def open_interest_zip(tmp_path):
     csv_path.write_text(csv_content)
 
     zip_path = tmp_path / "BTCUSDT-metrics-2024-01-01.zip"
-    with zipfile.ZipFile(zip_path, 'w') as zf:
+    with zipfile.ZipFile(zip_path, "w") as zf:
         zf.write(csv_path, csv_path.name)
 
     csv_path.unlink()
@@ -178,7 +176,7 @@ def open_interest_zip_with_zeros(tmp_path):
     csv_path.write_text(csv_content)
 
     zip_path = tmp_path / "BTCUSDT-metrics-2024-01-02.zip"
-    with zipfile.ZipFile(zip_path, 'w') as zf:
+    with zipfile.ZipFile(zip_path, "w") as zf:
         zf.write(csv_path, csv_path.name)
 
     csv_path.unlink()
@@ -198,7 +196,7 @@ def funding_rates_zip(tmp_path):
     csv_path.write_text(csv_content)
 
     zip_path = tmp_path / "BTCUSDT-fundingRate-2024-01.zip"
-    with zipfile.ZipFile(zip_path, 'w') as zf:
+    with zipfile.ZipFile(zip_path, "w") as zf:
         zf.write(csv_path, csv_path.name)
 
     csv_path.unlink()
@@ -209,6 +207,7 @@ def funding_rates_zip(tmp_path):
 # TestBinanceDuckDBImporterKlines
 # -----------------------------------------------------------------------------
 
+
 class TestBinanceDuckDBImporterKlines:
     """Test BinanceDuckDBImporter with BinanceKlinesDataset."""
 
@@ -218,7 +217,7 @@ class TestBinanceDuckDBImporterKlines:
         importer = BinanceDuckDBImporter(dataset)
 
         db_conn_spot.execute("BEGIN TRANSACTION")
-        rows = importer.import_file(db_conn_spot, klines_zip, 'BTCUSDT')
+        rows = importer.import_file(db_conn_spot, klines_zip, "BTCUSDT")
         db_conn_spot.execute("COMMIT")
 
         assert rows == 3
@@ -230,16 +229,12 @@ class TestBinanceDuckDBImporterKlines:
         assert result[0] == 3
 
         # Verify exchange column
-        result = db_conn_spot.execute(
-            "SELECT DISTINCT exchange FROM spot"
-        ).fetchone()
-        assert result[0] == 'binance'
+        result = db_conn_spot.execute("SELECT DISTINCT exchange FROM spot").fetchone()
+        assert result[0] == "binance"
 
         # Verify interval column
-        result = db_conn_spot.execute(
-            "SELECT DISTINCT interval FROM spot"
-        ).fetchone()
-        assert result[0] == '5m'
+        result = db_conn_spot.execute("SELECT DISTINCT interval FROM spot").fetchone()
+        assert result[0] == "5m"
 
     def test_import_spot_klines_with_header(self, db_conn_spot, klines_zip_with_header):
         """Test importing spot klines CSV with header (auto-detect)."""
@@ -247,7 +242,7 @@ class TestBinanceDuckDBImporterKlines:
         importer = BinanceDuckDBImporter(dataset)
 
         db_conn_spot.execute("BEGIN TRANSACTION")
-        rows = importer.import_file(db_conn_spot, klines_zip_with_header, 'BTCUSDT')
+        rows = importer.import_file(db_conn_spot, klines_zip_with_header, "BTCUSDT")
         db_conn_spot.execute("COMMIT")
 
         assert rows == 2
@@ -267,14 +262,12 @@ class TestBinanceDuckDBImporterKlines:
         importer = BinanceDuckDBImporter(dataset)
 
         db_conn_futures.execute("BEGIN TRANSACTION")
-        rows = importer.import_file(db_conn_futures, klines_zip, 'BTCUSDT')
+        rows = importer.import_file(db_conn_futures, klines_zip, "BTCUSDT")
         db_conn_futures.execute("COMMIT")
 
         assert rows == 3
 
-        result = db_conn_futures.execute(
-            "SELECT COUNT(*) FROM futures"
-        ).fetchone()
+        result = db_conn_futures.execute("SELECT COUNT(*) FROM futures").fetchone()
         assert result[0] == 3
 
     def test_duplicate_import_returns_zero(self, db_conn_spot, klines_zip):
@@ -284,13 +277,13 @@ class TestBinanceDuckDBImporterKlines:
 
         # First import
         db_conn_spot.execute("BEGIN TRANSACTION")
-        rows1 = importer.import_file(db_conn_spot, klines_zip, 'BTCUSDT')
+        rows1 = importer.import_file(db_conn_spot, klines_zip, "BTCUSDT")
         db_conn_spot.execute("COMMIT")
         assert rows1 == 3
 
         # Second import - should return 0 (duplicate)
         db_conn_spot.execute("BEGIN TRANSACTION")
-        rows2 = importer.import_file(db_conn_spot, klines_zip, 'BTCUSDT')
+        rows2 = importer.import_file(db_conn_spot, klines_zip, "BTCUSDT")
         db_conn_spot.execute("COMMIT")
         assert rows2 == 0
 
@@ -308,7 +301,7 @@ class TestBinanceDuckDBImporterKlines:
         """)
 
         db_conn_spot.execute("BEGIN TRANSACTION")
-        rows = importer.import_file(db_conn_spot, klines_zip, 'BTCUSDT')
+        rows = importer.import_file(db_conn_spot, klines_zip, "BTCUSDT")
         db_conn_spot.execute("COMMIT")
 
         assert rows == 2
@@ -335,8 +328,8 @@ class TestBinanceDuckDBImporterKlines:
         rows = importer.import_file(
             db_conn_spot,
             klines_zip,
-            'BTCUSDT',
-            period='2024-01-01',
+            "BTCUSDT",
+            period="2024-01-01",
             replace_existing=True,
         )
         db_conn_spot.execute("COMMIT")
@@ -354,6 +347,28 @@ class TestBinanceDuckDBImporterKlines:
         assert count == 3
         assert refreshed_open == 42050.0
 
+    def test_import_klines_filters_to_requested_close_window(self, db_conn_spot, klines_zip):
+        """Kline imports should not insert candles outside the requested date window."""
+        dataset = BinanceKlinesDataset(DataType.SPOT, Interval.MIN_5)
+        importer = BinanceDuckDBImporter(dataset)
+
+        db_conn_spot.execute("BEGIN TRANSACTION")
+        rows = importer.import_file(
+            db_conn_spot,
+            klines_zip,
+            "BTCUSDT",
+            window_start=datetime(2024, 1, 1, 0, 0),
+            window_end=datetime(2024, 1, 1, 0, 5),
+        )
+        db_conn_spot.execute("COMMIT")
+
+        assert rows == 1
+
+        timestamps = db_conn_spot.execute(
+            "SELECT timestamp FROM spot WHERE symbol = 'BTCUSDT' ORDER BY timestamp"
+        ).fetchall()
+        assert timestamps == [(datetime(2024, 1, 1, 0, 5),)]
+
     def test_csv_cleanup_after_import(self, db_conn_spot, klines_zip):
         """Test that CSV file is cleaned up after import."""
         dataset = BinanceKlinesDataset(DataType.SPOT, Interval.MIN_5)
@@ -363,7 +378,7 @@ class TestBinanceDuckDBImporterKlines:
         csv_path = klines_zip.parent / "BTCUSDT-5m-2024-01.csv"
 
         db_conn_spot.execute("BEGIN TRANSACTION")
-        importer.import_file(db_conn_spot, klines_zip, 'BTCUSDT')
+        importer.import_file(db_conn_spot, klines_zip, "BTCUSDT")
         db_conn_spot.execute("COMMIT")
 
         # CSV should be deleted
@@ -374,6 +389,7 @@ class TestBinanceDuckDBImporterKlines:
 # TestBinanceDuckDBImporterOpenInterest
 # -----------------------------------------------------------------------------
 
+
 class TestBinanceDuckDBImporterOpenInterest:
     """Test BinanceDuckDBImporter with BinanceOpenInterestDataset."""
 
@@ -383,7 +399,7 @@ class TestBinanceDuckDBImporterOpenInterest:
         importer = BinanceDuckDBImporter(dataset)
 
         db_conn_open_interest.execute("BEGIN TRANSACTION")
-        rows = importer.import_file(db_conn_open_interest, open_interest_zip, 'BTCUSDT')
+        rows = importer.import_file(db_conn_open_interest, open_interest_zip, "BTCUSDT")
         db_conn_open_interest.execute("COMMIT")
 
         assert rows == 3
@@ -406,7 +422,7 @@ class TestBinanceDuckDBImporterOpenInterest:
         importer = BinanceDuckDBImporter(dataset)
 
         db_conn_open_interest.execute("BEGIN TRANSACTION")
-        rows = importer.import_file(db_conn_open_interest, open_interest_zip_with_zeros, 'BTCUSDT')
+        rows = importer.import_file(db_conn_open_interest, open_interest_zip_with_zeros, "BTCUSDT")
         db_conn_open_interest.execute("COMMIT")
 
         # Only 2 rows (the one with 0 is filtered)
@@ -419,19 +435,20 @@ class TestBinanceDuckDBImporterOpenInterest:
 
         # Import with a different symbol than what's in the CSV
         db_conn_open_interest.execute("BEGIN TRANSACTION")
-        rows = importer.import_file(db_conn_open_interest, open_interest_zip, 'PEPEUSDT')
+        rows = importer.import_file(db_conn_open_interest, open_interest_zip, "PEPEUSDT")
         db_conn_open_interest.execute("COMMIT")
 
         # Symbol should be PEPEUSDT, not BTCUSDT from CSV
         result = db_conn_open_interest.execute(
             "SELECT DISTINCT symbol FROM open_interest"
         ).fetchone()
-        assert result[0] == 'PEPEUSDT'
+        assert result[0] == "PEPEUSDT"
 
 
 # -----------------------------------------------------------------------------
 # TestBinanceDuckDBImporterFundingRates
 # -----------------------------------------------------------------------------
+
 
 class TestBinanceDuckDBImporterFundingRates:
     """Test BinanceDuckDBImporter with BinanceFundingRatesDataset."""
@@ -442,7 +459,7 @@ class TestBinanceDuckDBImporterFundingRates:
         importer = BinanceDuckDBImporter(dataset)
 
         db_conn_funding_rates.execute("BEGIN TRANSACTION")
-        rows = importer.import_file(db_conn_funding_rates, funding_rates_zip, 'BTCUSDT')
+        rows = importer.import_file(db_conn_funding_rates, funding_rates_zip, "BTCUSDT")
         db_conn_funding_rates.execute("COMMIT")
 
         assert rows == 3
@@ -467,19 +484,20 @@ class TestBinanceDuckDBImporterFundingRates:
         importer = BinanceDuckDBImporter(dataset)
 
         db_conn_funding_rates.execute("BEGIN TRANSACTION")
-        importer.import_file(db_conn_funding_rates, funding_rates_zip, 'BTCUSDT')
+        importer.import_file(db_conn_funding_rates, funding_rates_zip, "BTCUSDT")
         db_conn_funding_rates.execute("COMMIT")
 
         # Check first timestamp (1704067200000 ms = 2024-01-01 00:00:00)
         result = db_conn_funding_rates.execute(
             "SELECT timestamp FROM funding_rates ORDER BY timestamp LIMIT 1"
         ).fetchone()
-        assert str(result[0]).startswith('2024-01-01')
+        assert str(result[0]).startswith("2024-01-01")
 
 
 # -----------------------------------------------------------------------------
 # TestBinanceDuckDBImporterEdgeCases
 # -----------------------------------------------------------------------------
+
 
 class TestBinanceDuckDBImporterEdgeCases:
     """Test edge cases and error handling."""
@@ -488,7 +506,7 @@ class TestBinanceDuckDBImporterEdgeCases:
         """Test that importing a ZIP without CSV raises ValueError."""
         # Create a ZIP with no CSV
         zip_path = tmp_path / "empty.zip"
-        with zipfile.ZipFile(zip_path, 'w') as zf:
+        with zipfile.ZipFile(zip_path, "w") as zf:
             zf.writestr("readme.txt", "no csv here")
 
         dataset = BinanceKlinesDataset(DataType.SPOT, Interval.MIN_5)
@@ -496,7 +514,7 @@ class TestBinanceDuckDBImporterEdgeCases:
 
         db_conn_spot.execute("BEGIN TRANSACTION")
         with pytest.raises(ValueError, match="No CSV file found"):
-            importer.import_file(db_conn_spot, zip_path, 'BTCUSDT')
+            importer.import_file(db_conn_spot, zip_path, "BTCUSDT")
         db_conn_spot.execute("ROLLBACK")
 
     def test_dataset_property(self):
@@ -505,4 +523,4 @@ class TestBinanceDuckDBImporterEdgeCases:
         importer = BinanceDuckDBImporter(dataset)
 
         assert importer.dataset is dataset
-        assert importer.dataset.table_name == 'spot'
+        assert importer.dataset.table_name == "spot"

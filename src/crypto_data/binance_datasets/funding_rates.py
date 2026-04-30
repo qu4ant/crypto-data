@@ -6,21 +6,23 @@ Downloads and parses monthly funding rate data from Binance futures markets.
 
 from __future__ import annotations
 
+import logging
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
 
 import pandas as pd
 import pandera.pandas as pa
 
+from crypto_data.binance_datasets.base import BinanceDatasetStrategy, Period
 from crypto_data.enums import DataType
 from crypto_data.schemas import FUNDING_RATES_SCHEMA
-from crypto_data.binance_datasets.base import BinanceDatasetStrategy, Period
 from crypto_data.utils.dates import generate_month_list
+
+logger = logging.getLogger(__name__)
 
 
 # Final columns for database import
-FINAL_COLUMNS = ['exchange', 'symbol', 'timestamp', 'funding_rate']
+FINAL_COLUMNS = ["exchange", "symbol", "timestamp", "funding_rate"]
 
 
 class BinanceFundingRatesDataset(BinanceDatasetStrategy):
@@ -47,7 +49,7 @@ class BinanceFundingRatesDataset(BinanceDatasetStrategy):
     @property
     def table_name(self) -> str:
         """Return the target database table name."""
-        return 'funding_rates'
+        return "funding_rates"
 
     @property
     def is_monthly(self) -> bool:
@@ -59,7 +61,7 @@ class BinanceFundingRatesDataset(BinanceDatasetStrategy):
         """Return the default maximum concurrent downloads (50 for monthly metrics)."""
         return 50
 
-    def generate_periods(self, start: datetime, end: datetime) -> List[Period]:
+    def generate_periods(self, start: datetime, end: datetime) -> list[Period]:
         """
         Generate list of monthly periods for the given date range.
 
@@ -90,11 +92,7 @@ class BinanceFundingRatesDataset(BinanceDatasetStrategy):
         return FUNDING_RATES_SCHEMA
 
     def build_download_url(
-        self,
-        base_url: str,
-        symbol: str,
-        period: Period,
-        interval: Optional[str] = None
+        self, base_url: str, symbol: str, period: Period, interval: str | None = None
     ) -> str:
         """
         Build the download URL for a specific symbol and period.
@@ -122,12 +120,7 @@ class BinanceFundingRatesDataset(BinanceDatasetStrategy):
         filename = f"{symbol}-fundingRate-{period.value}.zip"
         return f"{base_url}{path}/{filename}"
 
-    def build_temp_filename(
-        self,
-        symbol: str,
-        period: Period,
-        interval: Optional[str] = None
-    ) -> str:
+    def build_temp_filename(self, symbol: str, period: Period, interval: str | None = None) -> str:
         """
         Build the temporary filename for a download.
 
@@ -149,11 +142,7 @@ class BinanceFundingRatesDataset(BinanceDatasetStrategy):
         """
         return f"{symbol}-fundingRate-{period.value}.zip"
 
-    def parse_csv(
-        self,
-        csv_path: Path,
-        symbol: str
-    ) -> pd.DataFrame:
+    def parse_csv(self, csv_path: Path, symbol: str) -> pd.DataFrame:
         """
         Parse a funding rate CSV file into a DataFrame ready for database import.
 
@@ -176,7 +165,7 @@ class BinanceFundingRatesDataset(BinanceDatasetStrategy):
         df = pd.read_csv(csv_path)
 
         # Validate required columns exist
-        required_cols = ['calc_time', 'last_funding_rate']
+        required_cols = ["calc_time", "last_funding_rate"]
         missing = [c for c in required_cols if c not in df.columns]
         if missing:
             raise ValueError(
@@ -185,27 +174,37 @@ class BinanceFundingRatesDataset(BinanceDatasetStrategy):
             )
 
         # Add exchange column
-        df['exchange'] = 'binance'
+        df["exchange"] = "binance"
 
         # Override symbol column (for 1000-prefix normalization)
-        df['symbol'] = symbol
+        df["symbol"] = symbol
 
         # Convert timestamp: calc_time >= 5e12 means microseconds, otherwise milliseconds
-        calc_time = df['calc_time']
+        calc_time = df["calc_time"]
         if (calc_time >= 5e12).any():
             # Microseconds (16+ digits) - divide by 1,000,000
-            df['timestamp'] = pd.to_datetime(calc_time / 1_000_000, unit='s')
+            df["timestamp"] = pd.to_datetime(calc_time / 1_000_000, unit="s")
         else:
             # Milliseconds (13 digits) - divide by 1,000
-            df['timestamp'] = pd.to_datetime(calc_time / 1_000, unit='s')
+            df["timestamp"] = pd.to_datetime(calc_time / 1_000, unit="s")
 
         # Rename last_funding_rate to funding_rate
-        df = df.rename(columns={'last_funding_rate': 'funding_rate'})
+        df = df.rename(columns={"last_funding_rate": "funding_rate"})
 
         # Select final columns
         df = df[FINAL_COLUMNS]
 
-        # Drop duplicates on primary key columns
-        df = df.drop_duplicates(subset=['exchange', 'symbol', 'timestamp'])
+        # Drop duplicates on primary key columns, but make the data issue visible.
+        key_columns = ["exchange", "symbol", "timestamp"]
+        before_dedup = len(df)
+        df = df.drop_duplicates(subset=key_columns)
+        dropped = before_dedup - len(df)
+        if dropped:
+            logger.warning(
+                "Dropped %s duplicate funding rate rows for %s on key %s",
+                dropped,
+                symbol,
+                key_columns,
+            )
 
         return df

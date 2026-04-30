@@ -7,13 +7,13 @@ datasets based on DataType enums.
 
 import pytest
 
-from crypto_data.enums import DataType, Interval
 from crypto_data.binance_datasets import (
     BinanceFundingRatesDataset,
     BinanceKlinesDataset,
     BinanceOpenInterestDataset,
     get_binance_dataset_strategy,
 )
+from crypto_data.enums import DataType, Interval
 
 
 class TestGetDatasetSpot:
@@ -35,7 +35,7 @@ class TestGetDatasetSpot:
         """Returned dataset has 'spot' table name."""
         dataset = get_binance_dataset_strategy(DataType.SPOT, Interval.MIN_5)
 
-        assert dataset.table_name == 'spot'
+        assert dataset.table_name == "spot"
 
     def test_dataset_has_correct_interval(self):
         """Returned dataset has the specified interval."""
@@ -63,7 +63,7 @@ class TestGetDatasetFutures:
         """Returned dataset has 'futures' table name."""
         dataset = get_binance_dataset_strategy(DataType.FUTURES, Interval.MIN_5)
 
-        assert dataset.table_name == 'futures'
+        assert dataset.table_name == "futures"
 
     def test_dataset_has_correct_interval(self):
         """Returned dataset has the specified interval."""
@@ -91,7 +91,7 @@ class TestGetDatasetOpenInterest:
         """Returned dataset has 'open_interest' table name."""
         dataset = get_binance_dataset_strategy(DataType.OPEN_INTEREST)
 
-        assert dataset.table_name == 'open_interest'
+        assert dataset.table_name == "open_interest"
 
     def test_interval_is_ignored(self):
         """Interval parameter is ignored for OPEN_INTEREST."""
@@ -120,7 +120,7 @@ class TestGetDatasetFundingRates:
         """Returned dataset has 'funding_rates' table name."""
         dataset = get_binance_dataset_strategy(DataType.FUNDING_RATES)
 
-        assert dataset.table_name == 'funding_rates'
+        assert dataset.table_name == "funding_rates"
 
     def test_interval_is_ignored(self):
         """Interval parameter is ignored for FUNDING_RATES."""

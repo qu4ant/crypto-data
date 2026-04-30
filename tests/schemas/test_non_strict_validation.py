@@ -5,37 +5,35 @@ Tests the strict=False parameter which returns errors instead of raising excepti
 This improves code coverage for error handling paths in schema validation functions.
 """
 
-import pytest
-from crypto_data.enums import DataType, Interval
 import pandas as pd
 import pandera.pandas as pa
-from datetime import datetime
 
+from crypto_data.enums import Interval
 from crypto_data.schemas import (
-    validate_universe_dataframe,
+    validate_funding_rates_dataframe,
     validate_ohlcv_dataframe,
     validate_open_interest_dataframe,
-    validate_funding_rates_dataframe
+    validate_universe_dataframe,
 )
 
 
 def _v6_universe_row(**overrides) -> dict:
     """Single-row v6 universe payload with sensible defaults."""
     base = {
-        'provider': 'coinmarketcap',
-        'provider_id': 1,
-        'date': pd.Timestamp('2024-01-01'),
-        'symbol': 'BTC',
-        'name': 'Bitcoin',
-        'slug': 'bitcoin',
-        'rank': 1,
-        'market_cap': 1_000_000_000.0,
-        'fully_diluted_market_cap': None,
-        'circulating_supply': None,
-        'max_supply': None,
-        'tags': 'currency',
-        'platform': None,
-        'date_added': pd.NaT,
+        "provider": "coinmarketcap",
+        "provider_id": 1,
+        "date": pd.Timestamp("2024-01-01"),
+        "symbol": "BTC",
+        "name": "Bitcoin",
+        "slug": "bitcoin",
+        "rank": 1,
+        "market_cap": 1_000_000_000.0,
+        "fully_diluted_market_cap": None,
+        "circulating_supply": None,
+        "max_supply": None,
+        "tags": "currency",
+        "platform": None,
+        "date_added": pd.NaT,
     }
     base.update(overrides)
     return base
@@ -58,7 +56,7 @@ class TestUniverseNonStrictValidation:
 
         result = validate_universe_dataframe(df, strict=False)
         assert isinstance(result, pa.errors.SchemaErrors)
-        assert hasattr(result, 'failure_cases')
+        assert hasattr(result, "failure_cases")
 
     def test_negative_market_cap_returns_errors_non_strict(self):
         """Negative market cap should return SchemaErrors."""
@@ -80,21 +78,23 @@ class TestOHLCVNonStrictValidation:
 
     def test_valid_ohlcv_passes_non_strict(self):
         """Valid OHLCV data should pass in non-strict mode."""
-        df = pd.DataFrame({
-            'exchange': ['binance'],
-            'symbol': ['BTCUSDT'],
-            'interval': [Interval.HOUR_1.value],
-            'timestamp': [pd.Timestamp('2024-01-01')],
-            'open': [40000.0],
-            'high': [41000.0],
-            'low': [39000.0],
-            'close': [40500.0],
-            'volume': [100.0],
-            'quote_volume': [4000000.0],
-            'trades_count': [1000],
-            'taker_buy_base_volume': [50.0],
-            'taker_buy_quote_volume': [2000000.0]
-        })
+        df = pd.DataFrame(
+            {
+                "exchange": ["binance"],
+                "symbol": ["BTCUSDT"],
+                "interval": [Interval.HOUR_1.value],
+                "timestamp": [pd.Timestamp("2024-01-01")],
+                "open": [40000.0],
+                "high": [41000.0],
+                "low": [39000.0],
+                "close": [40500.0],
+                "volume": [100.0],
+                "quote_volume": [4000000.0],
+                "trades_count": [1000],
+                "taker_buy_base_volume": [50.0],
+                "taker_buy_quote_volume": [2000000.0],
+            }
+        )
 
         result = validate_ohlcv_dataframe(df, strict=False)
         assert isinstance(result, pd.DataFrame)
@@ -102,42 +102,46 @@ class TestOHLCVNonStrictValidation:
 
     def test_high_less_than_low_returns_errors_non_strict(self):
         """OHLC violation (high < low) should return errors."""
-        df = pd.DataFrame({
-            'exchange': ['binance'],
-            'symbol': ['BTCUSDT'],
-            'interval': [Interval.HOUR_1.value],
-            'timestamp': [pd.Timestamp('2024-01-01')],
-            'open': [40000.0],
-            'high': [38000.0],  # Invalid: high < low
-            'low': [39000.0],
-            'close': [40500.0],
-            'volume': [100.0],
-            'quote_volume': [4000000.0],
-            'trades_count': [1000],
-            'taker_buy_base_volume': [50.0],
-            'taker_buy_quote_volume': [2000000.0]
-        })
+        df = pd.DataFrame(
+            {
+                "exchange": ["binance"],
+                "symbol": ["BTCUSDT"],
+                "interval": [Interval.HOUR_1.value],
+                "timestamp": [pd.Timestamp("2024-01-01")],
+                "open": [40000.0],
+                "high": [38000.0],  # Invalid: high < low
+                "low": [39000.0],
+                "close": [40500.0],
+                "volume": [100.0],
+                "quote_volume": [4000000.0],
+                "trades_count": [1000],
+                "taker_buy_base_volume": [50.0],
+                "taker_buy_quote_volume": [2000000.0],
+            }
+        )
 
         result = validate_ohlcv_dataframe(df, strict=False)
         assert isinstance(result, pa.errors.SchemaErrors)
 
     def test_negative_volume_returns_errors_non_strict(self):
         """Negative volume should return errors."""
-        df = pd.DataFrame({
-            'exchange': ['binance'],
-            'symbol': ['BTCUSDT'],
-            'interval': [Interval.HOUR_1.value],
-            'timestamp': [pd.Timestamp('2024-01-01')],
-            'open': [40000.0],
-            'high': [41000.0],
-            'low': [39000.0],
-            'close': [40500.0],
-            'volume': [-100.0],  # Invalid: negative
-            'quote_volume': [4000000.0],
-            'trades_count': [1000],
-            'taker_buy_volume': [50.0],
-            'taker_buy_quote_volume': [2000000.0]
-        })
+        df = pd.DataFrame(
+            {
+                "exchange": ["binance"],
+                "symbol": ["BTCUSDT"],
+                "interval": [Interval.HOUR_1.value],
+                "timestamp": [pd.Timestamp("2024-01-01")],
+                "open": [40000.0],
+                "high": [41000.0],
+                "low": [39000.0],
+                "close": [40500.0],
+                "volume": [-100.0],  # Invalid: negative
+                "quote_volume": [4000000.0],
+                "trades_count": [1000],
+                "taker_buy_volume": [50.0],
+                "taker_buy_quote_volume": [2000000.0],
+            }
+        )
 
         result = validate_ohlcv_dataframe(df, strict=False)
         assert isinstance(result, pa.errors.SchemaErrors)
@@ -148,12 +152,14 @@ class TestOpenInterestNonStrictValidation:
 
     def test_valid_open_interest_passes_non_strict(self):
         """Valid open interest data should pass."""
-        df = pd.DataFrame({
-            'exchange': ['binance'],
-            'symbol': ['BTCUSDT'],
-            'timestamp': [pd.Timestamp('2024-01-01')],
-            'open_interest': [1000000.0]
-        })
+        df = pd.DataFrame(
+            {
+                "exchange": ["binance"],
+                "symbol": ["BTCUSDT"],
+                "timestamp": [pd.Timestamp("2024-01-01")],
+                "open_interest": [1000000.0],
+            }
+        )
 
         result = validate_open_interest_dataframe(df, strict=False)
         assert isinstance(result, pd.DataFrame)
@@ -161,24 +167,28 @@ class TestOpenInterestNonStrictValidation:
 
     def test_negative_open_interest_returns_errors_non_strict(self):
         """Negative open interest should return errors."""
-        df = pd.DataFrame({
-            'exchange': ['binance'],
-            'symbol': ['BTCUSDT'],
-            'timestamp': [pd.Timestamp('2024-01-01')],
-            'open_interest': [-1000.0]  # Invalid: negative (also filtered during import)
-        })
+        df = pd.DataFrame(
+            {
+                "exchange": ["binance"],
+                "symbol": ["BTCUSDT"],
+                "timestamp": [pd.Timestamp("2024-01-01")],
+                "open_interest": [-1000.0],  # Invalid: negative (also filtered during import)
+            }
+        )
 
         result = validate_open_interest_dataframe(df, strict=False)
         assert isinstance(result, pa.errors.SchemaErrors)
 
     def test_null_open_interest_returns_errors_non_strict(self):
         """Null open interest should return errors."""
-        df = pd.DataFrame({
-            'exchange': ['binance'],
-            'symbol': ['BTCUSDT'],
-            'timestamp': [pd.Timestamp('2024-01-01')],
-            'open_interest': [None]  # Invalid: null
-        })
+        df = pd.DataFrame(
+            {
+                "exchange": ["binance"],
+                "symbol": ["BTCUSDT"],
+                "timestamp": [pd.Timestamp("2024-01-01")],
+                "open_interest": [None],  # Invalid: null
+            }
+        )
 
         result = validate_open_interest_dataframe(df, strict=False)
         assert isinstance(result, pa.errors.SchemaErrors)
@@ -189,12 +199,14 @@ class TestFundingRatesNonStrictValidation:
 
     def test_valid_funding_rates_pass_non_strict(self):
         """Valid funding rates data should pass."""
-        df = pd.DataFrame({
-            'exchange': ['binance'],
-            'symbol': ['BTCUSDT'],
-            'timestamp': [pd.Timestamp('2024-01-01')],
-            'funding_rate': [0.0001]
-        })
+        df = pd.DataFrame(
+            {
+                "exchange": ["binance"],
+                "symbol": ["BTCUSDT"],
+                "timestamp": [pd.Timestamp("2024-01-01")],
+                "funding_rate": [0.0001],
+            }
+        )
 
         result = validate_funding_rates_dataframe(df, strict=False)
         assert isinstance(result, pd.DataFrame)
@@ -202,24 +214,28 @@ class TestFundingRatesNonStrictValidation:
 
     def test_null_funding_rate_returns_errors_non_strict(self):
         """Null funding rate should return errors."""
-        df = pd.DataFrame({
-            'exchange': ['binance'],
-            'symbol': ['BTCUSDT'],
-            'timestamp': [pd.Timestamp('2024-01-01')],
-            'funding_rate': [None]  # Invalid: null
-        })
+        df = pd.DataFrame(
+            {
+                "exchange": ["binance"],
+                "symbol": ["BTCUSDT"],
+                "timestamp": [pd.Timestamp("2024-01-01")],
+                "funding_rate": [None],  # Invalid: null
+            }
+        )
 
         result = validate_funding_rates_dataframe(df, strict=False)
         assert isinstance(result, pa.errors.SchemaErrors)
 
     def test_extreme_funding_rate_passes_non_strict(self):
         """Extreme funding rates should pass validation (warning only in statistical check)."""
-        df = pd.DataFrame({
-            'exchange': ['binance'],
-            'symbol': ['BTCUSDT'],
-            'timestamp': [pd.Timestamp('2024-01-01')],
-            'funding_rate': [0.05]  # 5% - extreme but valid
-        })
+        df = pd.DataFrame(
+            {
+                "exchange": ["binance"],
+                "symbol": ["BTCUSDT"],
+                "timestamp": [pd.Timestamp("2024-01-01")],
+                "funding_rate": [0.05],  # 5% - extreme but valid
+            }
+        )
 
         result = validate_funding_rates_dataframe(df, strict=False)
         assert isinstance(result, pd.DataFrame)  # Should pass, warnings are separate
@@ -234,27 +250,29 @@ class TestErrorStructure:
 
         errors = validate_universe_dataframe(df, strict=False)
         assert isinstance(errors, pa.errors.SchemaErrors)
-        assert hasattr(errors, 'failure_cases')
+        assert hasattr(errors, "failure_cases")
         assert isinstance(errors.failure_cases, pd.DataFrame)
         assert len(errors.failure_cases) > 0
 
     def test_schema_errors_are_informative(self):
         """SchemaErrors should contain helpful information for debugging."""
-        df = pd.DataFrame({
-            'exchange': ['binance'],
-            'symbol': ['BTCUSDT'],
-            'interval': [Interval.HOUR_1.value],
-            'timestamp': [pd.Timestamp('2024-01-01')],
-            'open': [40000.0],
-            'high': [38000.0],  # Invalid: high < low
-            'low': [39000.0],
-            'close': [40500.0],
-            'volume': [100.0],
-            'quote_volume': [4000000.0],
-            'trades_count': [1000],
-            'taker_buy_base_volume': [50.0],
-            'taker_buy_quote_volume': [2000000.0]
-        })
+        df = pd.DataFrame(
+            {
+                "exchange": ["binance"],
+                "symbol": ["BTCUSDT"],
+                "interval": [Interval.HOUR_1.value],
+                "timestamp": [pd.Timestamp("2024-01-01")],
+                "open": [40000.0],
+                "high": [38000.0],  # Invalid: high < low
+                "low": [39000.0],
+                "close": [40500.0],
+                "volume": [100.0],
+                "quote_volume": [4000000.0],
+                "trades_count": [1000],
+                "taker_buy_base_volume": [50.0],
+                "taker_buy_quote_volume": [2000000.0],
+            }
+        )
 
         errors = validate_ohlcv_dataframe(df, strict=False)
         assert isinstance(errors, pa.errors.SchemaErrors)

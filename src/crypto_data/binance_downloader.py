@@ -15,21 +15,21 @@ import logging
 import threading
 import zipfile
 from pathlib import Path
-from typing import Dict, List, Optional
 
 import aiohttp
 
 from crypto_data.binance_datasets.base import BinanceDatasetStrategy, DownloadResult, Period
+from crypto_data.enums import DataType
 
 logger = logging.getLogger(__name__)
 
 # Global cache for auto-discovered 1000-prefix ticker mappings (e.g., PEPEUSDT -> 1000PEPEUSDT)
 # Persists across multiple downloads in the same session to avoid repeated 404s
-_ticker_mappings: Dict[str, str] = {}
+_ticker_mappings: dict[str, str] = {}
 _ticker_mappings_lock = threading.Lock()
 
 
-def get_ticker_mapping(symbol: str) -> Optional[str]:
+def get_ticker_mapping(symbol: str) -> str | None:
     """
     Get cached ticker mapping for a symbol.
 
@@ -68,6 +68,17 @@ def clear_ticker_mappings() -> None:
         _ticker_mappings.clear()
 
 
+def _should_retry_with_1000_prefix(data_type: DataType, symbol: str) -> bool:
+    """Return True when 1000-prefix futures-style auto-discovery is plausible."""
+    if data_type == DataType.SPOT:
+        return False
+    if symbol.startswith("1000"):
+        return False
+
+    base_symbol = symbol.removesuffix("USDT")
+    return bool(base_symbol) and not base_symbol[0].isdigit()
+
+
 class BinanceDataVisionDownloader:
     """
     Binance Data Vision downloader for one dataset.
@@ -103,7 +114,7 @@ class BinanceDataVisionDownloader:
         self,
         dataset: BinanceDatasetStrategy,
         temp_path: Path,
-        max_concurrent: Optional[int] = None,
+        max_concurrent: int | None = None,
         base_url: str = "https://data.binance.vision/",
         timeout: int = 30,
     ):
@@ -128,10 +139,10 @@ class BinanceDataVisionDownloader:
         self.max_concurrent = max_concurrent or dataset.default_max_concurrent
         self.base_url = base_url
         self._timeout = aiohttp.ClientTimeout(total=timeout)
-        self._session: Optional[aiohttp.ClientSession] = None
-        self._semaphore: Optional[asyncio.Semaphore] = None
+        self._session: aiohttp.ClientSession | None = None
+        self._semaphore: asyncio.Semaphore | None = None
 
-    async def __aenter__(self) -> "BinanceDataVisionDownloader":
+    async def __aenter__(self) -> BinanceDataVisionDownloader:
         """Create the shared HTTP session and concurrency limiter."""
         self._session = aiohttp.ClientSession(timeout=self._timeout)
         self._semaphore = asyncio.Semaphore(self.max_concurrent)
@@ -141,7 +152,7 @@ class BinanceDataVisionDownloader:
         self,
         exc_type: type[BaseException] | None,
         exc_val: BaseException | None,
-        exc_tb: object | None
+        exc_tb: object | None,
     ) -> None:
         """Close the shared HTTP session."""
         if self._session:
@@ -154,10 +165,10 @@ class BinanceDataVisionDownloader:
     async def download_symbol(
         self,
         symbol: str,
-        periods: List[Period],
-        interval: Optional[str] = None,
-        failure_threshold: int = 3
-    ) -> List[DownloadResult]:
+        periods: list[Period],
+        interval: str | None = None,
+        failure_threshold: int = 3,
+    ) -> list[DownloadResult]:
         """
         Download all periods for a symbol in parallel.
 
@@ -190,10 +201,7 @@ class BinanceDataVisionDownloader:
             logger.debug(f"Using cached mapping: {symbol} -> {download_symbol}")
 
         # Build download tasks for all periods
-        tasks = [
-            self._download_single(download_symbol, period, interval)
-            for period in periods
-        ]
+        tasks = [self._download_single(download_symbol, period, interval) for period in periods]
 
         # Execute downloads in parallel
         raw_results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -204,14 +212,16 @@ class BinanceDataVisionDownloader:
             if isinstance(result, Exception):
                 period = periods[i]
                 logger.error(f"Exception downloading {symbol} {period}: {result}")
-                results.append(DownloadResult(
-                    success=False,
-                    symbol=symbol,
-                    data_type=self.dataset.data_type,
-                    period=str(period),
-                    file_path=None,
-                    error=str(result)
-                ))
+                results.append(
+                    DownloadResult(
+                        success=False,
+                        symbol=symbol,
+                        data_type=self.dataset.data_type,
+                        period=str(period),
+                        file_path=None,
+                        error=str(result),
+                    )
+                )
             else:
                 # Update symbol to original (for 1000-prefix normalization)
                 result_with_original = DownloadResult(
@@ -220,7 +230,7 @@ class BinanceDataVisionDownloader:
                     data_type=result.data_type,
                     period=result.period,
                     file_path=result.file_path,
-                    error=result.error
+                    error=result.error,
                 )
                 results.append(result_with_original)
 
@@ -229,10 +239,12 @@ class BinanceDataVisionDownloader:
             results = self._detect_gaps(results, failure_threshold)
 
         # If ALL results are not_found AND no cached mapping, try with 1000-prefix
-        if (cached_mapping is None and
-            len(results) > 0 and
-            all(r.is_not_found for r in results)):
-
+        if (
+            cached_mapping is None
+            and _should_retry_with_1000_prefix(self.dataset.data_type, symbol)
+            and len(results) > 0
+            and all(r.is_not_found for r in results)
+        ):
             retry_results = await self._retry_with_prefix(
                 symbol, periods, interval, failure_threshold
             )
@@ -242,10 +254,7 @@ class BinanceDataVisionDownloader:
         return results
 
     async def _download_single(
-        self,
-        symbol: str,
-        period: Period,
-        interval: Optional[str] = None
+        self, symbol: str, period: Period, interval: str | None = None
     ) -> DownloadResult:
         """
         Download a single period.
@@ -266,10 +275,7 @@ class BinanceDataVisionDownloader:
         """
         # Build URL and output path
         url = self.dataset.build_download_url(
-            base_url=self.base_url,
-            symbol=symbol,
-            period=period,
-            interval=interval
+            base_url=self.base_url, symbol=symbol, period=period, interval=interval
         )
         filename = self.dataset.build_temp_filename(symbol, period, interval)
         output_path = self.temp_path / filename
@@ -284,18 +290,17 @@ class BinanceDataVisionDownloader:
                     data_type=self.dataset.data_type,
                     period=str(period),
                     file_path=output_path,
-                    error=None
+                    error=None,
                 )
-            else:
-                # 404 - file not found
-                return DownloadResult(
-                    success=False,
-                    symbol=symbol,
-                    data_type=self.dataset.data_type,
-                    period=str(period),
-                    file_path=None,
-                    error='not_found'
-                )
+            # 404 - file not found
+            return DownloadResult(
+                success=False,
+                symbol=symbol,
+                data_type=self.dataset.data_type,
+                period=str(period),
+                file_path=None,
+                error="not_found",
+            )
         except Exception as e:
             logger.error(f"Download error {symbol} {period}: {e}")
             return DownloadResult(
@@ -304,7 +309,7 @@ class BinanceDataVisionDownloader:
                 data_type=self.dataset.data_type,
                 period=str(period),
                 file_path=None,
-                error=str(e)
+                error=str(e),
             )
 
     async def _download_file(self, url: str, output_path: Path) -> bool:
@@ -324,46 +329,41 @@ class BinanceDataVisionDownloader:
 
         logger.debug(f"Downloading: {url}")
 
-        async with self._semaphore:
-            async with self._session.get(url) as response:
-                if response.status == 404:
-                    logger.debug(f"  File not found (404): {url}")
-                    return False
+        async with self._semaphore, self._session.get(url) as response:
+            if response.status == 404:
+                logger.debug(f"  File not found (404): {url}")
+                return False
 
-                response.raise_for_status()
-                content = await response.read()
+            response.raise_for_status()
+            content = await response.read()
 
-                content_length = response.headers.get('Content-Length')
-                if content_length:
-                    try:
-                        expected_size = int(content_length)
-                    except (ValueError, TypeError):
-                        logger.debug(f"  Invalid Content-Length header: {content_length}")
-                    else:
-                        if len(content) != expected_size:
-                            logger.error(
-                                f"  Partial download detected: {len(content)}/{expected_size} bytes"
-                            )
-                            return False
+            content_length = response.headers.get("Content-Length")
+            if content_length:
+                try:
+                    expected_size = int(content_length)
+                except (ValueError, TypeError):
+                    logger.debug(f"  Invalid Content-Length header: {content_length}")
+                else:
+                    if len(content) != expected_size:
+                        logger.error(
+                            f"  Partial download detected: {len(content)}/{expected_size} bytes"
+                        )
+                        return False
 
-                temp_path = output_path.with_suffix('.tmp')
-                temp_path.parent.mkdir(parents=True, exist_ok=True)
-                temp_path.write_bytes(content)
+            temp_path = output_path.with_suffix(".tmp")
+            temp_path.parent.mkdir(parents=True, exist_ok=True)
+            temp_path.write_bytes(content)
 
-                if not zipfile.is_zipfile(temp_path):
-                    logger.error(f"  Corrupt ZIP detected: {output_path.name}")
-                    temp_path.unlink()
-                    return False
+            if not zipfile.is_zipfile(temp_path):
+                logger.error(f"  Corrupt ZIP detected: {output_path.name}")
+                temp_path.unlink()
+                return False
 
-                temp_path.rename(output_path)
-                logger.debug(f"  Downloaded: {len(content)} bytes (validated)")
-                return True
+            temp_path.rename(output_path)
+            logger.debug(f"  Downloaded: {len(content)} bytes (validated)")
+            return True
 
-    def _detect_gaps(
-        self,
-        results: List[DownloadResult],
-        threshold: int
-    ) -> List[DownloadResult]:
+    def _detect_gaps(self, results: list[DownloadResult], threshold: int) -> list[DownloadResult]:
         """
         Detect gaps in download results and truncate at first gap.
 
@@ -432,12 +432,8 @@ class BinanceDataVisionDownloader:
         return results
 
     async def _retry_with_prefix(
-        self,
-        symbol: str,
-        periods: List[Period],
-        interval: Optional[str],
-        failure_threshold: int
-    ) -> Optional[List[DownloadResult]]:
+        self, symbol: str, periods: list[Period], interval: str | None, failure_threshold: int
+    ) -> list[DownloadResult] | None:
         """
         Retry download with 1000-prefix.
 
@@ -463,10 +459,7 @@ class BinanceDataVisionDownloader:
         logger.info(f"Retrying with 1000-prefix: {prefixed_symbol}")
 
         # Build download tasks
-        tasks = [
-            self._download_single(prefixed_symbol, period, interval)
-            for period in periods
-        ]
+        tasks = [self._download_single(prefixed_symbol, period, interval) for period in periods]
 
         # Execute downloads
         raw_results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -476,24 +469,28 @@ class BinanceDataVisionDownloader:
         for i, result in enumerate(raw_results):
             if isinstance(result, Exception):
                 period = periods[i]
-                results.append(DownloadResult(
-                    success=False,
-                    symbol=symbol,  # Use original symbol
-                    data_type=self.dataset.data_type,
-                    period=str(period),
-                    file_path=None,
-                    error=str(result)
-                ))
+                results.append(
+                    DownloadResult(
+                        success=False,
+                        symbol=symbol,  # Use original symbol
+                        data_type=self.dataset.data_type,
+                        period=str(period),
+                        file_path=None,
+                        error=str(result),
+                    )
+                )
             else:
                 # Update symbol to original (for normalization)
-                results.append(DownloadResult(
-                    success=result.success,
-                    symbol=symbol,  # Use original symbol
-                    data_type=result.data_type,
-                    period=result.period,
-                    file_path=result.file_path,
-                    error=result.error
-                ))
+                results.append(
+                    DownloadResult(
+                        success=result.success,
+                        symbol=symbol,  # Use original symbol
+                        data_type=result.data_type,
+                        period=result.period,
+                        file_path=result.file_path,
+                        error=result.error,
+                    )
+                )
 
         # Check if any succeeded
         if any(r.success for r in results):

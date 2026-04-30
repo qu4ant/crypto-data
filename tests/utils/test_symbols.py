@@ -6,9 +6,10 @@ crypto_universe table using a UNION approach (all symbols that appeared
 in top N at any point during the period).
 """
 
-import pytest
 import tempfile
 from pathlib import Path
+
+import pytest
 
 from crypto_data import CryptoDatabase
 from crypto_data.utils.symbols import get_binance_symbols_from_universe
@@ -18,7 +19,7 @@ from crypto_data.utils.symbols import get_binance_symbols_from_universe
 def test_db_with_universe():
     """Create temporary database with sample universe data."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        db_path = str(Path(tmpdir) / 'test.db')
+        db_path = str(Path(tmpdir) / "test.db")
 
         # Create database and populate with test data
         db = CryptoDatabase(db_path)
@@ -59,77 +60,62 @@ def test_db_with_universe():
 def test_extracts_symbols_with_usdt_suffix(test_db_with_universe):
     """Test that symbols are extracted with USDT suffix added."""
     symbols = get_binance_symbols_from_universe(
-        db_path=test_db_with_universe,
-        start_date='2024-01-01',
-        end_date='2024-04-30',
-        top_n=50
+        db_path=test_db_with_universe, start_date="2024-01-01", end_date="2024-04-30", top_n=50
     )
 
     # Should extract BTC, DOGE, ETH, SOL (alphabetical order)
     assert len(symbols) == 4
-    assert all(s.endswith('USDT') for s in symbols)
-    assert 'BTCUSDT' in symbols
-    assert 'ETHUSDT' in symbols
-    assert 'SOLUSDT' in symbols
-    assert 'DOGEUSDT' in symbols
+    assert all(s.endswith("USDT") for s in symbols)
+    assert "BTCUSDT" in symbols
+    assert "ETHUSDT" in symbols
+    assert "SOLUSDT" in symbols
+    assert "DOGEUSDT" in symbols
 
 
 def test_union_strategy_captures_entries_and_exits(test_db_with_universe):
     """Test that UNION approach captures symbols that entered or exited top N."""
     symbols = get_binance_symbols_from_universe(
-        db_path=test_db_with_universe,
-        start_date='2024-01-01',
-        end_date='2024-04-30',
-        top_n=50
+        db_path=test_db_with_universe, start_date="2024-01-01", end_date="2024-04-30", top_n=50
     )
 
     # DOGE: in top 50 only in January (rank 45), exited in February (rank 60)
     # SOL: entered top 50 in March (rank 20), not in Jan/Feb
     # Both should be included (UNION approach)
-    assert 'DOGEUSDT' in symbols, "DOGE should be included (was in top 50 in Jan)"
-    assert 'SOLUSDT' in symbols, "SOL should be included (entered top 50 in Mar)"
+    assert "DOGEUSDT" in symbols, "DOGE should be included (was in top 50 in Jan)"
+    assert "SOLUSDT" in symbols, "SOL should be included (entered top 50 in Mar)"
 
 
 def test_filters_by_rank_threshold(test_db_with_universe):
     """Test that only symbols within rank threshold are returned."""
     # top_n=10 should exclude DOGE (rank 45), SOL (rank 18-20)
     symbols = get_binance_symbols_from_universe(
-        db_path=test_db_with_universe,
-        start_date='2024-01-01',
-        end_date='2024-04-30',
-        top_n=10
+        db_path=test_db_with_universe, start_date="2024-01-01", end_date="2024-04-30", top_n=10
     )
 
-    assert 'BTCUSDT' in symbols  # rank 1
-    assert 'ETHUSDT' in symbols  # rank 2
-    assert 'DOGEUSDT' not in symbols  # rank 45
-    assert 'SOLUSDT' not in symbols  # rank 18-20
+    assert "BTCUSDT" in symbols  # rank 1
+    assert "ETHUSDT" in symbols  # rank 2
+    assert "DOGEUSDT" not in symbols  # rank 45
+    assert "SOLUSDT" not in symbols  # rank 18-20
 
 
 def test_filters_by_date_range(test_db_with_universe):
     """Test that date range filters are applied correctly."""
     # Only January data
     symbols = get_binance_symbols_from_universe(
-        db_path=test_db_with_universe,
-        start_date='2024-01-01',
-        end_date='2024-01-31',
-        top_n=50
+        db_path=test_db_with_universe, start_date="2024-01-01", end_date="2024-01-31", top_n=50
     )
 
-    assert 'BTCUSDT' in symbols
-    assert 'ETHUSDT' in symbols
-    assert 'DOGEUSDT' in symbols
-    assert 'SOLUSDT' not in symbols  # SOL only appears in March+
+    assert "BTCUSDT" in symbols
+    assert "ETHUSDT" in symbols
+    assert "DOGEUSDT" in symbols
+    assert "SOLUSDT" not in symbols  # SOL only appears in March+
 
 
 def test_empty_universe_returns_empty_list(test_db_with_universe):
     """Test that function returns empty list when no data matches filters."""
     # Request data from year 2025 (no data exists)
     symbols = get_binance_symbols_from_universe(
-        db_path=test_db_with_universe,
-        start_date='2025-01-01',
-        end_date='2025-12-31',
-        top_n=50
+        db_path=test_db_with_universe, start_date="2025-01-01", end_date="2025-12-31", top_n=50
     )
 
     assert symbols == []
@@ -139,10 +125,10 @@ def test_empty_universe_returns_empty_list(test_db_with_universe):
 def test_returns_empty_on_missing_database():
     """Test that function returns empty list when database doesn't exist."""
     symbols = get_binance_symbols_from_universe(
-        db_path='/nonexistent/path/to/database.db',
-        start_date='2024-01-01',
-        end_date='2024-12-31',
-        top_n=50
+        db_path="/nonexistent/path/to/database.db",
+        start_date="2024-01-01",
+        end_date="2024-12-31",
+        top_n=50,
     )
 
     assert symbols == []
@@ -152,15 +138,12 @@ def test_returns_empty_on_missing_database():
 def test_symbols_are_sorted_alphabetically(test_db_with_universe):
     """Test that returned symbols are sorted alphabetically."""
     symbols = get_binance_symbols_from_universe(
-        db_path=test_db_with_universe,
-        start_date='2024-01-01',
-        end_date='2024-04-30',
-        top_n=50
+        db_path=test_db_with_universe, start_date="2024-01-01", end_date="2024-04-30", top_n=50
     )
 
     # Should be: BTC, DOGE, ETH, SOL (alphabetical)
     assert symbols == sorted(symbols)
-    assert symbols == ['BTCUSDT', 'DOGEUSDT', 'ETHUSDT', 'SOLUSDT']
+    assert symbols == ["BTCUSDT", "DOGEUSDT", "ETHUSDT", "SOLUSDT"]
 
 
 def test_handles_symbols_with_special_characters(test_db_with_universe):
@@ -179,13 +162,10 @@ def test_handles_symbols_with_special_characters(test_db_with_universe):
     db.close()
 
     symbols = get_binance_symbols_from_universe(
-        db_path=test_db_with_universe,
-        start_date='2024-01-01',
-        end_date='2024-01-31',
-        top_n=50
+        db_path=test_db_with_universe, start_date="2024-01-01", end_date="2024-01-31", top_n=50
     )
 
-    assert '1INCHUSDT' in symbols
+    assert "1INCHUSDT" in symbols
 
 
 def test_excludes_synthetic_assets_by_default(test_db_with_universe):
@@ -205,17 +185,14 @@ def test_excludes_synthetic_assets_by_default(test_db_with_universe):
     db.close()
 
     symbols = get_binance_symbols_from_universe(
-        db_path=test_db_with_universe,
-        start_date='2024-01-01',
-        end_date='2024-01-31',
-        top_n=50
+        db_path=test_db_with_universe, start_date="2024-01-01", end_date="2024-01-31", top_n=50
     )
 
-    assert 'BTCUSDT' in symbols
-    assert 'USDTUSDT' not in symbols
-    assert 'WBTCUSDT' not in symbols
-    assert 'PAXGUSDT' not in symbols
-    assert 'TSLAUSDT' not in symbols
+    assert "BTCUSDT" in symbols
+    assert "USDTUSDT" not in symbols
+    assert "WBTCUSDT" not in symbols
+    assert "PAXGUSDT" not in symbols
+    assert "TSLAUSDT" not in symbols
 
 
 def test_symbol_extraction_allows_explicit_filter_opt_out(test_db_with_universe):
@@ -233,14 +210,14 @@ def test_symbol_extraction_allows_explicit_filter_opt_out(test_db_with_universe)
 
     symbols = get_binance_symbols_from_universe(
         db_path=test_db_with_universe,
-        start_date='2024-01-01',
-        end_date='2024-01-31',
+        start_date="2024-01-01",
+        end_date="2024-01-31",
         top_n=50,
         exclude_tags=[],
         exclude_symbols=[],
     )
 
-    assert 'USDTUSDT' in symbols
+    assert "USDTUSDT" in symbols
 
 
 if __name__ == "__main__":

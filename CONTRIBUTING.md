@@ -230,8 +230,11 @@ class TestNewFeature:
 ### Running Tests
 
 ```bash
-# Run all tests
+# Run default local test suite (external validation tests are skipped)
 pytest tests/ -v
+
+# Run external validation tests against Binance/CoinMarketCap APIs
+pytest tests/ -v --run-validation
 
 # Run specific test file
 pytest tests/binance/test_downloader.py -v

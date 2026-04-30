@@ -5,7 +5,8 @@ Provides symbol extraction utilities for the crypto-data package.
 """
 
 import logging
-from typing import List, Optional, Sequence
+from collections.abc import Sequence
+
 import duckdb
 
 from crypto_data.universe_filters import (
@@ -23,9 +24,9 @@ def get_binance_symbols_from_universe(
     start_date: str,
     end_date: str,
     top_n: int,
-    exclude_tags: Optional[Sequence[str]] = None,
-    exclude_symbols: Optional[Sequence[str]] = None,
-) -> List[str]:
+    exclude_tags: Sequence[str] | None = None,
+    exclude_symbols: Sequence[str] | None = None,
+) -> list[str]:
     """
     Extract unique symbols from universe in database (UNION approach).
 
@@ -85,19 +86,22 @@ def get_binance_symbols_from_universe(
         with duckdb.connect(db_path, read_only=True) as conn:
             # Intentionally build a UNION across the full period.
             # This is a download-time superset, not a tradable PIT universe.
-            result = conn.execute("""
+            result = conn.execute(
+                """
                 SELECT DISTINCT symbol, tags
                 FROM crypto_universe
                 WHERE date >= ?
                     AND date <= ?
                     AND rank <= ?
                 ORDER BY symbol
-            """, [start_date, end_date, top_n]).fetchall()
+            """,
+                [start_date, end_date, top_n],
+            ).fetchall()
 
         # If any historical row for a symbol has an excluded tag, exclude the
         # symbol from the download superset. This protects re-runs over legacy
         # unfiltered universe tables where some snapshots may have stale/null tags.
-        symbol_exclusions = {}
+        symbol_exclusions: dict[str, bool] = {}
         for symbol, tags in result:
             symbol_exclusions.setdefault(symbol, False)
             if has_excluded_tag(tags, exclude_tags):
@@ -110,13 +114,17 @@ def get_binance_symbols_from_universe(
         ]
         symbols = [f"{symbol}USDT" for symbol in sorted(base_symbols)]
 
-        logger.info(f"Extracted {len(symbols)} unique symbols from universe (top {top_n} across period)")
+        logger.info(
+            f"Extracted {len(symbols)} unique symbols from universe (top {top_n} across period)"
+        )
         logger.debug(f"Symbols: {', '.join(symbols[:10])}{'...' if len(symbols) > 10 else ''}")
 
         return symbols
 
     except Exception as e:
         logger.error(f"Failed to extract symbols from universe: {e}")
-        logger.error(f"Make sure crypto_universe table in {db_path} contains data for {start_date} to {end_date}")
-        logger.error(f"Run universe ingestion first to populate universe.")
+        logger.error(
+            f"Make sure crypto_universe table in {db_path} contains data for {start_date} to {end_date}"
+        )
+        logger.error("Run universe ingestion first to populate universe.")
         return []

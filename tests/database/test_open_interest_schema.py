@@ -2,11 +2,10 @@
 Tests for open_interest table schema and basic operations.
 """
 
-import pytest
-from crypto_data.enums import DataType, Interval
 import tempfile
 from pathlib import Path
-from datetime import datetime
+
+import pytest
 
 from crypto_data import CryptoDatabase
 
@@ -14,7 +13,7 @@ from crypto_data import CryptoDatabase
 def test_open_interest_table_created():
     """Test that open_interest table is created during database initialization."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        db_path = Path(tmpdir) / 'test.db'
+        db_path = Path(tmpdir) / "test.db"
 
         db = CryptoDatabase(str(db_path))
 
@@ -22,7 +21,7 @@ def test_open_interest_table_created():
         tables = db.execute("SHOW TABLES").fetchall()
         table_names = [row[0] for row in tables]
 
-        assert 'open_interest' in table_names
+        assert "open_interest" in table_names
 
         db.close()
 
@@ -30,7 +29,7 @@ def test_open_interest_table_created():
 def test_open_interest_schema_columns():
     """Test that open_interest table has all expected columns with correct types."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        db_path = Path(tmpdir) / 'test.db'
+        db_path = Path(tmpdir) / "test.db"
 
         db = CryptoDatabase(str(db_path))
 
@@ -45,16 +44,16 @@ def test_open_interest_schema_columns():
         column_info = {row[0]: row[1] for row in schema}
 
         # Verify all columns exist
-        assert 'exchange' in column_info
-        assert 'symbol' in column_info
-        assert 'timestamp' in column_info
-        assert 'open_interest' in column_info
+        assert "exchange" in column_info
+        assert "symbol" in column_info
+        assert "timestamp" in column_info
+        assert "open_interest" in column_info
 
         # Verify correct types
-        assert column_info['exchange'] == 'VARCHAR'
-        assert column_info['symbol'] == 'VARCHAR'
-        assert column_info['timestamp'] == 'TIMESTAMP'
-        assert column_info['open_interest'] == 'DOUBLE'
+        assert column_info["exchange"] == "VARCHAR"
+        assert column_info["symbol"] == "VARCHAR"
+        assert column_info["timestamp"] == "TIMESTAMP"
+        assert column_info["open_interest"] == "DOUBLE"
 
         db.close()
 
@@ -62,7 +61,7 @@ def test_open_interest_schema_columns():
 def test_open_interest_primary_key():
     """Test that primary key is enforced on (exchange, symbol, timestamp)."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        db_path = Path(tmpdir) / 'test.db'
+        db_path = Path(tmpdir) / "test.db"
 
         db = CryptoDatabase(str(db_path))
 
@@ -81,7 +80,11 @@ def test_open_interest_primary_key():
                 VALUES ('binance', 'BTCUSDT', '2024-01-01 00:00:00', 2000.0)
             """)
 
-        assert 'Duplicate' in str(excinfo.value) or 'PRIMARY KEY' in str(excinfo.value) or 'UNIQUE' in str(excinfo.value)
+        assert (
+            "Duplicate" in str(excinfo.value)
+            or "PRIMARY KEY" in str(excinfo.value)
+            or "UNIQUE" in str(excinfo.value)
+        )
 
         db.close()
 
@@ -89,7 +92,7 @@ def test_open_interest_primary_key():
 def test_open_interest_index_created():
     """Test that index on (exchange, symbol, timestamp) is created."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        db_path = Path(tmpdir) / 'test.db'
+        db_path = Path(tmpdir) / "test.db"
 
         db = CryptoDatabase(str(db_path))
 
@@ -103,7 +106,10 @@ def test_open_interest_index_created():
         index_names = [row[0] for row in indexes]
 
         # Should have the custom index (and possibly implicit PK index)
-        assert any('idx_open_interest_exchange_symbol_time' in idx for idx in index_names) or len(index_names) > 0
+        assert (
+            any("idx_open_interest_exchange_symbol_time" in idx for idx in index_names)
+            or len(index_names) > 0
+        )
 
         db.close()
 
@@ -111,7 +117,7 @@ def test_open_interest_index_created():
 def test_open_interest_insert_and_query():
     """Test basic insert and select operations on open_interest table."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        db_path = Path(tmpdir) / 'test.db'
+        db_path = Path(tmpdir) / "test.db"
 
         db = CryptoDatabase(str(db_path))
 
@@ -135,7 +141,7 @@ def test_open_interest_insert_and_query():
 
         # Verify results
         assert len(result) == 2
-        assert result[0][1] == 'BTCUSDT'
+        assert result[0][1] == "BTCUSDT"
         assert result[0][3] == 75000.5  # open_interest
         assert result[1][3] == 75100.2  # open_interest
 
@@ -145,7 +151,7 @@ def test_open_interest_insert_and_query():
 def test_open_interest_duplicate_key_prevention():
     """Test that primary key constraint prevents duplicate entries."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        db_path = Path(tmpdir) / 'test.db'
+        db_path = Path(tmpdir) / "test.db"
 
         db = CryptoDatabase(str(db_path))
 

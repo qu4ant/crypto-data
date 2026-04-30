@@ -4,7 +4,7 @@ Formatting Utilities
 Provides display and formatting utilities for the crypto-data package.
 """
 
-from datetime import datetime, date
+from datetime import date, datetime
 
 
 def format_file_size(size_bytes: int) -> str:
@@ -26,7 +26,7 @@ def format_file_size(size_bytes: int) -> str:
     >>> format_file_size(1500000000)
     '1.40 GB'
     """
-    for unit in ['bytes', 'KB', 'MB', 'GB', 'TB']:
+    for unit in ["bytes", "KB", "MB", "GB", "TB"]:
         if size_bytes < 1024.0:
             return f"{size_bytes:.2f} {unit}"
         size_bytes /= 1024.0
@@ -34,11 +34,7 @@ def format_file_size(size_bytes: int) -> str:
 
 
 def format_availability_bar(
-    first_date_str,
-    last_date_str,
-    requested_start,
-    requested_end,
-    bar_width: int = 24
+    first_date_str, last_date_str, requested_start, requested_end, bar_width: int = 24
 ) -> tuple:
     """
     Format availability as visual timeline progress bar.
@@ -73,17 +69,17 @@ def format_availability_bar(
     >>> # dates shows range like "Mai'23->Jan'25"
     """
     # ANSI color codes
-    BLUE = '\033[34m'
-    RESET = '\033[0m'
+    BLUE = "\033[34m"
+    RESET = "\033[0m"
 
     # Helper to convert to datetime
     def to_datetime(d):
         if isinstance(d, datetime):
             return d
-        elif isinstance(d, date):
+        if isinstance(d, date):
             return datetime.combine(d, datetime.min.time())
-        else:  # string
-            return datetime.strptime(d, '%Y-%m-%d')
+        # string
+        return datetime.strptime(d, "%Y-%m-%d")
 
     # Parse dates
     first = to_datetime(first_date_str)
@@ -99,7 +95,9 @@ def format_availability_bar(
     actual_end = min(last, req_end)
 
     if actual_start <= actual_end:
-        months_covered = (actual_end.year - actual_start.year) * 12 + (actual_end.month - actual_start.month) + 1
+        months_covered = (
+            (actual_end.year - actual_start.year) * 12 + (actual_end.month - actual_start.month) + 1
+        )
     else:
         months_covered = 0
 
@@ -127,15 +125,27 @@ def format_availability_bar(
     end_pos = max(0, min(end_pos, bar_width))
 
     # Create visual timeline bar with temporal positioning
-    empty_before = '░' * start_pos
+    empty_before = "░" * start_pos
     filled = f"{BLUE}{'█' * (end_pos - start_pos)}{RESET}"
-    empty_after = '░' * (bar_width - end_pos)
+    empty_after = "░" * (bar_width - end_pos)
     bar = f"[{empty_before}{filled}{empty_after}]"
 
     # Format date range string (e.g., "Mai'23->Jan'25")
     def format_month(dt):
-        months_fr = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun',
-                     'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc']
+        months_fr = [
+            "Jan",
+            "Fév",
+            "Mar",
+            "Avr",
+            "Mai",
+            "Jun",
+            "Jul",
+            "Aoû",
+            "Sep",
+            "Oct",
+            "Nov",
+            "Déc",
+        ]
         return f"{months_fr[dt.month - 1]}'{dt.year % 100:02d}"
 
     date_range_str = f"{format_month(actual_start)}→{format_month(actual_end)}"
@@ -144,11 +154,7 @@ def format_availability_bar(
 
 
 def format_availability_bar_daily(
-    first_date_str,
-    last_date_str,
-    requested_start,
-    requested_end,
-    bar_width: int = 24
+    first_date_str, last_date_str, requested_start, requested_end, bar_width: int = 24
 ) -> tuple:
     """
     Format availability as visual timeline progress bar (DAILY granularity).
@@ -190,17 +196,17 @@ def format_availability_bar_daily(
     >>> # pct and days show daily coverage (not monthly)
     """
     # ANSI color codes
-    BLUE = '\033[34m'
-    RESET = '\033[0m'
+    BLUE = "\033[34m"
+    RESET = "\033[0m"
 
     # Helper to convert to datetime
     def to_datetime(d):
         if isinstance(d, datetime):
             return d
-        elif isinstance(d, date):
+        if isinstance(d, date):
             return datetime.combine(d, datetime.min.time())
-        else:  # string
-            return datetime.strptime(d, '%Y-%m-%d')
+        # string
+        return datetime.strptime(d, "%Y-%m-%d")
 
     # Parse dates
     first = to_datetime(first_date_str)
@@ -221,10 +227,7 @@ def format_availability_bar_daily(
     actual_start = max(first, req_start)
     actual_end = min(last, req_end)
 
-    if actual_start <= actual_end:
-        days_covered = (actual_end - actual_start).days + 1
-    else:
-        days_covered = 0
+    days_covered = (actual_end - actual_start).days + 1 if actual_start <= actual_end else 0
 
     # Calculate percentage
     percentage = int((days_covered / total_days) * 100) if total_days > 0 else 0
@@ -249,15 +252,27 @@ def format_availability_bar_daily(
     end_pos = max(0, min(end_pos, bar_width))
 
     # Create visual timeline bar with temporal positioning
-    empty_before = '░' * start_pos
+    empty_before = "░" * start_pos
     filled = f"{BLUE}{'█' * (end_pos - start_pos)}{RESET}"
-    empty_after = '░' * (bar_width - end_pos)
+    empty_after = "░" * (bar_width - end_pos)
     bar = f"[{empty_before}{filled}{empty_after}]"
 
     # Format date range string (e.g., "Mai'23→Jan'25")
     def format_month(dt):
-        months_fr = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun',
-                     'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc']
+        months_fr = [
+            "Jan",
+            "Fév",
+            "Mar",
+            "Avr",
+            "Mai",
+            "Jun",
+            "Jul",
+            "Aoû",
+            "Sep",
+            "Oct",
+            "Nov",
+            "Déc",
+        ]
         return f"{months_fr[dt.month - 1]}'{dt.year % 100:02d}"
 
     date_range_str = f"{format_month(actual_start)}→{format_month(actual_end)}"

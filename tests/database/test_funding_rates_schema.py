@@ -6,9 +6,7 @@ and Binance exchange provenance.
 """
 
 import pytest
-from crypto_data.enums import DataType, Interval
-import duckdb
-from pathlib import Path
+
 from crypto_data.database import CryptoDatabase
 
 
@@ -24,7 +22,7 @@ def test_funding_rates_table_created(tmp_path):
     """).fetchone()
 
     assert tables is not None
-    assert tables[0] == 'funding_rates'
+    assert tables[0] == "funding_rates"
 
     db.close()
 
@@ -43,24 +41,24 @@ def test_funding_rates_schema_columns(tmp_path):
     """).fetchall()
 
     # Convert to dict for easier checking
-    col_info = {col[0]: {'type': col[1], 'nullable': col[2]} for col in columns}
+    col_info = {col[0]: {"type": col[1], "nullable": col[2]} for col in columns}
 
     # Check required columns exist
-    assert 'exchange' in col_info
-    assert 'symbol' in col_info
-    assert 'timestamp' in col_info
-    assert 'funding_rate' in col_info
+    assert "exchange" in col_info
+    assert "symbol" in col_info
+    assert "timestamp" in col_info
+    assert "funding_rate" in col_info
 
     # Check column types
-    assert col_info['exchange']['type'] == 'VARCHAR'
-    assert col_info['symbol']['type'] == 'VARCHAR'
-    assert col_info['timestamp']['type'] == 'TIMESTAMP'
-    assert col_info['funding_rate']['type'] == 'DOUBLE'
+    assert col_info["exchange"]["type"] == "VARCHAR"
+    assert col_info["symbol"]["type"] == "VARCHAR"
+    assert col_info["timestamp"]["type"] == "TIMESTAMP"
+    assert col_info["funding_rate"]["type"] == "DOUBLE"
 
     # Check NOT NULL constraints
-    assert col_info['exchange']['nullable'] == 'NO'
-    assert col_info['symbol']['nullable'] == 'NO'
-    assert col_info['timestamp']['nullable'] == 'NO'
+    assert col_info["exchange"]["nullable"] == "NO"
+    assert col_info["symbol"]["nullable"] == "NO"
+    assert col_info["timestamp"]["nullable"] == "NO"
 
     db.close()
 

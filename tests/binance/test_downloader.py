@@ -5,25 +5,27 @@ Tests the generic batch downloader with focus on gap detection logic.
 Note: Actual downloads are not tested (would require mocking exchange).
 """
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock
 import io
 import zipfile
+from unittest.mock import AsyncMock, MagicMock
 
+import pytest
+
+from crypto_data.binance_datasets.base import DownloadResult
+from crypto_data.binance_datasets.klines import BinanceKlinesDataset
 from crypto_data.binance_downloader import (
     BinanceDataVisionDownloader,
+    _should_retry_with_1000_prefix,
     clear_ticker_mappings,
     get_ticker_mapping,
     set_ticker_mapping,
 )
 from crypto_data.enums import DataType, Interval
-from crypto_data.binance_datasets.base import DownloadResult, Period
-from crypto_data.binance_datasets.klines import BinanceKlinesDataset
-
 
 # -----------------------------------------------------------------------------
 # Fixtures
 # -----------------------------------------------------------------------------
+
 
 @pytest.fixture(autouse=True)
 def clean_ticker_mappings():
@@ -43,23 +45,29 @@ def klines_dataset():
 # TestBinanceDataVisionDownloaderGapDetection
 # -----------------------------------------------------------------------------
 
+
 class TestBinanceDataVisionDownloaderGapDetection:
     """Test gap detection logic."""
 
     def test_no_gap_all_successful(self, klines_dataset, tmp_path):
         """Test that all results pass through when no gap."""
         # Create mock downloader (we'll test _detect_gaps directly)
-        downloader = BinanceDataVisionDownloader(
-            dataset=klines_dataset,
-            temp_path=tmp_path
-        )
+        downloader = BinanceDataVisionDownloader(dataset=klines_dataset, temp_path=tmp_path)
 
         # All successful results
         results = [
-            DownloadResult(success=True, symbol='BTCUSDT', data_type=DataType.SPOT, period='2024-01'),
-            DownloadResult(success=True, symbol='BTCUSDT', data_type=DataType.SPOT, period='2024-02'),
-            DownloadResult(success=True, symbol='BTCUSDT', data_type=DataType.SPOT, period='2024-03'),
-            DownloadResult(success=True, symbol='BTCUSDT', data_type=DataType.SPOT, period='2024-04'),
+            DownloadResult(
+                success=True, symbol="BTCUSDT", data_type=DataType.SPOT, period="2024-01"
+            ),
+            DownloadResult(
+                success=True, symbol="BTCUSDT", data_type=DataType.SPOT, period="2024-02"
+            ),
+            DownloadResult(
+                success=True, symbol="BTCUSDT", data_type=DataType.SPOT, period="2024-03"
+            ),
+            DownloadResult(
+                success=True, symbol="BTCUSDT", data_type=DataType.SPOT, period="2024-04"
+            ),
         ]
 
         filtered = downloader._detect_gaps(results, threshold=3)
@@ -69,41 +77,79 @@ class TestBinanceDataVisionDownloaderGapDetection:
 
     def test_with_gap_truncates_after_consecutive_failures(self, klines_dataset, tmp_path):
         """Test that results are truncated after consecutive failures."""
-        downloader = BinanceDataVisionDownloader(
-            dataset=klines_dataset,
-            temp_path=tmp_path
-        )
+        downloader = BinanceDataVisionDownloader(dataset=klines_dataset, temp_path=tmp_path)
 
         # Success, success, fail, fail, fail (gap detected at index 2)
         results = [
-            DownloadResult(success=True, symbol='BTCUSDT', data_type=DataType.SPOT, period='2024-01'),
-            DownloadResult(success=True, symbol='BTCUSDT', data_type=DataType.SPOT, period='2024-02'),
-            DownloadResult(success=False, symbol='BTCUSDT', data_type=DataType.SPOT, period='2024-03', error='not_found'),
-            DownloadResult(success=False, symbol='BTCUSDT', data_type=DataType.SPOT, period='2024-04', error='not_found'),
-            DownloadResult(success=False, symbol='BTCUSDT', data_type=DataType.SPOT, period='2024-05', error='not_found'),
+            DownloadResult(
+                success=True, symbol="BTCUSDT", data_type=DataType.SPOT, period="2024-01"
+            ),
+            DownloadResult(
+                success=True, symbol="BTCUSDT", data_type=DataType.SPOT, period="2024-02"
+            ),
+            DownloadResult(
+                success=False,
+                symbol="BTCUSDT",
+                data_type=DataType.SPOT,
+                period="2024-03",
+                error="not_found",
+            ),
+            DownloadResult(
+                success=False,
+                symbol="BTCUSDT",
+                data_type=DataType.SPOT,
+                period="2024-04",
+                error="not_found",
+            ),
+            DownloadResult(
+                success=False,
+                symbol="BTCUSDT",
+                data_type=DataType.SPOT,
+                period="2024-05",
+                error="not_found",
+            ),
         ]
 
         filtered = downloader._detect_gaps(results, threshold=3)
 
         # Should be truncated at gap start (index 2)
         assert len(filtered) == 2
-        assert filtered[0].period == '2024-01'
-        assert filtered[1].period == '2024-02'
+        assert filtered[0].period == "2024-01"
+        assert filtered[1].period == "2024-02"
 
     def test_ignores_leading_failures_before_first_success(self, klines_dataset, tmp_path):
         """Test that leading failures (before token launch) are ignored."""
-        downloader = BinanceDataVisionDownloader(
-            dataset=klines_dataset,
-            temp_path=tmp_path
-        )
+        downloader = BinanceDataVisionDownloader(dataset=klines_dataset, temp_path=tmp_path)
 
         # fail, fail, fail, success, success (leading failures are OK)
         results = [
-            DownloadResult(success=False, symbol='BTCUSDT', data_type=DataType.SPOT, period='2024-01', error='not_found'),
-            DownloadResult(success=False, symbol='BTCUSDT', data_type=DataType.SPOT, period='2024-02', error='not_found'),
-            DownloadResult(success=False, symbol='BTCUSDT', data_type=DataType.SPOT, period='2024-03', error='not_found'),
-            DownloadResult(success=True, symbol='BTCUSDT', data_type=DataType.SPOT, period='2024-04'),
-            DownloadResult(success=True, symbol='BTCUSDT', data_type=DataType.SPOT, period='2024-05'),
+            DownloadResult(
+                success=False,
+                symbol="BTCUSDT",
+                data_type=DataType.SPOT,
+                period="2024-01",
+                error="not_found",
+            ),
+            DownloadResult(
+                success=False,
+                symbol="BTCUSDT",
+                data_type=DataType.SPOT,
+                period="2024-02",
+                error="not_found",
+            ),
+            DownloadResult(
+                success=False,
+                symbol="BTCUSDT",
+                data_type=DataType.SPOT,
+                period="2024-03",
+                error="not_found",
+            ),
+            DownloadResult(
+                success=True, symbol="BTCUSDT", data_type=DataType.SPOT, period="2024-04"
+            ),
+            DownloadResult(
+                success=True, symbol="BTCUSDT", data_type=DataType.SPOT, period="2024-05"
+            ),
         ]
 
         filtered = downloader._detect_gaps(results, threshold=3)
@@ -113,42 +159,84 @@ class TestBinanceDataVisionDownloaderGapDetection:
 
     def test_gap_with_mixed_failures_after_success(self, klines_dataset, tmp_path):
         """Test gap detection with intermittent failures."""
-        downloader = BinanceDataVisionDownloader(
-            dataset=klines_dataset,
-            temp_path=tmp_path
-        )
+        downloader = BinanceDataVisionDownloader(dataset=klines_dataset, temp_path=tmp_path)
 
         # success, fail, success, fail, fail, fail (gap at index 3)
         results = [
-            DownloadResult(success=True, symbol='BTCUSDT', data_type=DataType.SPOT, period='2024-01'),
-            DownloadResult(success=False, symbol='BTCUSDT', data_type=DataType.SPOT, period='2024-02', error='not_found'),
-            DownloadResult(success=True, symbol='BTCUSDT', data_type=DataType.SPOT, period='2024-03'),
-            DownloadResult(success=False, symbol='BTCUSDT', data_type=DataType.SPOT, period='2024-04', error='not_found'),
-            DownloadResult(success=False, symbol='BTCUSDT', data_type=DataType.SPOT, period='2024-05', error='not_found'),
-            DownloadResult(success=False, symbol='BTCUSDT', data_type=DataType.SPOT, period='2024-06', error='not_found'),
+            DownloadResult(
+                success=True, symbol="BTCUSDT", data_type=DataType.SPOT, period="2024-01"
+            ),
+            DownloadResult(
+                success=False,
+                symbol="BTCUSDT",
+                data_type=DataType.SPOT,
+                period="2024-02",
+                error="not_found",
+            ),
+            DownloadResult(
+                success=True, symbol="BTCUSDT", data_type=DataType.SPOT, period="2024-03"
+            ),
+            DownloadResult(
+                success=False,
+                symbol="BTCUSDT",
+                data_type=DataType.SPOT,
+                period="2024-04",
+                error="not_found",
+            ),
+            DownloadResult(
+                success=False,
+                symbol="BTCUSDT",
+                data_type=DataType.SPOT,
+                period="2024-05",
+                error="not_found",
+            ),
+            DownloadResult(
+                success=False,
+                symbol="BTCUSDT",
+                data_type=DataType.SPOT,
+                period="2024-06",
+                error="not_found",
+            ),
         ]
 
         filtered = downloader._detect_gaps(results, threshold=3)
 
         # Should truncate at index 3 (first of 3 consecutive failures)
         assert len(filtered) == 3
-        assert filtered[0].period == '2024-01'
-        assert filtered[1].period == '2024-02'
-        assert filtered[2].period == '2024-03'
+        assert filtered[0].period == "2024-01"
+        assert filtered[1].period == "2024-02"
+        assert filtered[2].period == "2024-03"
 
     def test_no_gap_with_non_not_found_errors(self, klines_dataset, tmp_path):
         """Test that non-404 errors don't trigger gap detection."""
-        downloader = BinanceDataVisionDownloader(
-            dataset=klines_dataset,
-            temp_path=tmp_path
-        )
+        downloader = BinanceDataVisionDownloader(dataset=klines_dataset, temp_path=tmp_path)
 
         # success, network_error, network_error, network_error (not gap - different error)
         results = [
-            DownloadResult(success=True, symbol='BTCUSDT', data_type=DataType.SPOT, period='2024-01'),
-            DownloadResult(success=False, symbol='BTCUSDT', data_type=DataType.SPOT, period='2024-02', error='timeout'),
-            DownloadResult(success=False, symbol='BTCUSDT', data_type=DataType.SPOT, period='2024-03', error='timeout'),
-            DownloadResult(success=False, symbol='BTCUSDT', data_type=DataType.SPOT, period='2024-04', error='timeout'),
+            DownloadResult(
+                success=True, symbol="BTCUSDT", data_type=DataType.SPOT, period="2024-01"
+            ),
+            DownloadResult(
+                success=False,
+                symbol="BTCUSDT",
+                data_type=DataType.SPOT,
+                period="2024-02",
+                error="timeout",
+            ),
+            DownloadResult(
+                success=False,
+                symbol="BTCUSDT",
+                data_type=DataType.SPOT,
+                period="2024-03",
+                error="timeout",
+            ),
+            DownloadResult(
+                success=False,
+                symbol="BTCUSDT",
+                data_type=DataType.SPOT,
+                period="2024-04",
+                error="timeout",
+            ),
         ]
 
         filtered = downloader._detect_gaps(results, threshold=3)
@@ -158,10 +246,7 @@ class TestBinanceDataVisionDownloaderGapDetection:
 
     def test_empty_results(self, klines_dataset, tmp_path):
         """Test gap detection with empty results."""
-        downloader = BinanceDataVisionDownloader(
-            dataset=klines_dataset,
-            temp_path=tmp_path
-        )
+        downloader = BinanceDataVisionDownloader(dataset=klines_dataset, temp_path=tmp_path)
 
         results = []
         filtered = downloader._detect_gaps(results, threshold=3)
@@ -170,16 +255,31 @@ class TestBinanceDataVisionDownloaderGapDetection:
 
     def test_all_failures_no_success(self, klines_dataset, tmp_path):
         """Test gap detection when all results are failures."""
-        downloader = BinanceDataVisionDownloader(
-            dataset=klines_dataset,
-            temp_path=tmp_path
-        )
+        downloader = BinanceDataVisionDownloader(dataset=klines_dataset, temp_path=tmp_path)
 
         # All failures - no gap because no first success
         results = [
-            DownloadResult(success=False, symbol='BTCUSDT', data_type=DataType.SPOT, period='2024-01', error='not_found'),
-            DownloadResult(success=False, symbol='BTCUSDT', data_type=DataType.SPOT, period='2024-02', error='not_found'),
-            DownloadResult(success=False, symbol='BTCUSDT', data_type=DataType.SPOT, period='2024-03', error='not_found'),
+            DownloadResult(
+                success=False,
+                symbol="BTCUSDT",
+                data_type=DataType.SPOT,
+                period="2024-01",
+                error="not_found",
+            ),
+            DownloadResult(
+                success=False,
+                symbol="BTCUSDT",
+                data_type=DataType.SPOT,
+                period="2024-02",
+                error="not_found",
+            ),
+            DownloadResult(
+                success=False,
+                symbol="BTCUSDT",
+                data_type=DataType.SPOT,
+                period="2024-03",
+                error="not_found",
+            ),
         ]
 
         filtered = downloader._detect_gaps(results, threshold=2)
@@ -189,17 +289,34 @@ class TestBinanceDataVisionDownloaderGapDetection:
 
     def test_threshold_zero_disables_gap_detection(self, klines_dataset, tmp_path):
         """Test that threshold=0 disables gap detection."""
-        downloader = BinanceDataVisionDownloader(
-            dataset=klines_dataset,
-            temp_path=tmp_path
-        )
+        downloader = BinanceDataVisionDownloader(dataset=klines_dataset, temp_path=tmp_path)
 
         # Would normally trigger gap at threshold=3
         results = [
-            DownloadResult(success=True, symbol='BTCUSDT', data_type=DataType.SPOT, period='2024-01'),
-            DownloadResult(success=False, symbol='BTCUSDT', data_type=DataType.SPOT, period='2024-02', error='not_found'),
-            DownloadResult(success=False, symbol='BTCUSDT', data_type=DataType.SPOT, period='2024-03', error='not_found'),
-            DownloadResult(success=False, symbol='BTCUSDT', data_type=DataType.SPOT, period='2024-04', error='not_found'),
+            DownloadResult(
+                success=True, symbol="BTCUSDT", data_type=DataType.SPOT, period="2024-01"
+            ),
+            DownloadResult(
+                success=False,
+                symbol="BTCUSDT",
+                data_type=DataType.SPOT,
+                period="2024-02",
+                error="not_found",
+            ),
+            DownloadResult(
+                success=False,
+                symbol="BTCUSDT",
+                data_type=DataType.SPOT,
+                period="2024-03",
+                error="not_found",
+            ),
+            DownloadResult(
+                success=False,
+                symbol="BTCUSDT",
+                data_type=DataType.SPOT,
+                period="2024-04",
+                error="not_found",
+            ),
         ]
 
         filtered = downloader._detect_gaps(results, threshold=0)
@@ -209,38 +326,43 @@ class TestBinanceDataVisionDownloaderGapDetection:
 
     def test_threshold_one_very_strict(self, klines_dataset, tmp_path):
         """Test gap detection with threshold=1 (very strict)."""
-        downloader = BinanceDataVisionDownloader(
-            dataset=klines_dataset,
-            temp_path=tmp_path
-        )
+        downloader = BinanceDataVisionDownloader(dataset=klines_dataset, temp_path=tmp_path)
 
         # success, fail triggers gap immediately
         results = [
-            DownloadResult(success=True, symbol='BTCUSDT', data_type=DataType.SPOT, period='2024-01'),
-            DownloadResult(success=False, symbol='BTCUSDT', data_type=DataType.SPOT, period='2024-02', error='not_found'),
-            DownloadResult(success=True, symbol='BTCUSDT', data_type=DataType.SPOT, period='2024-03'),
+            DownloadResult(
+                success=True, symbol="BTCUSDT", data_type=DataType.SPOT, period="2024-01"
+            ),
+            DownloadResult(
+                success=False,
+                symbol="BTCUSDT",
+                data_type=DataType.SPOT,
+                period="2024-02",
+                error="not_found",
+            ),
+            DownloadResult(
+                success=True, symbol="BTCUSDT", data_type=DataType.SPOT, period="2024-03"
+            ),
         ]
 
         filtered = downloader._detect_gaps(results, threshold=1)
 
         # Should truncate at index 1
         assert len(filtered) == 1
-        assert filtered[0].period == '2024-01'
+        assert filtered[0].period == "2024-01"
 
 
 # -----------------------------------------------------------------------------
 # TestBinanceDataVisionDownloaderInit
 # -----------------------------------------------------------------------------
 
+
 class TestBinanceDataVisionDownloaderInit:
     """Test BinanceDataVisionDownloader initialization."""
 
     def test_init_with_defaults(self, klines_dataset, tmp_path):
         """Test initialization with default concurrency."""
-        downloader = BinanceDataVisionDownloader(
-            dataset=klines_dataset,
-            temp_path=tmp_path
-        )
+        downloader = BinanceDataVisionDownloader(dataset=klines_dataset, temp_path=tmp_path)
 
         assert downloader.dataset is klines_dataset
         assert downloader.temp_path == tmp_path
@@ -249,9 +371,7 @@ class TestBinanceDataVisionDownloaderInit:
     def test_init_with_custom_concurrency(self, klines_dataset, tmp_path):
         """Test initialization with custom concurrency."""
         downloader = BinanceDataVisionDownloader(
-            dataset=klines_dataset,
-            temp_path=tmp_path,
-            max_concurrent=50
+            dataset=klines_dataset, temp_path=tmp_path, max_concurrent=50
         )
 
         assert downloader.max_concurrent == 50
@@ -260,6 +380,7 @@ class TestBinanceDataVisionDownloaderInit:
 # -----------------------------------------------------------------------------
 # TestBinanceDataVisionDownloaderDownloadFile
 # -----------------------------------------------------------------------------
+
 
 class TestBinanceDataVisionDownloaderDownloadFile:
     """Test Binance Data Vision file download behavior."""
@@ -290,13 +411,13 @@ class TestBinanceDataVisionDownloaderDownloadFile:
     async def test_successful_download_writes_file(self, klines_dataset, tmp_path):
         downloader = BinanceDataVisionDownloader(dataset=klines_dataset, temp_path=tmp_path)
         buffer = io.BytesIO()
-        with zipfile.ZipFile(buffer, mode='w') as zf:
+        with zipfile.ZipFile(buffer, mode="w") as zf:
             zf.writestr("test.csv", "a,b\n1,2\n")
         zip_content = buffer.getvalue()
 
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.headers = {'Content-Length': str(len(zip_content))}
+        mock_response.headers = {"Content-Length": str(len(zip_content))}
         mock_response.read = AsyncMock(return_value=zip_content)
         mock_response.raise_for_status = MagicMock()
         mock_response.__aenter__ = AsyncMock(return_value=mock_response)
@@ -324,7 +445,7 @@ class TestBinanceDataVisionDownloaderDownloadFile:
 
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.headers = {'Content-Length': '1000'}
+        mock_response.headers = {"Content-Length": "1000"}
         mock_response.read = AsyncMock(return_value=zip_content)
         mock_response.raise_for_status = MagicMock()
         mock_response.__aenter__ = AsyncMock(return_value=mock_response)
@@ -353,7 +474,7 @@ class TestBinanceDataVisionDownloaderDownloadFile:
 
         mock_response = AsyncMock()
         mock_response.status = 200
-        mock_response.headers = {'Content-Length': str(len(non_zip_content))}
+        mock_response.headers = {"Content-Length": str(len(non_zip_content))}
         mock_response.read = AsyncMock(return_value=non_zip_content)
         mock_response.raise_for_status = MagicMock()
         mock_response.__aenter__ = AsyncMock(return_value=mock_response)
@@ -364,7 +485,7 @@ class TestBinanceDataVisionDownloaderDownloadFile:
         mock_session.close = AsyncMock()
 
         output_path = tmp_path / "test.zip"
-        temp_path = output_path.with_suffix('.tmp')
+        temp_path = output_path.with_suffix(".tmp")
         async with downloader:
             downloader._session = mock_session
             result = await downloader._download_file(
@@ -381,41 +502,59 @@ class TestBinanceDataVisionDownloaderDownloadFile:
 # TestTickerMappingCache
 # -----------------------------------------------------------------------------
 
+
 class TestTickerMappingCache:
     """Test ticker mapping cache functions."""
 
     def test_get_nonexistent_mapping_returns_none(self):
         """Test getting a mapping that doesn't exist."""
-        assert get_ticker_mapping('BTCUSDT') is None
+        assert get_ticker_mapping("BTCUSDT") is None
 
     def test_set_and_get_mapping(self):
         """Test setting and getting a mapping."""
-        set_ticker_mapping('PEPEUSDT', '1000PEPEUSDT')
+        set_ticker_mapping("PEPEUSDT", "1000PEPEUSDT")
 
-        assert get_ticker_mapping('PEPEUSDT') == '1000PEPEUSDT'
-        assert get_ticker_mapping('BTCUSDT') is None
+        assert get_ticker_mapping("PEPEUSDT") == "1000PEPEUSDT"
+        assert get_ticker_mapping("BTCUSDT") is None
 
     def test_clear_mappings(self):
         """Test clearing all mappings."""
-        set_ticker_mapping('PEPEUSDT', '1000PEPEUSDT')
-        set_ticker_mapping('SHIBUSDT', '1000SHIBUSDT')
+        set_ticker_mapping("PEPEUSDT", "1000PEPEUSDT")
+        set_ticker_mapping("SHIBUSDT", "1000SHIBUSDT")
 
         clear_ticker_mappings()
 
-        assert get_ticker_mapping('PEPEUSDT') is None
-        assert get_ticker_mapping('SHIBUSDT') is None
+        assert get_ticker_mapping("PEPEUSDT") is None
+        assert get_ticker_mapping("SHIBUSDT") is None
 
     def test_overwrite_mapping(self):
         """Test overwriting an existing mapping."""
-        set_ticker_mapping('PEPEUSDT', '1000PEPEUSDT')
-        set_ticker_mapping('PEPEUSDT', 'UPDATED')
+        set_ticker_mapping("PEPEUSDT", "1000PEPEUSDT")
+        set_ticker_mapping("PEPEUSDT", "UPDATED")
 
-        assert get_ticker_mapping('PEPEUSDT') == 'UPDATED'
+        assert get_ticker_mapping("PEPEUSDT") == "UPDATED"
+
+
+class TestTickerMappingRetryRules:
+    """Test 1000-prefix auto-discovery guardrails."""
+
+    def test_does_not_retry_spot_symbols(self):
+        assert not _should_retry_with_1000_prefix(DataType.SPOT, "PEPEUSDT")
+
+    def test_does_not_double_prefix_existing_1000_symbol(self):
+        assert not _should_retry_with_1000_prefix(DataType.FUTURES, "1000SATSUSDT")
+
+    def test_does_not_retry_digit_prefixed_base_symbol(self):
+        assert not _should_retry_with_1000_prefix(DataType.FUTURES, "2ZUSDT")
+
+    def test_retries_plausible_futures_symbol(self):
+        assert _should_retry_with_1000_prefix(DataType.FUTURES, "PEPEUSDT")
 
 
 # -----------------------------------------------------------------------------
 # TestDownloadResultIsNotFound
 # -----------------------------------------------------------------------------
+
 
 class TestDownloadResultIsNotFound:
     """Test DownloadResult.is_not_found property."""
@@ -423,10 +562,7 @@ class TestDownloadResultIsNotFound:
     def test_success_is_not_not_found(self):
         """Test that successful results are not 'not_found'."""
         result = DownloadResult(
-            success=True,
-            symbol='BTCUSDT',
-            data_type=DataType.SPOT,
-            period='2024-01'
+            success=True, symbol="BTCUSDT", data_type=DataType.SPOT, period="2024-01"
         )
         assert result.is_not_found is False
 
@@ -434,10 +570,10 @@ class TestDownloadResultIsNotFound:
         """Test that failure with 'not_found' error is detected."""
         result = DownloadResult(
             success=False,
-            symbol='BTCUSDT',
+            symbol="BTCUSDT",
             data_type=DataType.SPOT,
-            period='2024-01',
-            error='not_found'
+            period="2024-01",
+            error="not_found",
         )
         assert result.is_not_found is True
 
@@ -445,9 +581,9 @@ class TestDownloadResultIsNotFound:
         """Test that failure with other error is not 'not_found'."""
         result = DownloadResult(
             success=False,
-            symbol='BTCUSDT',
+            symbol="BTCUSDT",
             data_type=DataType.SPOT,
-            period='2024-01',
-            error='timeout'
+            period="2024-01",
+            error="timeout",
         )
         assert result.is_not_found is False

@@ -8,9 +8,9 @@ import logging
 import zipfile
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
 
 import duckdb
+import pandas as pd
 import pandera.pandas as pa
 
 from crypto_data.binance_datasets.base import BinanceDatasetStrategy
@@ -48,8 +48,10 @@ class BinanceDuckDBImporter:
         conn,
         file_path: Path,
         symbol: str,
-        period: Optional[str] = None,
+        period: str | None = None,
         replace_existing: bool = False,
+        window_start: datetime | None = None,
+        window_end: datetime | None = None,
     ) -> int:
         """
         Import a downloaded ZIP file into DuckDB.
@@ -73,6 +75,12 @@ class BinanceDuckDBImporter:
         replace_existing : bool
             If True, replace existing rows for the parsed period after
             validation succeeds.
+        window_start : datetime, optional
+            Exclusive lower bound for kline close timestamps to import.
+            Ignored for non-kline tables.
+        window_end : datetime, optional
+            Inclusive upper bound for kline close timestamps to import.
+            Ignored for non-kline tables.
 
         Returns
         -------
@@ -88,8 +96,8 @@ class BinanceDuckDBImporter:
         logger.debug(f"Importing to {table} (exchange=binance, symbol={symbol})")
 
         # Extract ZIP file
-        with zipfile.ZipFile(file_path, 'r') as zip_ref:
-            csv_files = [f for f in zip_ref.namelist() if f.endswith('.csv')]
+        with zipfile.ZipFile(file_path, "r") as zip_ref:
+            csv_files = [f for f in zip_ref.namelist() if f.endswith(".csv")]
 
             if not csv_files:
                 raise ValueError(f"No CSV file found in ZIP: {file_path}")
@@ -105,8 +113,20 @@ class BinanceDuckDBImporter:
             # Parse CSV using the dataset handler.
             df = self.dataset.parse_csv(csv_path, symbol)
 
+            if table in ("spot", "futures") and (
+                window_start is not None or window_end is not None
+            ):
+                timestamps = df["timestamp"]
+                keep = True
+                if window_start is not None:
+                    keep = timestamps > pd.Timestamp(window_start)
+                if window_end is not None:
+                    upper_keep = timestamps <= pd.Timestamp(window_end)
+                    keep = keep & upper_keep if not isinstance(keep, bool) else upper_keep
+                df = df.loc[keep].reset_index(drop=True)
+
             if df.empty:
-                logger.debug(f"  No data after parsing (filtered out)")
+                logger.debug("  No data after parsing (filtered out)")
                 return 0
 
             # Validate using the dataset schema.
@@ -118,12 +138,10 @@ class BinanceDuckDBImporter:
                 logger.error(f"  Data validation FAILED for {symbol} {table}")
                 logger.error(f"  Validation errors: {e}")
                 logger.error(f"  File rejected: {file_path.name}")
-                raise ValueError(
-                    f"Data validation failed for {symbol}: Invalid data format"
-                ) from e
+                raise ValueError(f"Data validation failed for {symbol}: Invalid data format") from e
 
             if replace_existing:
-                if table not in ('spot', 'futures') or not period:
+                if table not in ("spot", "futures") or not period:
                     raise ValueError("replace_existing requires a daily kline period")
 
                 start = datetime.strptime(period, "%Y-%m-%d")
@@ -137,7 +155,7 @@ class BinanceDuckDBImporter:
                       AND timestamp > ?
                       AND timestamp <= ?
                     """,
-                    ['binance', symbol, self.dataset.interval.value, start, end],
+                    ["binance", symbol, self.dataset.interval.value, start, end],
                 )
                 conn.execute(f"INSERT INTO {table} SELECT * FROM df")
                 logger.debug(f"  Replaced {len(df)} rows for {symbol} {table} {period}")
@@ -147,11 +165,13 @@ class BinanceDuckDBImporter:
             # re-downloaded period can repair partial data without failing on
             # rows that are already present.
             key_columns = (
-                ['exchange', 'symbol', 'interval', 'timestamp']
-                if table in ('spot', 'futures')
-                else ['exchange', 'symbol', 'timestamp']
+                ["exchange", "symbol", "interval", "timestamp"]
+                if table in ("spot", "futures")
+                else ["exchange", "symbol", "timestamp"]
             )
-            join_conditions = " AND ".join(f"existing.{col} = incoming.{col}" for col in key_columns)
+            join_conditions = " AND ".join(
+                f"existing.{col} = incoming.{col}" for col in key_columns
+            )
             inserted_count = conn.execute(f"""
                 SELECT COUNT(*)
                 FROM df AS incoming

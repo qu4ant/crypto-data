@@ -8,18 +8,17 @@ Tests Pandera schemas for OHLCV data validation including:
 - Statistical validation
 """
 
-import pytest
-from crypto_data.enums import DataType, Interval
 import pandas as pd
 import pandera.pandas as pa
+import pytest
 
+from crypto_data.enums import Interval
 from crypto_data.schemas import (
-    OHLCV_SCHEMA,
-    OHLCV_STATISTICAL_SCHEMA,
-    SPOT_SCHEMA,
     FUTURES_SCHEMA,
+    OHLCV_SCHEMA,
+    SPOT_SCHEMA,
     validate_ohlcv_dataframe,
-    validate_ohlcv_statistical
+    validate_ohlcv_statistical,
 )
 
 
@@ -50,21 +49,23 @@ class TestOHLCVSchema:
 
     def test_null_price_fails(self):
         """Test that null prices are caught"""
-        df = pd.DataFrame({
-            'exchange': ['binance'],
-            'symbol': ['BTCUSDT'],
-            'interval': [Interval.MIN_5.value],
-            'timestamp': [pd.Timestamp('2024-01-01')],
-            'open': [None],  # Null price
-            'high': [50100.0],
-            'low': [49900.0],
-            'close': [50010.0],
-            'volume': [100.5],
-            'quote_volume': [5000000.0],
-            'trades_count': [500],
-            'taker_buy_base_volume': [50.2],
-            'taker_buy_quote_volume': [2500000.0]
-        })
+        df = pd.DataFrame(
+            {
+                "exchange": ["binance"],
+                "symbol": ["BTCUSDT"],
+                "interval": [Interval.MIN_5.value],
+                "timestamp": [pd.Timestamp("2024-01-01")],
+                "open": [None],  # Null price
+                "high": [50100.0],
+                "low": [49900.0],
+                "close": [50010.0],
+                "volume": [100.5],
+                "quote_volume": [5000000.0],
+                "trades_count": [500],
+                "taker_buy_base_volume": [50.2],
+                "taker_buy_quote_volume": [2500000.0],
+            }
+        )
 
         with pytest.raises(pa.errors.SchemaError):
             OHLCV_SCHEMA.validate(df)
@@ -72,7 +73,7 @@ class TestOHLCVSchema:
     def test_invalid_exchange_fails(self, valid_ohlcv_df):
         """Test that invalid exchange name is caught (uppercase, special chars)"""
         df = valid_ohlcv_df.copy()
-        df['exchange'] = 'INVALID!@#'  # Uppercase + special characters (not allowed)
+        df["exchange"] = "INVALID!@#"  # Uppercase + special characters (not allowed)
 
         with pytest.raises(pa.errors.SchemaError):
             OHLCV_SCHEMA.validate(df)
@@ -80,7 +81,7 @@ class TestOHLCVSchema:
     def test_invalid_interval_fails(self, valid_ohlcv_df):
         """Test that invalid interval is caught"""
         df = valid_ohlcv_df.copy()
-        df['interval'] = '99m'  # Invalid interval
+        df["interval"] = "99m"  # Invalid interval
 
         with pytest.raises(pa.errors.SchemaError):
             OHLCV_SCHEMA.validate(df)
@@ -88,28 +89,30 @@ class TestOHLCVSchema:
     def test_negative_volume_fails(self, valid_ohlcv_df):
         """Test that negative volume is caught"""
         df = valid_ohlcv_df.copy()
-        df.loc[0, 'volume'] = -100.0
+        df.loc[0, "volume"] = -100.0
 
         with pytest.raises(pa.errors.SchemaError):
             OHLCV_SCHEMA.validate(df)
 
     def test_empty_dataframe_passes(self):
         """Test that empty DataFrame with correct schema passes"""
-        df = pd.DataFrame({
-            'exchange': pd.Series([], dtype=str),
-            'symbol': pd.Series([], dtype=str),
-            'interval': pd.Series([], dtype=str),
-            'timestamp': pd.Series([], dtype='datetime64[ns]'),
-            'open': pd.Series([], dtype=float),
-            'high': pd.Series([], dtype=float),
-            'low': pd.Series([], dtype=float),
-            'close': pd.Series([], dtype=float),
-            'volume': pd.Series([], dtype=float),
-            'quote_volume': pd.Series([], dtype=float),
-            'trades_count': pd.Series([], dtype='Int64'),
-            'taker_buy_base_volume': pd.Series([], dtype=float),
-            'taker_buy_quote_volume': pd.Series([], dtype=float)
-        })
+        df = pd.DataFrame(
+            {
+                "exchange": pd.Series([], dtype=str),
+                "symbol": pd.Series([], dtype=str),
+                "interval": pd.Series([], dtype=str),
+                "timestamp": pd.Series([], dtype="datetime64[ns]"),
+                "open": pd.Series([], dtype=float),
+                "high": pd.Series([], dtype=float),
+                "low": pd.Series([], dtype=float),
+                "close": pd.Series([], dtype=float),
+                "volume": pd.Series([], dtype=float),
+                "quote_volume": pd.Series([], dtype=float),
+                "trades_count": pd.Series([], dtype="Int64"),
+                "taker_buy_base_volume": pd.Series([], dtype=float),
+                "taker_buy_quote_volume": pd.Series([], dtype=float),
+            }
+        )
 
         # Should not raise
         OHLCV_SCHEMA.validate(df)
@@ -148,21 +151,23 @@ class TestOHLCVStatisticalValidation:
         num_points = 51
         close_prices = list(range(50000, 50000 + 50)) + [5000000.0]  # 100x jump
 
-        df = pd.DataFrame({
-            'exchange': ['binance'] * num_points,
-            'symbol': ['BTCUSDT'] * num_points,
-            'interval': [Interval.MIN_5.value] * num_points,
-            'timestamp': pd.date_range('2024-01-01', periods=num_points, freq='5min'),
-            'open': [50000.0] * num_points,
-            'high': [50100.0] * num_points,
-            'low': [49900.0] * num_points,
-            'close': close_prices,
-            'volume': [100.0] * num_points,
-            'quote_volume': [5000000.0] * num_points,
-            'trades_count': [500] * num_points,
-            'taker_buy_base_volume': [50.0] * num_points,
-            'taker_buy_quote_volume': [2500000.0] * num_points
-        })
+        df = pd.DataFrame(
+            {
+                "exchange": ["binance"] * num_points,
+                "symbol": ["BTCUSDT"] * num_points,
+                "interval": [Interval.MIN_5.value] * num_points,
+                "timestamp": pd.date_range("2024-01-01", periods=num_points, freq="5min"),
+                "open": [50000.0] * num_points,
+                "high": [50100.0] * num_points,
+                "low": [49900.0] * num_points,
+                "close": close_prices,
+                "volume": [100.0] * num_points,
+                "quote_volume": [5000000.0] * num_points,
+                "trades_count": [500] * num_points,
+                "taker_buy_base_volume": [50.0] * num_points,
+                "taker_buy_quote_volume": [2500000.0] * num_points,
+            }
+        )
 
         passed, warnings = validate_ohlcv_statistical(df)
         # Should detect outlier (warning, not error)

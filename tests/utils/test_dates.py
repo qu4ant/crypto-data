@@ -5,8 +5,9 @@ Tests the generate_month_list() function which is used for generating
 monthly snapshots for universe data ingestion.
 """
 
-import pytest
 from datetime import datetime
+
+import pytest
 
 from crypto_data.utils.dates import generate_date_list, generate_month_list
 
@@ -18,7 +19,7 @@ def test_single_month():
 
     result = generate_month_list(start, end)
 
-    assert result == ['2024-01']
+    assert result == ["2024-01"]
     assert len(result) == 1
 
 
@@ -29,7 +30,7 @@ def test_multiple_months():
 
     result = generate_month_list(start, end)
 
-    assert result == ['2024-01', '2024-02', '2024-03']
+    assert result == ["2024-01", "2024-02", "2024-03"]
     assert len(result) == 3
 
 
@@ -40,11 +41,11 @@ def test_year_boundary():
 
     result = generate_month_list(start, end)
 
-    assert result == ['2023-11', '2023-12', '2024-01', '2024-02']
+    assert result == ["2023-11", "2023-12", "2024-01", "2024-02"]
     assert len(result) == 4
     # Verify year transition
-    assert '2023-12' in result
-    assert '2024-01' in result
+    assert "2023-12" in result
+    assert "2024-01" in result
 
 
 def test_same_date():
@@ -53,7 +54,7 @@ def test_same_date():
 
     result = generate_month_list(date, date)
 
-    assert result == ['2024-06']
+    assert result == ["2024-06"]
     assert len(result) == 1
 
 
@@ -64,7 +65,7 @@ def test_first_day_of_month():
 
     result = generate_month_list(start, end)
 
-    assert result == ['2024-01', '2024-02', '2024-03']
+    assert result == ["2024-01", "2024-02", "2024-03"]
     assert len(result) == 3
 
 
@@ -75,7 +76,7 @@ def test_last_day_of_month():
 
     result = generate_month_list(start, end)
 
-    assert result == ['2024-01', '2024-02', '2024-03']
+    assert result == ["2024-01", "2024-02", "2024-03"]
     assert len(result) == 3
 
 
@@ -98,10 +99,10 @@ def test_full_year():
     result = generate_month_list(start, end)
 
     assert len(result) == 12
-    assert result[0] == '2024-01'
-    assert result[-1] == '2024-12'
+    assert result[0] == "2024-01"
+    assert result[-1] == "2024-12"
     # Verify all months present
-    expected = [f'2024-{str(i).zfill(2)}' for i in range(1, 13)]
+    expected = [f"2024-{str(i).zfill(2)}" for i in range(1, 13)]
     assert result == expected
 
 
@@ -110,7 +111,7 @@ def test_generate_date_list_monthly_matches_month_list():
     start = datetime(2024, 1, 15)
     end = datetime(2024, 3, 20)
 
-    monthly = generate_date_list(start, end, frequency='monthly')
+    monthly = generate_date_list(start, end, frequency="monthly")
     expected = [f"{month}-01" for month in generate_month_list(start, end)]
 
     assert monthly == expected
@@ -121,10 +122,10 @@ def test_generate_date_list_daily_three_days():
     start = datetime(2024, 1, 1)
     end = datetime(2024, 1, 3)
 
-    assert generate_date_list(start, end, frequency='daily') == [
-        '2024-01-01',
-        '2024-01-02',
-        '2024-01-03',
+    assert generate_date_list(start, end, frequency="daily") == [
+        "2024-01-01",
+        "2024-01-02",
+        "2024-01-03",
     ]
 
 
@@ -133,10 +134,10 @@ def test_generate_date_list_daily_year_boundary():
     start = datetime(2023, 12, 31)
     end = datetime(2024, 1, 2)
 
-    assert generate_date_list(start, end, frequency='daily') == [
-        '2023-12-31',
-        '2024-01-01',
-        '2024-01-02',
+    assert generate_date_list(start, end, frequency="daily") == [
+        "2023-12-31",
+        "2024-01-01",
+        "2024-01-02",
     ]
 
 
@@ -145,10 +146,10 @@ def test_generate_date_list_weekly_aligns_on_monday():
     start = datetime(2024, 1, 2)  # Tuesday
     end = datetime(2024, 1, 22)
 
-    assert generate_date_list(start, end, frequency='weekly') == [
-        '2024-01-08',
-        '2024-01-15',
-        '2024-01-22',
+    assert generate_date_list(start, end, frequency="weekly") == [
+        "2024-01-08",
+        "2024-01-15",
+        "2024-01-22",
     ]
 
 
@@ -158,10 +159,10 @@ def test_generate_date_list_invalid_frequency_raises():
     end = datetime(2024, 1, 2)
 
     with pytest.raises(ValueError, match="Invalid frequency"):
-        generate_date_list(start, end, frequency='hourly')  # type: ignore[arg-type]
+        generate_date_list(start, end, frequency="hourly")  # type: ignore[arg-type]
 
 
-@pytest.mark.parametrize("frequency", ['daily', 'weekly', 'monthly'])
+@pytest.mark.parametrize("frequency", ["daily", "weekly", "monthly"])
 def test_generate_date_list_backward_returns_empty(frequency):
     """All frequencies should return empty when start > end."""
     start = datetime(2024, 2, 1)

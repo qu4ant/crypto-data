@@ -2,14 +2,13 @@
 Tests for Open Interest Metrics Schema
 """
 
-import pytest
 import pandas as pd
 import pandera.pandas as pa
+import pytest
 
 from crypto_data.schemas import (
     OPEN_INTEREST_SCHEMA,
-    validate_open_interest_dataframe,
-    validate_open_interest_statistical
+    validate_open_interest_statistical,
 )
 
 
@@ -29,24 +28,28 @@ class TestOpenInterestSchema:
 
     def test_negative_open_interest_fails(self):
         """Test that negative open interest fails"""
-        df = pd.DataFrame({
-            'exchange': ['binance'],
-            'symbol': ['BTCUSDT'],
-            'timestamp': [pd.Timestamp('2024-01-01')],
-            'open_interest': [-100000.0]  # Negative
-        })
+        df = pd.DataFrame(
+            {
+                "exchange": ["binance"],
+                "symbol": ["BTCUSDT"],
+                "timestamp": [pd.Timestamp("2024-01-01")],
+                "open_interest": [-100000.0],  # Negative
+            }
+        )
 
         with pytest.raises(pa.errors.SchemaError):
             OPEN_INTEREST_SCHEMA.validate(df)
 
     def test_null_open_interest_fails(self):
         """Test that null open interest fails"""
-        df = pd.DataFrame({
-            'exchange': ['binance'],
-            'symbol': ['BTCUSDT'],
-            'timestamp': [pd.Timestamp('2024-01-01')],
-            'open_interest': [None]  # Null
-        })
+        df = pd.DataFrame(
+            {
+                "exchange": ["binance"],
+                "symbol": ["BTCUSDT"],
+                "timestamp": [pd.Timestamp("2024-01-01")],
+                "open_interest": [None],  # Null
+            }
+        )
 
         with pytest.raises(pa.errors.SchemaError):
             OPEN_INTEREST_SCHEMA.validate(df)
@@ -74,7 +77,7 @@ class TestOpenInterestStatisticalEdgeCases:
         """DataFrame with < 3 rows should pass (insufficient for statistics)"""
         from crypto_data.schemas.metrics import check_open_interest_outliers
 
-        df = pd.DataFrame({'open_interest': [100.0, 200.0]})
+        df = pd.DataFrame({"open_interest": [100.0, 200.0]})
         result = check_open_interest_outliers(df)
         assert result is True  # Too few rows for statistical analysis
 
@@ -82,7 +85,7 @@ class TestOpenInterestStatisticalEdgeCases:
         """DataFrame with zero variance (all same values) should pass"""
         from crypto_data.schemas.metrics import check_open_interest_outliers
 
-        df = pd.DataFrame({'open_interest': [100.0, 100.0, 100.0, 100.0]})
+        df = pd.DataFrame({"open_interest": [100.0, 100.0, 100.0, 100.0]})
         result = check_open_interest_outliers(df)
         assert result is True  # Zero std deviation = no outliers
 
@@ -92,7 +95,7 @@ class TestOpenInterestStatisticalEdgeCases:
 
         # Create data with extreme outlier - need more samples for meaningful z-score
         values = [100.0] * 100 + [10000000.0]  # 100 normal + 1 extreme
-        df = pd.DataFrame({'open_interest': values})
+        df = pd.DataFrame({"open_interest": values})
         result = check_open_interest_outliers(df, z_threshold=3.0)  # Lower threshold
         # Function should return boolean (test it doesn't error)
         assert result in [True, False]
@@ -102,19 +105,21 @@ class TestOpenInterestStatisticalEdgeCases:
         from crypto_data.schemas.metrics import check_open_interest_outliers
 
         # Create data with moderate variation
-        df = pd.DataFrame({'open_interest': [100.0, 110.0, 90.0, 105.0, 95.0]})
+        df = pd.DataFrame({"open_interest": [100.0, 110.0, 90.0, 105.0, 95.0]})
         result = check_open_interest_outliers(df, z_threshold=5.0)
         # Function should return boolean (test it doesn't error)
         assert result in [True, False]
 
     def test_statistical_validation_returns_tuple(self):
         """Statistical validation should return (passed, warnings) tuple"""
-        df = pd.DataFrame({
-            'exchange': ['binance'] * 6,
-            'symbol': ['BTCUSDT'] * 6,
-            'timestamp': pd.date_range('2024-01-01', periods=6),
-            'open_interest': [100.0, 200.0, 150.0, 180.0, 120.0, 160.0]
-        })
+        df = pd.DataFrame(
+            {
+                "exchange": ["binance"] * 6,
+                "symbol": ["BTCUSDT"] * 6,
+                "timestamp": pd.date_range("2024-01-01", periods=6),
+                "open_interest": [100.0, 200.0, 150.0, 180.0, 120.0, 160.0],
+            }
+        )
 
         result = validate_open_interest_statistical(df)
         assert isinstance(result, tuple)
@@ -126,12 +131,14 @@ class TestOpenInterestStatisticalEdgeCases:
     def test_statistical_validation_warning_structure(self):
         """Test that warnings have expected structure when present"""
         # This tests the function returns correct structure
-        df = pd.DataFrame({
-            'exchange': ['binance'],
-            'symbol': ['BTCUSDT'],
-            'timestamp': [pd.Timestamp('2024-01-01')],
-            'open_interest': [100.0]
-        })
+        df = pd.DataFrame(
+            {
+                "exchange": ["binance"],
+                "symbol": ["BTCUSDT"],
+                "timestamp": [pd.Timestamp("2024-01-01")],
+                "open_interest": [100.0],
+            }
+        )
 
         passed, warnings = validate_open_interest_statistical(df)
         assert isinstance(warnings, list)  # Warnings should always be a list

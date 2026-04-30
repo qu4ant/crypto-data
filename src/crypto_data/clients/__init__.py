@@ -13,4 +13,4 @@ They are used internally by the database builder and pipeline modules.
 from .coinmarketcap import CoinMarketCapClient
 
 # Internal-only exports (used by database_builder.py, not part of public API)
-__all__ = ['CoinMarketCapClient']
+__all__ = ["CoinMarketCapClient"]

@@ -13,7 +13,6 @@ from tests.validation.utils.sampling import (
     sample_universe,
 )
 
-
 # Tolerances
 MARKET_CAP_TOLERANCE = 0.01  # 1% tolerance for market cap rounding
 RANK_TOLERANCE = 0  # Exact match for ranks
@@ -59,9 +58,8 @@ def parse_cmc_response(api_response: list) -> dict:
             elif candidate_rank == existing_rank:
                 existing_mcap = existing.get("market_cap")
                 candidate_mcap = candidate.get("market_cap")
-                if (
-                    candidate_mcap is not None
-                    and (existing_mcap is None or candidate_mcap > existing_mcap)
+                if candidate_mcap is not None and (
+                    existing_mcap is None or candidate_mcap > existing_mcap
                 ):
                     api_by_symbol[symbol] = candidate
     return api_by_symbol
@@ -153,9 +151,7 @@ class TestUniverseValidation:
                 # Compare each sample
                 for sample in date_samples:
                     if sample.symbol in api_by_symbol:
-                        compare_universe_sample(
-                            sample, api_by_symbol[sample.symbol], collector
-                        )
+                        compare_universe_sample(sample, api_by_symbol[sample.symbol], collector)
                         collector.record_success()
                     else:
                         collector.record_skip(
@@ -164,7 +160,7 @@ class TestUniverseValidation:
 
             except Exception as e:
                 for sample in date_samples:
-                    collector.record_skip(f"API error for {date}: {str(e)}")
+                    collector.record_skip(f"API error for {date}: {e!s}")
 
         # Report results
         print(f"\n{collector.get_summary()}")
@@ -215,9 +211,7 @@ class TestUniverseValidation:
         # Fetch from API
         try:
             date_str = (
-                test_date.strftime("%Y-%m-%d")
-                if hasattr(test_date, "strftime")
-                else str(test_date)
+                test_date.strftime("%Y-%m-%d") if hasattr(test_date, "strftime") else str(test_date)
             )
             api_response = await cmc_client.get_historical_listings(
                 date=date_str,
@@ -234,9 +228,7 @@ class TestUniverseValidation:
 
         # Compare
         for symbol, rank, market_cap in db_top10:
-            sample = UniverseSample(
-                date=test_date, symbol=symbol, rank=rank, market_cap=market_cap
-            )
+            sample = UniverseSample(date=test_date, symbol=symbol, rank=rank, market_cap=market_cap)
             if symbol in api_by_symbol:
                 compare_universe_sample(sample, api_by_symbol[symbol], collector)
                 collector.record_success()

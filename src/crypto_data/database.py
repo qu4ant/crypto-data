@@ -7,6 +7,7 @@ This is a pure ingestion/storage layer - querying is done externally via SQL.
 
 import logging
 from pathlib import Path
+
 import duckdb
 
 logger = logging.getLogger(__name__)

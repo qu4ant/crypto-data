@@ -7,30 +7,31 @@ Tests the shared helper functions used by both universe and binance ingestion:
 - log_ingestion_summary()
 """
 
-import pytest
-from crypto_data.enums import Interval
 import tempfile
-from pathlib import Path
 from datetime import date
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
+from crypto_data.enums import DataType, Interval
 from crypto_data.utils.ingestion_helpers import (
     initialize_ingestion_stats,
+    log_ingestion_summary,
     query_data_availability,
-    log_ingestion_summary
 )
-
 
 # =============================================================================
 # Tests for initialize_ingestion_stats()
 # =============================================================================
+
 
 def test_initialize_ingestion_stats_returns_correct_structure():
     """Test that initialize_ingestion_stats returns dict with correct keys."""
     stats = initialize_ingestion_stats()
 
     assert isinstance(stats, dict)
-    assert set(stats.keys()) == {'downloaded', 'skipped', 'failed', 'not_found'}
+    assert set(stats.keys()) == {"downloaded", "skipped", "failed", "not_found"}
     assert all(isinstance(v, int) for v in stats.values())
 
 
@@ -38,36 +39,37 @@ def test_initialize_ingestion_stats_all_zeros():
     """Test that all stats are initialized to zero."""
     stats = initialize_ingestion_stats()
 
-    assert stats['downloaded'] == 0
-    assert stats['skipped'] == 0
-    assert stats['failed'] == 0
-    assert stats['not_found'] == 0
+    assert stats["downloaded"] == 0
+    assert stats["skipped"] == 0
+    assert stats["failed"] == 0
+    assert stats["not_found"] == 0
 
 
 def test_initialize_ingestion_stats_is_mutable():
     """Test that returned dict can be modified (for stats tracking)."""
     stats = initialize_ingestion_stats()
 
-    stats['downloaded'] += 5
-    stats['failed'] += 2
+    stats["downloaded"] += 5
+    stats["failed"] += 2
 
-    assert stats['downloaded'] == 5
-    assert stats['failed'] == 2
+    assert stats["downloaded"] == 5
+    assert stats["failed"] == 2
 
 
 # =============================================================================
 # Tests for query_data_availability()
 # =============================================================================
 
+
 def test_query_data_availability_returns_correct_format():
     """Test that query returns list of tuples with correct structure."""
     mock_conn = MagicMock()
     mock_conn.execute.return_value.fetchall.return_value = [
-        ('BTCUSDT', 'spot', date(2024, 1, 1), date(2024, 12, 31)),
-        ('BTCUSDT', 'futures', date(2024, 1, 1), date(2024, 12, 31))
+        ("BTCUSDT", "spot", date(2024, 1, 1), date(2024, 12, 31)),
+        ("BTCUSDT", "futures", date(2024, 1, 1), date(2024, 12, 31)),
     ]
 
-    result = query_data_availability(mock_conn, ['BTCUSDT'],Interval.MIN_5)
+    result = query_data_availability(mock_conn, ["BTCUSDT"], Interval.MIN_5)
 
     assert isinstance(result, list)
     assert len(result) == 2
@@ -80,20 +82,20 @@ def test_query_data_availability_executes_correct_query():
     mock_conn = MagicMock()
     mock_conn.execute.return_value.fetchall.return_value = []
 
-    query_data_availability(mock_conn, ['BTCUSDT', 'ETHUSDT'],Interval.MIN_5)
+    query_data_availability(mock_conn, ["BTCUSDT", "ETHUSDT"], Interval.MIN_5)
 
     # Verify query was executed
     assert mock_conn.execute.called
 
     # Verify query contains expected parts
     query = mock_conn.execute.call_args[0][0]
-    assert 'spot' in query
-    assert 'futures' in query
-    assert 'open_interest' in query
-    assert 'funding_rates' in query
-    assert 'UNION ALL' in query
-    assert 'MIN(timestamp::DATE)' in query
-    assert 'MAX(timestamp::DATE)' in query
+    assert "spot" in query
+    assert "futures" in query
+    assert "open_interest" in query
+    assert "funding_rates" in query
+    assert "UNION ALL" in query
+    assert "MIN(timestamp::DATE)" in query
+    assert "MAX(timestamp::DATE)" in query
 
 
 def test_query_data_availability_with_multiple_symbols():
@@ -101,8 +103,8 @@ def test_query_data_availability_with_multiple_symbols():
     mock_conn = MagicMock()
     mock_conn.execute.return_value.fetchall.return_value = []
 
-    symbols = ['BTCUSDT', 'ETHUSDT', 'SOLUSDT']
-    query_data_availability(mock_conn, symbols,Interval.MIN_5)
+    symbols = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
+    query_data_availability(mock_conn, symbols, Interval.MIN_5)
 
     # Verify placeholders:
     # spot: symbols + interval = 3 + 1 = 4
@@ -111,11 +113,14 @@ def test_query_data_availability_with_multiple_symbols():
     # funding_rates: symbols = 3
     # Total: 4 + 4 + 3 + 3 = 14 placeholders
     query = mock_conn.execute.call_args[0][0]
-    assert query.count('?') == (len(symbols) + 1) * 2 + len(symbols) * 2
+    assert query.count("?") == (len(symbols) + 1) * 2 + len(symbols) * 2
 
     # Verify parameters passed correctly
     params = mock_conn.execute.call_args[0][1]
-    assert params == symbols + [Interval.MIN_5.value] + symbols + [Interval.MIN_5.value] + symbols + symbols
+    assert (
+        params
+        == symbols + [Interval.MIN_5.value] + symbols + [Interval.MIN_5.value] + symbols + symbols
+    )
 
 
 def test_query_data_availability_empty_result():
@@ -123,7 +128,7 @@ def test_query_data_availability_empty_result():
     mock_conn = MagicMock()
     mock_conn.execute.return_value.fetchall.return_value = []
 
-    result = query_data_availability(mock_conn, ['BTCUSDT'],Interval.MIN_5)
+    result = query_data_availability(mock_conn, ["BTCUSDT"], Interval.MIN_5)
 
     assert result == []
 
@@ -132,17 +137,17 @@ def test_query_data_availability_includes_all_four_data_types():
     """Test that query includes spot, futures, open_interest, and funding_rates."""
     mock_conn = MagicMock()
     mock_conn.execute.return_value.fetchall.return_value = [
-        ('BTCUSDT', 'funding_rates', date(2024, 1, 1), date(2024, 12, 31)),
-        ('BTCUSDT', 'futures', date(2024, 1, 1), date(2024, 12, 31)),
-        ('BTCUSDT', 'open_interest', date(2024, 1, 1), date(2024, 12, 31)),
-        ('BTCUSDT', 'spot', date(2024, 1, 1), date(2024, 12, 31))
+        ("BTCUSDT", "funding_rates", date(2024, 1, 1), date(2024, 12, 31)),
+        ("BTCUSDT", "futures", date(2024, 1, 1), date(2024, 12, 31)),
+        ("BTCUSDT", "open_interest", date(2024, 1, 1), date(2024, 12, 31)),
+        ("BTCUSDT", "spot", date(2024, 1, 1), date(2024, 12, 31)),
     ]
 
-    result = query_data_availability(mock_conn, ['BTCUSDT'],Interval.MIN_5)
+    result = query_data_availability(mock_conn, ["BTCUSDT"], Interval.MIN_5)
 
     # Verify all 4 data types returned
     data_types = {row[1] for row in result}
-    assert data_types == {'spot', 'futures', 'open_interest', 'funding_rates'}
+    assert data_types == {"spot", "futures", "open_interest", "funding_rates"}
     assert len(result) == 4
 
 
@@ -151,15 +156,15 @@ def test_query_data_availability_query_includes_all_tables():
     mock_conn = MagicMock()
     mock_conn.execute.return_value.fetchall.return_value = []
 
-    query_data_availability(mock_conn, ['BTCUSDT'],Interval.MIN_5)
+    query_data_availability(mock_conn, ["BTCUSDT"], Interval.MIN_5)
 
     # Verify query contains all tables
     query = mock_conn.execute.call_args[0][0]
-    assert 'FROM spot' in query
-    assert 'FROM futures' in query
-    assert 'FROM open_interest' in query
-    assert 'FROM funding_rates' in query
-    assert query.count('UNION ALL') == 3  # 4 queries = 3 UNION ALLs
+    assert "FROM spot" in query
+    assert "FROM futures" in query
+    assert "FROM open_interest" in query
+    assert "FROM funding_rates" in query
+    assert query.count("UNION ALL") == 3  # 4 queries = 3 UNION ALLs
 
 
 def test_query_data_availability_parameters_for_all_tables():
@@ -167,8 +172,8 @@ def test_query_data_availability_parameters_for_all_tables():
     mock_conn = MagicMock()
     mock_conn.execute.return_value.fetchall.return_value = []
 
-    symbols = ['BTCUSDT', 'ETHUSDT']
-    query_data_availability(mock_conn, symbols,Interval.MIN_5)
+    symbols = ["BTCUSDT", "ETHUSDT"]
+    query_data_availability(mock_conn, symbols, Interval.MIN_5)
 
     # Parameters:
     # spot: symbols + interval = ['BTCUSDT', 'ETHUSDT', Interval.MIN_5.value]
@@ -176,7 +181,9 @@ def test_query_data_availability_parameters_for_all_tables():
     # open_interest: symbols (no interval) = ['BTCUSDT', 'ETHUSDT']
     # funding_rates: symbols (no interval) = ['BTCUSDT', 'ETHUSDT']
     params = mock_conn.execute.call_args[0][1]
-    expected = symbols + [Interval.MIN_5.value] + symbols + [Interval.MIN_5.value] + symbols + symbols
+    expected = (
+        symbols + [Interval.MIN_5.value] + symbols + [Interval.MIN_5.value] + symbols + symbols
+    )
     assert params == expected
 
 
@@ -184,7 +191,7 @@ def test_query_data_availability_empty_symbols_list():
     """Test that empty symbols list returns empty result without executing query."""
     mock_conn = MagicMock()
 
-    result = query_data_availability(mock_conn, [],Interval.MIN_5)
+    result = query_data_availability(mock_conn, [], Interval.MIN_5)
 
     assert result == []
     # Verify query was NOT executed
@@ -195,98 +202,86 @@ def test_query_data_availability_partial_data_types():
     """Test symbols with different data type combinations."""
     mock_conn = MagicMock()
     mock_conn.execute.return_value.fetchall.return_value = [
-        ('BTCUSDT', 'open_interest', date(2024, 1, 1), date(2024, 12, 31)),
-        ('BTCUSDT', 'spot', date(2024, 1, 1), date(2024, 12, 31)),
+        ("BTCUSDT", "open_interest", date(2024, 1, 1), date(2024, 12, 31)),
+        ("BTCUSDT", "spot", date(2024, 1, 1), date(2024, 12, 31)),
         # BTCUSDT has no futures or funding_rates
-        ('ETHUSDT', 'funding_rates', date(2024, 1, 1), date(2024, 12, 31))
+        ("ETHUSDT", "funding_rates", date(2024, 1, 1), date(2024, 12, 31)),
         # ETHUSDT has ONLY funding_rates
     ]
 
-    result = query_data_availability(mock_conn, ['BTCUSDT', 'ETHUSDT'],Interval.MIN_5)
+    result = query_data_availability(mock_conn, ["BTCUSDT", "ETHUSDT"], Interval.MIN_5)
 
     # Verify correct symbols returned
     symbols_found = {row[0] for row in result}
-    assert 'BTCUSDT' in symbols_found
-    assert 'ETHUSDT' in symbols_found
+    assert "BTCUSDT" in symbols_found
+    assert "ETHUSDT" in symbols_found
 
     # Verify BTCUSDT has 2 data types
-    btc_types = {row[1] for row in result if row[0] == 'BTCUSDT'}
-    assert btc_types == {'spot', 'open_interest'}
+    btc_types = {row[1] for row in result if row[0] == "BTCUSDT"}
+    assert btc_types == {"spot", "open_interest"}
 
     # Verify ETHUSDT has only 1 data type
-    eth_types = {row[1] for row in result if row[0] == 'ETHUSDT'}
-    assert eth_types == {'funding_rates'}
+    eth_types = {row[1] for row in result if row[0] == "ETHUSDT"}
+    assert eth_types == {"funding_rates"}
 
 
 # =============================================================================
 # Tests for log_ingestion_summary()
 # =============================================================================
 
+
 def test_log_ingestion_summary_logs_basic_stats():
     """Test that basic stats are logged."""
-    stats = {
-        'downloaded': 100,
-        'skipped': 20,
-        'failed': 5,
-        'not_found': 10
-    }
+    stats = {"downloaded": 100, "skipped": 20, "failed": 5, "not_found": 10}
 
-    with patch('crypto_data.utils.ingestion_helpers.logger') as mock_logger:
-        log_ingestion_summary(stats, 'test.db', show_availability=False)
+    with patch("crypto_data.utils.ingestion_helpers.logger") as mock_logger:
+        log_ingestion_summary(stats, "test.db", show_availability=False)
 
         # Verify summary logged
-        assert any('Downloaded: 100' in str(call) for call in mock_logger.info.call_args_list)
-        assert any('Skipped (existing): 20' in str(call) for call in mock_logger.info.call_args_list)
-        assert any('Failed: 5' in str(call) for call in mock_logger.info.call_args_list)
-        assert any('Not found: 10' in str(call) for call in mock_logger.info.call_args_list)
+        assert any("Downloaded: 100" in str(call) for call in mock_logger.info.call_args_list)
+        assert any(
+            "Skipped (existing): 20" in str(call) for call in mock_logger.info.call_args_list
+        )
+        assert any("Failed: 5" in str(call) for call in mock_logger.info.call_args_list)
+        assert any("Not found: 10" in str(call) for call in mock_logger.info.call_args_list)
 
 
 def test_log_ingestion_summary_logs_not_found_explanation():
     """Test that 'not found' count is logged when not_found > 0."""
-    stats = {
-        'downloaded': 100,
-        'skipped': 0,
-        'failed': 0,
-        'not_found': 10
-    }
+    stats = {"downloaded": 100, "skipped": 0, "failed": 0, "not_found": 10}
 
-    with patch('crypto_data.utils.ingestion_helpers.logger') as mock_logger:
-        log_ingestion_summary(stats, 'test.db', show_availability=False)
+    with patch("crypto_data.utils.ingestion_helpers.logger") as mock_logger:
+        log_ingestion_summary(stats, "test.db", show_availability=False)
 
         # Verify not_found count is logged
-        assert any('Not found: 10' in str(call) for call in mock_logger.info.call_args_list)
+        assert any("Not found: 10" in str(call) for call in mock_logger.info.call_args_list)
 
 
 def test_log_ingestion_summary_skips_explanation_when_zero():
     """Test that 'not found' is logged as 0 when not_found = 0."""
-    stats = {
-        'downloaded': 100,
-        'skipped': 0,
-        'failed': 0,
-        'not_found': 0
-    }
+    stats = {"downloaded": 100, "skipped": 0, "failed": 0, "not_found": 0}
 
-    with patch('crypto_data.utils.ingestion_helpers.logger') as mock_logger:
-        log_ingestion_summary(stats, 'test.db', show_availability=False)
+    with patch("crypto_data.utils.ingestion_helpers.logger") as mock_logger:
+        log_ingestion_summary(stats, "test.db", show_availability=False)
 
         # Verify not_found count is logged as 0
-        assert any('Not found: 0' in str(call) for call in mock_logger.info.call_args_list)
+        assert any("Not found: 0" in str(call) for call in mock_logger.info.call_args_list)
 
 
 def test_log_ingestion_summary_logs_database_size():
     """Test that database file size is logged."""
     stats = initialize_ingestion_stats()
 
-    with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as tmpfile:
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmpfile:
         db_path = tmpfile.name
-        tmpfile.write(b'0' * 1024 * 1024)  # 1 MB
+        tmpfile.write(b"0" * 1024 * 1024)  # 1 MB
 
     try:
-        with patch('crypto_data.utils.ingestion_helpers.logger') as mock_logger:
+        with patch("crypto_data.utils.ingestion_helpers.logger") as mock_logger:
             log_ingestion_summary(stats, db_path, show_availability=False)
 
             # Verify database size logged
-            assert any('Database size:' in str(call) for call in mock_logger.info.call_args_list)
+            assert any("Database size:" in str(call) for call in mock_logger.info.call_args_list)
     finally:
         Path(db_path).unlink()
 
@@ -295,34 +290,35 @@ def test_log_ingestion_summary_with_availability():
     """Test that availability is queried when show_availability=True."""
     stats = initialize_ingestion_stats()
 
-    with tempfile.NamedTemporaryFile(suffix='.db', delete=False) as tmpfile:
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmpfile:
         db_path = tmpfile.name
 
     try:
-        with patch('crypto_data.database.CryptoDatabase') as mock_db, \
-             patch('crypto_data.utils.ingestion_helpers.query_data_availability') as mock_query, \
-             patch('crypto_data.utils.ingestion_helpers.logger'):
-
+        with (
+            patch("crypto_data.database.CryptoDatabase") as mock_db,
+            patch("crypto_data.utils.ingestion_helpers.query_data_availability") as mock_query,
+            patch("crypto_data.utils.ingestion_helpers.logger"),
+        ):
             mock_db_instance = MagicMock()
             mock_db.return_value = mock_db_instance
-            mock_query.return_value = [
-                ('BTCUSDT', 'spot', date(2024, 1, 1), date(2024, 12, 31))
-            ]
+            mock_query.return_value = [("BTCUSDT", "spot", date(2024, 1, 1), date(2024, 12, 31))]
 
             log_ingestion_summary(
-                stats, db_path,
-                symbols=['BTCUSDT'],
-                start_date='2024-01-01',
-                end_date='2024-12-31',
+                stats,
+                db_path,
+                symbols=["BTCUSDT"],
+                start_date="2024-01-01",
+                end_date="2024-12-31",
                 interval=Interval.MIN_5,
-                show_availability=True
+                show_availability=True,
             )
 
             # Verify query was called
             mock_query.assert_called_once_with(
                 mock_db_instance.conn,
-                ['BTCUSDT'],
-                Interval.MIN_5
+                ["BTCUSDT"],
+                Interval.MIN_5,
+                data_types=("spot", "futures", "open_interest", "funding_rates"),
             )
     finally:
         Path(db_path).unlink()
@@ -332,37 +328,78 @@ def test_log_ingestion_summary_skips_availability_when_false():
     """Test that availability is NOT queried when show_availability=False."""
     stats = initialize_ingestion_stats()
 
-    with patch('crypto_data.database.CryptoDatabase') as mock_db, \
-         patch('crypto_data.utils.ingestion_helpers.query_data_availability') as mock_query, \
-         patch('crypto_data.utils.ingestion_helpers.logger'):
-
-        log_ingestion_summary(stats, 'test.db', show_availability=False)
+    with (
+        patch("crypto_data.database.CryptoDatabase") as mock_db,
+        patch("crypto_data.utils.ingestion_helpers.query_data_availability") as mock_query,
+        patch("crypto_data.utils.ingestion_helpers.logger"),
+    ):
+        log_ingestion_summary(stats, "test.db", show_availability=False)
 
         # Verify query NOT called
         mock_query.assert_not_called()
+
+
+def test_log_ingestion_summary_missing_warning_uses_requested_data_types():
+    """Do not warn about data types that were not requested."""
+    stats = initialize_ingestion_stats()
+
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmpfile:
+        db_path = tmpfile.name
+
+    try:
+        with (
+            patch("crypto_data.database.CryptoDatabase") as mock_db,
+            patch("crypto_data.utils.ingestion_helpers.query_data_availability") as mock_query,
+            patch("crypto_data.utils.ingestion_helpers.logger") as mock_logger,
+        ):
+            mock_db_instance = MagicMock()
+            mock_db.return_value = mock_db_instance
+            mock_query.return_value = [
+                ("BTCUSDT", "spot", date(2024, 1, 1), date(2024, 12, 31)),
+            ]
+
+            log_ingestion_summary(
+                stats,
+                db_path,
+                symbols=["BTCUSDT"],
+                start_date="2024-01-01",
+                end_date="2024-12-31",
+                interval=Interval.MIN_5,
+                show_availability=True,
+                data_types=[DataType.SPOT, DataType.FUTURES],
+            )
+
+            logs = "\n".join(str(call) for call in mock_logger.info.call_args_list)
+            assert "MISSING: FUTURES" in logs
+            assert "OPEN INTEREST" not in logs
+            assert "FUNDING RATES" not in logs
+    finally:
+        Path(db_path).unlink()
 
 
 def test_log_ingestion_summary_handles_db_error():
     """Test that database errors are handled gracefully."""
     stats = initialize_ingestion_stats()
 
-    with patch('crypto_data.database.CryptoDatabase') as mock_db, \
-         patch('crypto_data.utils.ingestion_helpers.logger') as mock_logger:
-
+    with (
+        patch("crypto_data.database.CryptoDatabase") as mock_db,
+        patch("crypto_data.utils.ingestion_helpers.logger") as mock_logger,
+    ):
         mock_db.side_effect = Exception("Database error")
 
         # Should not raise
         log_ingestion_summary(
-            stats, 'nonexistent.db',
-            symbols=['BTCUSDT'],
-            start_date='2024-01-01',
-            end_date='2024-12-31',
+            stats,
+            "nonexistent.db",
+            symbols=["BTCUSDT"],
+            start_date="2024-01-01",
+            end_date="2024-12-31",
             interval=Interval.MIN_5,
-            show_availability=True
+            show_availability=True,
         )
 
         # Verify basic stats still logged
-        assert any('Downloaded:' in str(call) for call in mock_logger.info.call_args_list)
+        assert any("Downloaded:" in str(call) for call in mock_logger.info.call_args_list)
 
 
 if __name__ == "__main__":

@@ -2,14 +2,13 @@
 Tests for Funding Rates Schema
 """
 
-import pytest
 import pandas as pd
 import pandera.pandas as pa
+import pytest
 
 from crypto_data.schemas import (
     FUNDING_RATES_SCHEMA,
-    validate_funding_rates_dataframe,
-    validate_funding_rates_statistical
+    validate_funding_rates_statistical,
 )
 
 
@@ -24,12 +23,14 @@ class TestFundingRatesSchema:
 
     def test_null_funding_rate_fails(self):
         """Test that null funding rates fail"""
-        df = pd.DataFrame({
-            'exchange': ['binance'],
-            'symbol': ['BTCUSDT'],
-            'timestamp': [pd.Timestamp('2024-01-01')],
-            'funding_rate': [None]  # Null
-        })
+        df = pd.DataFrame(
+            {
+                "exchange": ["binance"],
+                "symbol": ["BTCUSDT"],
+                "timestamp": [pd.Timestamp("2024-01-01")],
+                "funding_rate": [None],  # Null
+            }
+        )
 
         with pytest.raises(pa.errors.SchemaError):
             FUNDING_RATES_SCHEMA.validate(df)

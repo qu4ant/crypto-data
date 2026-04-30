@@ -11,7 +11,6 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
 
 import pandas as pd
 import pandera.pandas as pa
@@ -105,13 +104,13 @@ class DownloadResult:
     symbol: str
     data_type: DataType
     period: str
-    file_path: Optional[Path] = None
-    error: Optional[str] = None
+    file_path: Path | None = None
+    error: str | None = None
 
     @property
     def is_not_found(self) -> bool:
         """Return True if the download failed due to 404 (data not available)."""
-        return not self.success and self.error == 'not_found'
+        return not self.success and self.error == "not_found"
 
 
 class BinanceDatasetStrategy(ABC):
@@ -168,7 +167,7 @@ class BinanceDatasetStrategy(ABC):
         ...
 
     @abstractmethod
-    def generate_periods(self, start: datetime, end: datetime) -> List[Period]:
+    def generate_periods(self, start: datetime, end: datetime) -> list[Period]:
         """
         Generate list of periods for the given date range.
 
@@ -200,11 +199,7 @@ class BinanceDatasetStrategy(ABC):
 
     @abstractmethod
     def build_download_url(
-        self,
-        base_url: str,
-        symbol: str,
-        period: Period,
-        interval: Optional[str] = None
+        self, base_url: str, symbol: str, period: Period, interval: str | None = None
     ) -> str:
         """
         Build the download URL for a specific symbol and period.
@@ -228,12 +223,7 @@ class BinanceDatasetStrategy(ABC):
         ...
 
     @abstractmethod
-    def build_temp_filename(
-        self,
-        symbol: str,
-        period: Period,
-        interval: Optional[str] = None
-    ) -> str:
+    def build_temp_filename(self, symbol: str, period: Period, interval: str | None = None) -> str:
         """
         Build the temporary filename for a download.
 
@@ -254,11 +244,7 @@ class BinanceDatasetStrategy(ABC):
         ...
 
     @abstractmethod
-    def parse_csv(
-        self,
-        csv_path: Path,
-        symbol: str
-    ) -> pd.DataFrame:
+    def parse_csv(self, csv_path: Path, symbol: str) -> pd.DataFrame:
         """
         Parse a CSV file into a DataFrame ready for database import.
 

@@ -10,10 +10,10 @@ Functions:
 Note: Binance data ingestion is handled by crypto_data.binance_pipeline.
 """
 
-import logging
 import asyncio
+import logging
 from pathlib import Path
-from typing import List, Dict, Optional, Set, Tuple
+
 import duckdb
 import pandas as pd
 import pandera.pandas as pa
@@ -36,10 +36,20 @@ from crypto_data.utils.symbols import get_binance_symbols_from_universe
 logger = logging.getLogger(__name__)
 
 UNIVERSE_COLUMNS = [
-    'provider', 'provider_id', 'date', 'symbol', 'name', 'slug', 'rank',
-    'market_cap', 'fully_diluted_market_cap',
-    'circulating_supply', 'max_supply',
-    'tags', 'platform', 'date_added',
+    "provider",
+    "provider_id",
+    "date",
+    "symbol",
+    "name",
+    "slug",
+    "rank",
+    "market_cap",
+    "fully_diluted_market_cap",
+    "circulating_supply",
+    "max_supply",
+    "tags",
+    "platform",
+    "date_added",
 ]
 
 
@@ -52,7 +62,7 @@ UNIVERSE_COLUMNS = [
 # =============================================================================
 
 
-def _get_existing_universe_dates(db_path: str) -> Set[str]:
+def _get_existing_universe_dates(db_path: str) -> set[str]:
     """
     Return existing universe snapshot dates as YYYY-MM-DD strings.
 
@@ -72,10 +82,10 @@ async def _fetch_snapshot(
     client: CoinMarketCapClient,
     date: pd.Timestamp,
     top_n: int,
-    excluded_tags: List[str],
-    excluded_symbols: List[str],
-    date_str: str
-) -> Tuple[pd.DataFrame, Set[str], Set[str]]:
+    excluded_tags: list[str],
+    excluded_symbols: list[str],
+    date_str: str,
+) -> tuple[pd.DataFrame, set[str], set[str]]:
     """
     Fetch universe snapshot from CoinMarketCap API with historical rankings.
 
@@ -117,15 +127,15 @@ async def _fetch_snapshot(
 
     # Process each coin
     records = []
-    excluded_by_tag: Set[str] = set()
-    excluded_by_symbol: Set[str] = set()
+    excluded_by_tag: set[str] = set()
+    excluded_by_symbol: set[str] = set()
 
     for coin in coins:
-        symbol = str(coin.get('symbol') or '').upper()
-        rank = coin.get('cmcRank')
+        symbol = str(coin.get("symbol") or "").upper()
+        rank = coin.get("cmcRank")
 
-        tags = coin.get('tags') or []
-        tags_str = ','.join(tags)
+        tags = coin.get("tags") or []
+        tags_str = ",".join(tags)
 
         if has_excluded_tag(tags, excluded_tags_lower):
             logger.debug(f"  → Filtered {symbol} (excluded tag)")
@@ -137,34 +147,36 @@ async def _fetch_snapshot(
             excluded_by_symbol.add(symbol)
             continue
 
-        quotes = coin.get('quotes') or []
+        quotes = coin.get("quotes") or []
         first_quote = quotes[0] if quotes else {}
-        market_cap = first_quote.get('marketCap')
-        fdmc = first_quote.get('fullyDilutedMarketCap')
+        market_cap = first_quote.get("marketCap")
+        fdmc = first_quote.get("fullyDilutedMarketCap")
 
-        platform_field = coin.get('platform') or {}
-        platform_name = platform_field.get('name') if isinstance(platform_field, dict) else None
+        platform_field = coin.get("platform") or {}
+        platform_name = platform_field.get("name") if isinstance(platform_field, dict) else None
 
         # `errors='coerce'` returns NaT for None or unparseable values, which
         # plays cleanly with the nullable datetime64[ns] column downstream.
-        date_added = pd.to_datetime(coin.get('dateAdded'), errors='coerce')
+        date_added = pd.to_datetime(coin.get("dateAdded"), errors="coerce")
 
-        records.append({
-            'provider': 'coinmarketcap',
-            'provider_id': int(coin['id']),
-            'date': date,
-            'symbol': symbol,
-            'name': coin.get('name') or '',
-            'slug': coin.get('slug'),
-            'rank': rank,
-            'market_cap': market_cap,
-            'fully_diluted_market_cap': fdmc,
-            'circulating_supply': coin.get('circulatingSupply'),
-            'max_supply': coin.get('maxSupply'),
-            'tags': tags_str,
-            'platform': platform_name,
-            'date_added': date_added,
-        })
+        records.append(
+            {
+                "provider": "coinmarketcap",
+                "provider_id": int(coin["id"]),
+                "date": date,
+                "symbol": symbol,
+                "name": coin.get("name") or "",
+                "slug": coin.get("slug"),
+                "rank": rank,
+                "market_cap": market_cap,
+                "fully_diluted_market_cap": fdmc,
+                "circulating_supply": coin.get("circulatingSupply"),
+                "max_supply": coin.get("maxSupply"),
+                "tags": tags_str,
+                "platform": platform_name,
+                "date_added": date_added,
+            }
+        )
 
     # Convert to DataFrame with stable columns, then deduplicate duplicate
     # symbols defensively before schema validation. CMC can expose duplicate
@@ -174,10 +186,10 @@ async def _fetch_snapshot(
     if not df.empty:
         before_dedup = len(df)
         df = df.sort_values(
-            by=['provider_id', 'rank', 'market_cap'],
+            by=["provider_id", "rank", "market_cap"],
             ascending=[True, True, False],
-            na_position='last',
-        ).drop_duplicates(subset=['provider', 'provider_id', 'date'], keep='first')
+            na_position="last",
+        ).drop_duplicates(subset=["provider", "provider_id", "date"], keep="first")
         dropped = before_dedup - len(df)
         if dropped:
             logger.warning(
@@ -196,15 +208,15 @@ async def _fetch_snapshot(
 
 async def update_coinmarketcap_universe(
     db_path: str,
-    dates: Optional[List[str]] = None,
+    dates: list[str] | None = None,
     *,
     top_n: int = 100,
-    exclude_tags: Optional[List[str]] = None,
-    exclude_symbols: Optional[List[str]] = None,
+    exclude_tags: list[str] | None = None,
+    exclude_symbols: list[str] | None = None,
     max_concurrent: int = 5,
     skip_existing: bool = True,
     daily_quota: int = 200,
-) -> Dict[str, Set[str]]:
+) -> dict[str, set[str]]:
     """
     Fetch universe snapshots for multiple dates in parallel, write to DB sequentially.
 
@@ -261,7 +273,7 @@ async def update_coinmarketcap_universe(
             logger.info(f"Skipping {skipped} dates already present in crypto_universe")
         if not dates:
             logger.info("All requested universe snapshots already exist; nothing to fetch")
-            return {'by_tag': set(), 'by_symbol': set()}
+            return {"by_tag": set(), "by_symbol": set()}
 
     # Create async client with concurrency control
     async with CoinMarketCapClient(
@@ -280,7 +292,7 @@ async def update_coinmarketcap_universe(
                 top_n=top_n,
                 excluded_tags=exclude_tags,
                 excluded_symbols=exclude_symbols,
-                date_str=date_str
+                date_str=date_str,
             )
             tasks.append((date_str, task))
 
@@ -292,8 +304,8 @@ async def update_coinmarketcap_universe(
     db = None
     success_count = 0
     fail_count = 0
-    all_excluded_by_tag: Set[str] = set()
-    all_excluded_by_symbol: Set[str] = set()
+    all_excluded_by_tag: set[str] = set()
+    all_excluded_by_symbol: set[str] = set()
 
     try:
         db = CryptoDatabase(db_path)
@@ -346,7 +358,9 @@ async def update_coinmarketcap_universe(
                     try:
                         conn.execute("ROLLBACK")
                     except Exception as rollback_error:
-                        logger.debug(f"Rollback not needed or failed (expected if BEGIN failed): {rollback_error}")
+                        logger.debug(
+                            f"Rollback not needed or failed (expected if BEGIN failed): {rollback_error}"
+                        )
                     logger.debug(f"Transaction rolled back for {date_str}")
                 logger.error(f"Failed to update universe for {date_str}: {e}")
                 fail_count += 1
@@ -365,19 +379,19 @@ async def update_coinmarketcap_universe(
         )
 
     # Summary log
-    logger.info(f"✓ Downloaded {success_count}/{len(tasks)} snapshots successfully" +
-                (f" ({fail_count} failed)" if fail_count > 0 else ""))
+    logger.info(
+        f"✓ Downloaded {success_count}/{len(tasks)} snapshots successfully"
+        + (f" ({fail_count} failed)" if fail_count > 0 else "")
+    )
 
     # Return exclusion summary
-    return {
-        'by_tag': all_excluded_by_tag,
-        'by_symbol': all_excluded_by_symbol
-    }
+    return {"by_tag": all_excluded_by_tag, "by_symbol": all_excluded_by_symbol}
 
 
 # =============================================================================
 # UNIFIED DATABASE POPULATION FUNCTION
 # =============================================================================
+
 
 def create_binance_database(
     db_path: str,
@@ -385,10 +399,10 @@ def create_binance_database(
     end_date: str,
     top_n: int,
     interval: Interval = Interval.MIN_5,
-    data_types: Optional[List[DataType]] = None,
-    exclude_tags: Optional[List[str]] = None,
-    exclude_symbols: Optional[List[str]] = None,
-    universe_frequency: Frequency = 'monthly',
+    data_types: list[DataType] | None = None,
+    exclude_tags: list[str] | None = None,
+    exclude_symbols: list[str] | None = None,
+    universe_frequency: Frequency = "monthly",
     skip_existing_universe: bool = True,
     daily_quota: int = 200,
     repair_gaps_via_api: bool = False,
@@ -497,7 +511,7 @@ def create_binance_database(
     )
 
     logger.info("")
-    logger.info(f"Step 2/2: Ingesting Binance Data")
+    logger.info("Step 2/2: Ingesting Binance Data")
     logger.info("-" * 60)
 
     # Extract a full-period UNION superset for download coverage.
@@ -542,16 +556,16 @@ def create_binance_database(
     logger.info("✓ Database Population Finished!")
 
     # Display exclusion summary (yellow by default due to "Excluded" keyword)
-    if exclusions and (exclusions['by_tag'] or exclusions['by_symbol']):
+    if exclusions and (exclusions["by_tag"] or exclusions["by_symbol"]):
         logger.info("")
         logger.info("Excluded assets:")
 
-        if exclusions['by_tag']:
-            tag_list = sorted(exclusions['by_tag'])
+        if exclusions["by_tag"]:
+            tag_list = sorted(exclusions["by_tag"])
             logger.info(f"  By tag ({len(tag_list)}): {', '.join(tag_list)}")
 
-        if exclusions['by_symbol']:
-            symbol_list = sorted(exclusions['by_symbol'])
+        if exclusions["by_symbol"]:
+            symbol_list = sorted(exclusions["by_symbol"])
             logger.info(f"  By symbol ({len(symbol_list)}): {', '.join(symbol_list)}")
 
     # Log number of symbols with data

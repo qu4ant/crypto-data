@@ -7,31 +7,52 @@ markets.
 
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import List, Optional
 
 import pandas as pd
 import pandera.pandas as pa
 
+from crypto_data.binance_datasets.base import BinanceDatasetStrategy, Period
 from crypto_data.enums import DataType, Interval
 from crypto_data.schemas import OHLCV_SCHEMA
-from crypto_data.binance_datasets.base import BinanceDatasetStrategy, Period
 from crypto_data.utils.dates import generate_day_list, generate_month_list
+
+logger = logging.getLogger(__name__)
 
 
 # Column names for headerless Binance klines CSV files
 KLINES_COLUMNS = [
-    'open_time', 'open', 'high', 'low', 'close', 'volume',
-    'close_time', 'quote_volume', 'trades_count',
-    'taker_buy_base_volume', 'taker_buy_quote_volume', 'ignore'
+    "open_time",
+    "open",
+    "high",
+    "low",
+    "close",
+    "volume",
+    "close_time",
+    "quote_volume",
+    "trades_count",
+    "taker_buy_base_volume",
+    "taker_buy_quote_volume",
+    "ignore",
 ]
 
 # Final columns for database import
 FINAL_COLUMNS = [
-    'exchange', 'symbol', 'interval', 'timestamp',
-    'open', 'high', 'low', 'close', 'volume', 'quote_volume',
-    'trades_count', 'taker_buy_base_volume', 'taker_buy_quote_volume'
+    "exchange",
+    "symbol",
+    "interval",
+    "timestamp",
+    "open",
+    "high",
+    "low",
+    "close",
+    "volume",
+    "quote_volume",
+    "trades_count",
+    "taker_buy_base_volume",
+    "taker_buy_quote_volume",
 ]
 
 RECENT_DAILY_REFRESH_DAYS = 3
@@ -42,16 +63,6 @@ def _first_day_next_month(month_start: date) -> date:
     if month_start.month == 12:
         return date(month_start.year + 1, 1, 1)
     return date(month_start.year, month_start.month + 1, 1)
-
-
-def _first_monday_on_or_after(day: date) -> date:
-    """Return the first Monday on or after day."""
-    return day + timedelta(days=(7 - day.weekday()) % 7)
-
-
-def _monthly_file_available_on(month_start: date) -> date:
-    """Return the expected monthly archive availability date."""
-    return _first_monday_on_or_after(_first_day_next_month(month_start))
 
 
 class BinanceKlinesDataset(BinanceDatasetStrategy):
@@ -84,13 +95,11 @@ class BinanceKlinesDataset(BinanceDatasetStrategy):
         self,
         data_type: DataType,
         interval: Interval,
-        as_of: Optional[datetime] = None,
+        as_of: datetime | None = None,
     ) -> None:
         """Initialize the klines dataset."""
         if data_type not in (DataType.SPOT, DataType.FUTURES):
-            raise ValueError(
-                f"BinanceKlinesDataset only supports SPOT or FUTURES, got {data_type}"
-            )
+            raise ValueError(f"BinanceKlinesDataset only supports SPOT or FUTURES, got {data_type}")
         self._data_type = data_type
         self._interval = interval
         self._as_of = as_of
@@ -120,14 +129,13 @@ class BinanceKlinesDataset(BinanceDatasetStrategy):
         """Return the kline interval."""
         return self._interval
 
-    def generate_periods(self, start: datetime, end: datetime) -> List[Period]:
+    def generate_periods(self, start: datetime, end: datetime) -> list[Period]:
         """
         Generate monthly or daily periods for the given date range.
 
-        Complete months whose monthly archive should be available are downloaded
-        as monthly files. Recent months whose monthly archive may not exist yet
-        are downloaded as daily files so ingestion can stay fresh without
-        waiting for the monthly archive.
+        Complete months are downloaded as monthly files. Daily files are used
+        only for the unfinished current month so historical missing monthly
+        archives do not explode into thousands of daily requests.
 
         Parameters
         ----------
@@ -141,18 +149,19 @@ class BinanceKlinesDataset(BinanceDatasetStrategy):
         List[Period]
             List of Period objects with monthly granularity
         """
-        periods: List[Period] = []
+        periods: list[Period] = []
         as_of_date = (self._as_of or datetime.utcnow()).date()
         latest_daily_date = as_of_date - timedelta(days=1)
 
         for month in generate_month_list(start, end):
             month_start = datetime.strptime(month, "%Y-%m").date()
 
-            if _monthly_file_available_on(month_start) <= as_of_date:
+            month_end = _first_day_next_month(month_start) - timedelta(days=1)
+
+            if month_end < as_of_date:
                 periods.append(Period(month, is_monthly=True))
                 continue
 
-            month_end = _first_day_next_month(month_start) - timedelta(days=1)
             daily_start = max(start.date(), month_start)
             daily_end = min(end.date(), month_end, latest_daily_date)
 
@@ -184,11 +193,7 @@ class BinanceKlinesDataset(BinanceDatasetStrategy):
         return OHLCV_SCHEMA
 
     def build_download_url(
-        self,
-        base_url: str,
-        symbol: str,
-        period: Period,
-        interval: Optional[str] = None
+        self, base_url: str, symbol: str, period: Period, interval: str | None = None
     ) -> str:
         """
         Build the download URL for a specific symbol and period.
@@ -235,12 +240,7 @@ class BinanceKlinesDataset(BinanceDatasetStrategy):
         filename = f"{symbol}-{interval_str}-{period.value}.zip"
         return f"{base_url}{path}/{filename}"
 
-    def build_temp_filename(
-        self,
-        symbol: str,
-        period: Period,
-        interval: Optional[str] = None
-    ) -> str:
+    def build_temp_filename(self, symbol: str, period: Period, interval: str | None = None) -> str:
         """
         Build the temporary filename for a download.
 
@@ -263,11 +263,7 @@ class BinanceKlinesDataset(BinanceDatasetStrategy):
         interval_str = interval if interval is not None else self._interval.value
         return f"{symbol}-{self._data_type.value}-{interval_str}-{period.value}.zip"
 
-    def parse_csv(
-        self,
-        csv_path: Path,
-        symbol: str
-    ) -> pd.DataFrame:
+    def parse_csv(self, csv_path: Path, symbol: str) -> pd.DataFrame:
         """
         Parse a klines CSV file into a DataFrame ready for database import.
 
@@ -287,9 +283,9 @@ class BinanceKlinesDataset(BinanceDatasetStrategy):
             Parsed DataFrame with all required columns, deduplicated
         """
         # Detect if CSV has header
-        with open(csv_path, 'r') as f:
+        with Path(csv_path).open() as f:
             first_line = f.readline().lower()
-            has_header = 'open_time' in first_line or 'close_time' in first_line
+            has_header = "open_time" in first_line or "close_time" in first_line
 
         # Read CSV with or without header
         if has_header:
@@ -300,32 +296,27 @@ class BinanceKlinesDataset(BinanceDatasetStrategy):
             df = pd.read_csv(csv_path, header=None, names=KLINES_COLUMNS)
 
         # Rename 'count' to 'trades_count' if present (some files use 'count')
-        if 'count' in df.columns and 'trades_count' not in df.columns:
-            df = df.rename(columns={'count': 'trades_count'})
+        if "count" in df.columns and "trades_count" not in df.columns:
+            df = df.rename(columns={"count": "trades_count"})
 
         # Add missing optional columns with None (some intervals like 4h don't have taker_buy columns)
-        for col in ['taker_buy_base_volume', 'taker_buy_quote_volume']:
+        for col in ["taker_buy_base_volume", "taker_buy_quote_volume"]:
             if col not in df.columns:
                 df[col] = None
 
         # Add metadata columns
-        df['exchange'] = 'binance'
-        df['symbol'] = symbol
-        df['interval'] = self._interval.value
+        df["exchange"] = "binance"
+        df["symbol"] = symbol
+        df["interval"] = self._interval.value
 
-        # Convert timestamp: close_time >= 5e12 means microseconds
-        close_time = df['close_time']
-        if (close_time >= 5e12).any():
-            # Microseconds
-            divisor = 1_000_000
-        else:
-            # Milliseconds
-            divisor = 1_000
+        # Convert timestamp: close_time >= 5e12 means microseconds, else milliseconds
+        close_time = df["close_time"]
+        divisor = 1_000_000 if (close_time >= 5e12).any() else 1_000
 
-        df['timestamp'] = pd.to_datetime(close_time / divisor, unit='s').dt.ceil('1s')
+        df["timestamp"] = pd.to_datetime(close_time / divisor, unit="s").dt.ceil("1s")
 
         # Validate required columns exist before selection
-        required_cols = ['close_time', 'open', 'high', 'low', 'close', 'volume']
+        required_cols = ["close_time", "open", "high", "low", "close", "volume"]
         missing = [c for c in required_cols if c not in df.columns]
         if missing:
             raise ValueError(
@@ -336,7 +327,18 @@ class BinanceKlinesDataset(BinanceDatasetStrategy):
         # Select and order final columns
         df = df[FINAL_COLUMNS]
 
-        # Drop duplicates on primary key columns
-        df = df.drop_duplicates(subset=['exchange', 'symbol', 'interval', 'timestamp'])
+        # Drop duplicates on primary key columns, but make the data issue visible.
+        key_columns = ["exchange", "symbol", "interval", "timestamp"]
+        before_dedup = len(df)
+        df = df.drop_duplicates(subset=key_columns)
+        dropped = before_dedup - len(df)
+        if dropped:
+            logger.warning(
+                "Dropped %s duplicate kline rows for %s %s on key %s",
+                dropped,
+                symbol,
+                self._interval.value,
+                key_columns,
+            )
 
         return df

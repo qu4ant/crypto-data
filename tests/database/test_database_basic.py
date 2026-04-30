@@ -2,16 +2,17 @@
 Basic smoke tests for DuckDB database functionality.
 """
 
-import pytest
 import tempfile
 from pathlib import Path
+
+import pytest
 
 from crypto_data import CryptoDatabase
 
 
 def test_database_creation():
     """Test that database can be created and tables exist."""
-    with tempfile.NamedTemporaryFile(suffix='.db', delete=True) as f:
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=True) as f:
         db_path = f.name
     # File is deleted when context exits, leaving just the path
 
@@ -23,9 +24,9 @@ def test_database_creation():
         tables = db.execute("SHOW TABLES").fetchall()
         table_names = [row[0] for row in tables]
 
-        assert 'spot' in table_names
-        assert 'futures' in table_names
-        assert 'crypto_universe' in table_names
+        assert "spot" in table_names
+        assert "futures" in table_names
+        assert "crypto_universe" in table_names
 
         # Verify spot schema
         spot_schema = db.execute("""
@@ -36,14 +37,14 @@ def test_database_creation():
 
         spot_columns = [row[0] for row in spot_schema]
 
-        assert 'exchange' in spot_columns
-        assert 'symbol' in spot_columns
-        assert 'timestamp' in spot_columns
-        assert 'open' in spot_columns
-        assert 'high' in spot_columns
-        assert 'low' in spot_columns
-        assert 'close' in spot_columns
-        assert 'volume' in spot_columns
+        assert "exchange" in spot_columns
+        assert "symbol" in spot_columns
+        assert "timestamp" in spot_columns
+        assert "open" in spot_columns
+        assert "high" in spot_columns
+        assert "low" in spot_columns
+        assert "close" in spot_columns
+        assert "volume" in spot_columns
 
         # Verify crypto_universe schema (v6.0.0)
         universe_schema = db.execute("""
@@ -55,16 +56,26 @@ def test_database_creation():
         universe_columns = [row[0] for row in universe_schema]
 
         expected_columns = {
-            'provider', 'provider_id', 'date', 'symbol', 'name', 'slug',
-            'rank', 'market_cap', 'fully_diluted_market_cap',
-            'circulating_supply', 'max_supply',
-            'tags', 'platform', 'date_added',
+            "provider",
+            "provider_id",
+            "date",
+            "symbol",
+            "name",
+            "slug",
+            "rank",
+            "market_cap",
+            "fully_diluted_market_cap",
+            "circulating_supply",
+            "max_supply",
+            "tags",
+            "platform",
+            "date_added",
         }
         assert expected_columns.issubset(set(universe_columns)), (
             f"Missing columns: {expected_columns - set(universe_columns)}"
         )
         # Old column should be gone:
-        assert 'categories' not in universe_columns
+        assert "categories" not in universe_columns
 
         db.close()
 
@@ -76,7 +87,7 @@ def test_database_creation():
 
 def test_database_context_manager():
     """Test database can be used as context manager."""
-    with tempfile.NamedTemporaryFile(suffix='.db', delete=True) as f:
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=True) as f:
         db_path = f.name
     # File is deleted when context exits, leaving just the path
 
@@ -93,7 +104,7 @@ def test_database_context_manager():
 def test_execute_query_with_results():
     """Test execute() method with queries that return results."""
     with tempfile.TemporaryDirectory() as tmpdir:
-        db_path = Path(tmpdir) / 'test.db'
+        db_path = Path(tmpdir) / "test.db"
 
         try:
             db = CryptoDatabase(str(db_path))
@@ -119,9 +130,9 @@ def test_execute_query_with_results():
 
             # Verify results
             assert len(result) == 2
-            assert result[0][0] == 'BTC'  # First symbol
+            assert result[0][0] == "BTC"  # First symbol
             assert result[0][1] == 1  # Rank
-            assert result[1][0] == 'ETH'  # Second symbol
+            assert result[1][0] == "ETH"  # Second symbol
             assert result[1][1] == 2  # Rank
 
             db.close()

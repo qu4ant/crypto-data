@@ -5,7 +5,6 @@ Random sampling utilities for database validation.
 import random
 from dataclasses import dataclass
 from datetime import datetime
-from typing import List, Optional
 
 import duckdb
 
@@ -24,9 +23,9 @@ class OHLCVSample:
     close: float
     volume: float
     quote_volume: float
-    trades_count: Optional[int]
-    taker_buy_base_volume: Optional[float]
-    taker_buy_quote_volume: Optional[float]
+    trades_count: int | None
+    taker_buy_base_volume: float | None
+    taker_buy_quote_volume: float | None
 
 
 @dataclass
@@ -43,10 +42,10 @@ def sample_ohlcv(
     db_path: str,
     table: str,  # 'spot' or 'futures'
     n: int = 20,
-    symbol: Optional[str] = None,
-    interval: Optional[str] = None,
-    seed: Optional[int] = None,
-) -> List[OHLCVSample]:
+    symbol: str | None = None,
+    interval: str | None = None,
+    seed: int | None = None,
+) -> list[OHLCVSample]:
     """
     Randomly sample N rows from OHLCV table.
 
@@ -133,9 +132,9 @@ def sample_ohlcv_ratio_by_symbol(
     table: str,  # 'spot' or 'futures'
     sample_ratio: float = 0.2,
     max_symbols: int = 12,
-    interval: Optional[str] = None,
-    seed: Optional[int] = None,
-) -> List[OHLCVSample]:
+    interval: str | None = None,
+    seed: int | None = None,
+) -> list[OHLCVSample]:
     """
     Sample OHLCV points with a global ratio budget, then split per symbol.
 
@@ -195,7 +194,7 @@ def sample_ohlcv_ratio_by_symbol(
         base_per_symbol = target_total // symbol_count
         remainder = target_total % symbol_count
 
-        samples: List[OHLCVSample] = []
+        samples: list[OHLCVSample] = []
         for idx, (symbol, row_count) in enumerate(selected):
             allocated = base_per_symbol + (1 if idx < remainder else 0)
             n_symbol = min(int(row_count), max(1, allocated))
@@ -253,8 +252,8 @@ def sample_ohlcv_ratio_by_symbol(
 def sample_universe(
     db_path: str,
     n: int = 10,
-    seed: Optional[int] = None,
-) -> List[UniverseSample]:
+    seed: int | None = None,
+) -> list[UniverseSample]:
     """
     Randomly sample N (date, symbol) pairs from crypto_universe.
 
@@ -304,7 +303,7 @@ def sample_universe(
         conn.close()
 
 
-def group_samples_by_date(samples: List[UniverseSample]) -> dict:
+def group_samples_by_date(samples: list[UniverseSample]) -> dict:
     """Group universe samples by date to minimize API calls"""
     grouped = {}
     for sample in samples:

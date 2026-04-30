@@ -7,8 +7,9 @@ Compatible with both Unix/Linux/macOS and Windows terminals.
 
 import logging
 import sys
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
+from typing import ClassVar
 
 
 class ColoredFormatter(logging.Formatter):
@@ -34,19 +35,19 @@ class ColoredFormatter(logging.Formatter):
     CYAN = "\033[36m"
 
     # Bright colors (used in format method)
-    BRIGHT_BLACK = "\033[90m"   # Gray
+    BRIGHT_BLACK = "\033[90m"  # Gray
     BRIGHT_GREEN = "\033[92m"
     BRIGHT_BLUE = "\033[94m"
     BRIGHT_MAGENTA = "\033[95m"
     BRIGHT_CYAN = "\033[96m"
 
     # Level colors
-    LEVEL_COLORS = {
-        'DEBUG': CYAN,
-        'INFO': GREEN,
-        'WARNING': YELLOW,
-        'ERROR': RED,
-        'CRITICAL': BOLD + RED,
+    LEVEL_COLORS: ClassVar[dict[str, str]] = {
+        "DEBUG": CYAN,
+        "INFO": GREEN,
+        "WARNING": YELLOW,
+        "ERROR": RED,
+        "CRITICAL": BOLD + RED,
     }
 
     def __init__(self, fmt=None, datefmt=None, use_color=True, force_color=False):
@@ -75,14 +76,15 @@ class ColoredFormatter(logging.Formatter):
     def _supports_color(self):
         """Check if terminal supports ANSI colors."""
         # Check if output is a TTY
-        if not hasattr(sys.stdout, 'isatty') or not sys.stdout.isatty():
+        if not hasattr(sys.stdout, "isatty") or not sys.stdout.isatty():
             return False
 
         # Windows check
-        if sys.platform == 'win32':
+        if sys.platform == "win32":
             # Windows 10+ supports ANSI colors in CMD/PowerShell
             try:
                 import ctypes
+
                 kernel32 = ctypes.windll.kernel32
                 kernel32.SetConsoleMode(kernel32.GetStdHandle(-11), 7)
                 return True
@@ -124,7 +126,12 @@ class ColoredFormatter(logging.Formatter):
             record.msg = f"{self.BRIGHT_BLACK}{message}{self.RESET}"
 
         # Filtered/Removed indicators
-        elif "Filtered" in message or "Removed" in message or "Excluding" in message or "Excluded" in message:
+        elif (
+            "Filtered" in message
+            or "Removed" in message
+            or "Excluding" in message
+            or "Excluded" in message
+        ):
             record.msg = f"{self.YELLOW}{message}{self.RESET}"
 
         # Arrow indicators (→, ↳)
@@ -169,18 +176,18 @@ def setup_colored_logging(level=logging.INFO, fmt=None, datefmt=None):
     >>> logger.info("This is colored!")
     """
     if fmt is None:
-        fmt = '%(asctime)s - %(levelname)s - %(message)s'
+        fmt = "%(asctime)s - %(levelname)s - %(message)s"
 
     if datefmt is None:
-        datefmt = '%Y-%m-%d %H:%M:%S'
+        datefmt = "%Y-%m-%d %H:%M:%S"
 
     # Create logs directory
-    logs_dir = Path('logs')
+    logs_dir = Path("logs")
     logs_dir.mkdir(exist_ok=True)
 
     # Generate timestamped log filename
-    timestamp = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    log_file = logs_dir / f'crypto_data_{timestamp}.log'
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    log_file = logs_dir / f"crypto_data_{timestamp}.log"
 
     # Configure root logger
     root_logger = logging.getLogger()
@@ -202,7 +209,7 @@ def setup_colored_logging(level=logging.INFO, fmt=None, datefmt=None):
     root_logger.addHandler(console_handler)
 
     # Add file handler with colored formatter
-    file_handler = logging.FileHandler(log_file, mode='w', encoding='utf-8')
+    file_handler = logging.FileHandler(log_file, mode="w", encoding="utf-8")
     file_handler.setFormatter(file_formatter)
     root_logger.addHandler(file_handler)
 

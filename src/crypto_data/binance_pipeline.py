@@ -10,24 +10,25 @@ from __future__ import annotations
 import logging
 import tempfile
 from datetime import datetime, timedelta
-from dateutil.relativedelta import relativedelta
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
-from crypto_data.binance_downloader import BinanceDataVisionDownloader
-from crypto_data.binance_importer import BinanceDuckDBImporter
-from crypto_data.database import CryptoDatabase
-from crypto_data.enums import DataType, Interval
+from dateutil.relativedelta import relativedelta
+
 from crypto_data.binance_datasets.base import DownloadResult, Period
 from crypto_data.binance_datasets.registry import get_binance_dataset_strategy
-from crypto_data.utils.dates import generate_day_list, parse_date_range
+from crypto_data.binance_downloader import BinanceDataVisionDownloader
+from crypto_data.binance_importer import BinanceDuckDBImporter
+from crypto_data.binance_repair import repair_binance_gaps
+from crypto_data.database import CryptoDatabase
+from crypto_data.enums import DataType, Interval
+from crypto_data.utils.dates import parse_date_range
 from crypto_data.utils.ingestion_helpers import initialize_ingestion_stats, log_ingestion_summary
 from crypto_data.utils.runtime import run_async_from_sync
 
 logger = logging.getLogger(__name__)
 
 
-def _interval_to_seconds(interval: Optional[str]) -> Optional[int]:
+def _interval_to_seconds(interval: str | None) -> int | None:
     """
     Convert Binance interval string to seconds.
 
@@ -45,27 +46,69 @@ def _interval_to_seconds(interval: Optional[str]) -> Optional[int]:
     if value <= 0:
         return None
 
-    if unit == 'm':
+    if unit == "m":
         return value * 60
-    if unit == 'h':
+    if unit == "h":
         return value * 3600
-    if unit == 'd':
+    if unit == "d":
         return value * 86400
-    if unit == 'w':
+    if unit == "w":
         return value * 7 * 86400
-    if unit == 'M':
+    if unit == "M":
         # Month interval length is variable.
         return None
 
     return None
 
 
-def _period_exists_in_db(
+def _kline_close_window(start: datetime, end: datetime) -> tuple[datetime, datetime]:
+    """
+    Return the requested kline close-time window.
+
+    User-facing date ranges are calendar-day inclusive. Because kline rows are
+    keyed by candle close time, the first valid close is strictly after the
+    start midnight and the final valid close is the midnight after end_date.
+    """
+    return start, end + timedelta(days=1)
+
+
+def _prune_klines_outside_date_range(
     conn,
-    table: str,
-    symbol: str,
-    interval: Optional[str],
-    period: Period
+    *,
+    symbols: list[str],
+    data_types: list[DataType],
+    interval: Interval,
+    start: datetime,
+    end: datetime,
+) -> None:
+    """Delete stale kline rows outside the requested close-time window."""
+    tables = [
+        data_type.value
+        for data_type in data_types
+        if data_type in (DataType.SPOT, DataType.FUTURES)
+    ]
+    if not symbols or not tables:
+        return
+
+    window_start, window_end = _kline_close_window(start, end)
+    placeholders = ", ".join("?" for _ in symbols)
+
+    for table in tables:
+        delete_sql = f"""
+            DELETE FROM {table}
+            WHERE exchange = ?
+              AND interval = ?
+              AND symbol IN ({placeholders})
+              AND (timestamp <= ? OR timestamp > ?)
+        """
+        conn.execute(
+            delete_sql,
+            ["binance", interval.value, *symbols, window_start, window_end],
+        )
+
+
+def _period_exists_in_db(
+    conn, table: str, symbol: str, interval: str | None, period: Period
 ) -> bool:
     """
     Check if data already exists in DB for a given period.
@@ -90,15 +133,15 @@ def _period_exists_in_db(
     # Parse period to get date bounds
     if period.is_monthly:
         # Monthly: '2024-01' -> 2024-01-01 to 2024-02-01
-        start = datetime.strptime(period.value, '%Y-%m')
+        start = datetime.strptime(period.value, "%Y-%m")
         end = start + relativedelta(months=1)
     else:
         # Daily: '2024-01-15' -> 2024-01-15 to 2024-01-16
-        start = datetime.strptime(period.value, '%Y-%m-%d')
+        start = datetime.strptime(period.value, "%Y-%m-%d")
         end = start + relativedelta(days=1)
 
     # Build query based on table type
-    if table in ('spot', 'futures'):
+    if table in ("spot", "futures"):
         # Completeness check for OHLCV:
         # 1) At least one row exists in the period
         # 2) Rows are contiguous for the detected interval
@@ -118,7 +161,7 @@ def _period_exists_in_db(
               AND timestamp > ?
               AND timestamp <= ?
         """
-        result = conn.execute(query, ['binance', symbol, interval, start, end]).fetchone()
+        result = conn.execute(query, ["binance", symbol, interval, start, end]).fetchone()
 
         if not result or result[2] == 0:
             return False
@@ -144,28 +187,68 @@ def _period_exists_in_db(
         covers_period_end = max_ts >= end
 
         return covers_period_start and covers_period_end
-    else:
-        # open_interest, funding_rates don't have interval column
-        query = f"""
-            SELECT 1 FROM {table}
+    # open_interest and funding_rates do not have an interval column, but
+    # a single row is not enough to prove that a daily/monthly file was
+    # imported completely. Require edge coverage and no large internal gap
+    # before skipping a period.
+    query = f"""
+            SELECT
+                MIN(timestamp) as min_ts,
+                MAX(timestamp) as max_ts,
+                COUNT(*) as row_count
+            FROM {table}
             WHERE exchange = ?
               AND symbol = ?
               AND timestamp >= ?
               AND timestamp < ?
-            LIMIT 1
         """
-        result = conn.execute(query, ['binance', symbol, start, end]).fetchone()
+    result = conn.execute(query, ["binance", symbol, start, end]).fetchone()
 
-    return result is not None
+    if not result or result[2] == 0:
+        return False
+
+    min_ts, max_ts, row_count = result
+    if row_count < 2:
+        return False
+
+    if table == "open_interest":
+        edge_tolerance = timedelta(hours=1)
+        max_gap_tolerance = timedelta(hours=1)
+    else:
+        edge_tolerance = timedelta(hours=8)
+        max_gap_tolerance = timedelta(hours=8)
+
+    covers_period_start = min_ts <= start + edge_tolerance
+    covers_period_end = max_ts >= end - edge_tolerance
+    if not (covers_period_start and covers_period_end):
+        return False
+
+    gap_result = conn.execute(
+        f"""
+            WITH ordered AS (
+                SELECT
+                    timestamp,
+                    timestamp - LAG(timestamp) OVER (ORDER BY timestamp) AS diff
+                FROM {table}
+                WHERE exchange = ?
+                  AND symbol = ?
+                  AND timestamp >= ?
+                  AND timestamp < ?
+            )
+            SELECT MAX(diff)
+            FROM ordered
+            WHERE diff IS NOT NULL
+            """,
+        ["binance", symbol, start, end],
+    ).fetchone()
+    max_gap = gap_result[0] if gap_result else None
+
+    return max_gap is not None and max_gap <= max_gap_tolerance
 
 
 def _filter_existing_periods(
-    conn,
-    table: str,
-    symbol: str,
-    interval: Optional[str],
-    periods: List[Period]
-) -> Tuple[List[Period], int]:
+    conn, table: str, symbol: str, interval: str | None, periods: list[Period]
+) -> tuple[list[Period], int]:
     """
     Filter out periods that already have data in the database.
 
@@ -190,7 +273,7 @@ def _filter_existing_periods(
     skipped = 0
 
     for period in periods:
-        if getattr(period, 'replace_existing', False):
+        if getattr(period, "replace_existing", False):
             missing.append(period)
             continue
 
@@ -203,11 +286,13 @@ def _filter_existing_periods(
 
 
 def _process_results(
-    results: List[DownloadResult],
+    results: list[DownloadResult],
     importer: BinanceDuckDBImporter,
     conn,
-    stats: Dict[str, int],
-    symbol: str
+    stats: dict[str, int],
+    symbol: str,
+    window_start: datetime | None = None,
+    window_end: datetime | None = None,
 ) -> None:
     """
     Process download results: import to DB, update stats, cleanup.
@@ -238,12 +323,14 @@ def _process_results(
                     symbol,
                     period=result.period,
                     replace_existing=(
-                        importer.dataset.table_name in ('spot', 'futures')
+                        importer.dataset.table_name in ("spot", "futures")
                         and len(result.period) == 10
                     ),
+                    window_start=window_start,
+                    window_end=window_end,
                 )
                 conn.execute("COMMIT")
-                stats['downloaded'] += 1
+                stats["downloaded"] += 1
                 logger.debug(f"    Imported {result.period}")
 
                 # Delete file after import
@@ -257,36 +344,16 @@ def _process_results(
                 except Exception as rollback_error:
                     logger.warning(f"Failed to rollback transaction: {rollback_error}")
                 logger.error(f"Import failed {result.period}: {e}")
-                stats['failed'] += 1
+                stats["failed"] += 1
 
                 # Clean up temp file on failure
                 if result.file_path and result.file_path.exists():
                     result.file_path.unlink()
         else:
             if result.is_not_found:
-                stats['not_found'] += 1
+                stats["not_found"] += 1
             else:
-                stats['failed'] += 1
-
-
-def _daily_periods_for_monthly_period(
-    period: Period,
-    start: datetime,
-    end: datetime,
-) -> List[Period]:
-    """Expand one monthly period into daily periods within the requested range."""
-    month_start = datetime.strptime(period.value, '%Y-%m')
-    month_end_exclusive = month_start + relativedelta(months=1)
-    daily_start = max(start, month_start)
-    daily_end = min(end, month_end_exclusive - timedelta(days=1))
-
-    if daily_start > daily_end:
-        return []
-
-    return [
-        Period(day, is_monthly=False)
-        for day in generate_day_list(daily_start, daily_end)
-    ]
+                stats["failed"] += 1
 
 
 async def _ingest_symbol_data_type(
@@ -294,12 +361,14 @@ async def _ingest_symbol_data_type(
     data_type: DataType,
     start: datetime,
     end: datetime,
-    interval: Optional[Interval],
+    interval: Interval | None,
     temp_path: Path,
     conn,
-    stats: Dict[str, int],
+    stats: dict[str, int],
     max_concurrent: int,
-    failure_threshold: int
+    failure_threshold: int,
+    window_start: datetime | None = None,
+    window_end: datetime | None = None,
 ) -> None:
     """
     Ingest a single symbol + data_type combination.
@@ -342,11 +411,7 @@ async def _ingest_symbol_data_type(
 
     # Filter out periods that already exist in DB
     periods_to_download, skipped = _filter_existing_periods(
-        conn=conn,
-        table=dataset.table_name,
-        symbol=symbol,
-        interval=interval_str,
-        periods=periods
+        conn=conn, table=dataset.table_name, symbol=symbol, interval=interval_str, periods=periods
     )
 
     # ANSI codes for dimmed output
@@ -354,69 +419,34 @@ async def _ingest_symbol_data_type(
     RESET = "\033[0m"
 
     if skipped > 0:
-        stats['skipped'] += skipped
+        stats["skipped"] += skipped
 
     if not periods_to_download:
         logger.info(f"{DIM}  {symbol} {data_type.value}: already in DB ({skipped} months){RESET}")
         return
-    elif skipped > 0:
-        logger.info(f"{DIM}  {symbol} {data_type.value}: {len(periods_to_download)} months to download, {skipped} months already in DB{RESET}")
+    if skipped > 0:
+        logger.info(
+            f"{DIM}  {symbol} {data_type.value}: {len(periods_to_download)} months to download, {skipped} months already in DB{RESET}"
+        )
 
     # Download Binance Data Vision files for this symbol/data type.
     async with BinanceDataVisionDownloader(
-        dataset=dataset,
-        temp_path=temp_path,
-        max_concurrent=max_concurrent
+        dataset=dataset, temp_path=temp_path, max_concurrent=max_concurrent
     ) as downloader:
         results = await downloader.download_symbol(
             symbol=symbol,
             periods=periods_to_download,
             interval=interval_str,
             failure_threshold=(
-                0 if data_type in (DataType.SPOT, DataType.FUTURES)
-                else failure_threshold
-            )
+                0 if data_type in (DataType.SPOT, DataType.FUTURES) else failure_threshold
+            ),
         )
 
-        if data_type in (DataType.SPOT, DataType.FUTURES):
-            monthly_not_found = [
-                result for result in results
-                if result.is_not_found and len(result.period) == 7
-            ]
-
-            if monthly_not_found:
-                fallback_periods: List[Period] = []
-                for result in monthly_not_found:
-                    fallback_periods.extend(
-                        _daily_periods_for_monthly_period(
-                            Period(result.period, is_monthly=True),
-                            start,
-                            end,
-                        )
-                    )
-
-                if fallback_periods:
-                    logger.info(
-                        f"  {symbol} {data_type.value}: "
-                        f"falling back to {len(fallback_periods)} daily files"
-                    )
-                    fallback_results = await downloader.download_symbol(
-                        symbol=symbol,
-                        periods=fallback_periods,
-                        interval=interval_str,
-                        failure_threshold=0,
-                    )
-
-                    results = [
-                        result for result in results
-                        if not (result.is_not_found and len(result.period) == 7)
-                    ] + fallback_results
-
-            if failure_threshold > 0:
-                results = downloader._detect_gaps(
-                    sorted(results, key=lambda result: result.period),
-                    failure_threshold,
-                )
+        if data_type in (DataType.SPOT, DataType.FUTURES) and failure_threshold > 0:
+            results = downloader._detect_gaps(
+                sorted(results, key=lambda result: result.period),
+                failure_threshold,
+            )
 
     if not results:
         logger.debug(f"No results for {symbol} {data_type.value}")
@@ -424,22 +454,32 @@ async def _ingest_symbol_data_type(
 
     # Create importer and process results (each file is its own transaction)
     importer = BinanceDuckDBImporter(dataset)
-    _process_results(results, importer, conn, stats, symbol)
+    _process_results(
+        results,
+        importer,
+        conn,
+        stats,
+        symbol,
+        window_start=window_start,
+        window_end=window_end,
+    )
 
 
 async def _run_all_ingestion(
-    symbols: List[str],
-    data_types: List[DataType],
+    symbols: list[str],
+    data_types: list[DataType],
     start: datetime,
     end: datetime,
     interval: Interval,
     temp_path: Path,
     conn,
-    stats: Dict[str, int],
+    stats: dict[str, int],
     max_concurrent_klines: int,
     max_concurrent_metrics: int,
     max_concurrent_funding: int,
-    failure_threshold: int
+    failure_threshold: int,
+    window_start: datetime | None = None,
+    window_end: datetime | None = None,
 ) -> None:
     """
     Run all ingestion tasks in a single event loop.
@@ -475,8 +515,9 @@ async def _run_all_ingestion(
         logger.info(f"Processing {symbol}")
 
         for data_type in data_types:
+            is_kline = data_type in (DataType.SPOT, DataType.FUTURES)
             # Select max_concurrent based on data type
-            if data_type in (DataType.SPOT, DataType.FUTURES):
+            if is_kline:
                 max_concurrent = max_concurrent_klines
             elif data_type == DataType.OPEN_INTEREST:
                 max_concurrent = max_concurrent_metrics
@@ -492,26 +533,30 @@ async def _run_all_ingestion(
                 data_type=data_type,
                 start=start,
                 end=end,
-                interval=interval if data_type in (DataType.SPOT, DataType.FUTURES) else None,
+                interval=interval if is_kline else None,
                 temp_path=temp_path,
                 conn=conn,
                 stats=stats,
                 max_concurrent=max_concurrent,
-                failure_threshold=failure_threshold
+                failure_threshold=failure_threshold,
+                window_start=window_start if is_kline else None,
+                window_end=window_end if is_kline else None,
             )
 
 
 def update_binance_market_data(
     db_path: str,
-    symbols: List[str],
-    data_types: List[DataType],
+    symbols: list[str],
+    data_types: list[DataType],
     start_date: str,
     end_date: str,
     interval: Interval = Interval.MIN_5,
     max_concurrent_klines: int = 20,
     max_concurrent_metrics: int = 100,
     max_concurrent_funding: int = 50,
-    failure_threshold: int = 3
+    failure_threshold: int = 3,
+    repair_gaps_via_api: bool = False,
+    prune_klines_to_date_range: bool = False,
 ) -> None:
     """
     Download Binance market data and import it into DuckDB.
@@ -543,6 +588,13 @@ def update_binance_market_data(
     failure_threshold : int, optional
         Stop after N consecutive 404s (default: 3)
         Set to 0 to disable gap detection
+    repair_gaps_via_api : bool, optional
+        When True, fill internal spot/futures/funding_rates gaps from Binance
+        public REST after Data Vision import completes (default: False).
+    prune_klines_to_date_range : bool, optional
+        When True, remove existing spot/futures rows for the requested symbols
+        and interval whose close timestamps fall outside start_date/end_date.
+        This is intended for exact database rebuild workflows.
 
     Examples
     --------
@@ -566,6 +618,17 @@ def update_binance_market_data(
 
     # Initialize stats
     stats = initialize_ingestion_stats()
+    window_start, window_end = _kline_close_window(start, end)
+
+    if prune_klines_to_date_range:
+        _prune_klines_outside_date_range(
+            conn,
+            symbols=symbols,
+            data_types=data_types,
+            interval=interval,
+            start=start,
+            end=end,
+        )
 
     try:
         # Create temp directory and run all ingestion in a single event loop
@@ -587,12 +650,29 @@ def update_binance_market_data(
                     max_concurrent_metrics=max_concurrent_metrics,
                     max_concurrent_funding=max_concurrent_funding,
                     failure_threshold=failure_threshold,
+                    window_start=window_start,
+                    window_end=window_end,
                 ),
                 "update_binance_market_data",
             )
     finally:
         # Always close database, even on exceptions
         db.close()
+
+    if repair_gaps_via_api:
+        repair_tables = [
+            data_type.value
+            for data_type in data_types
+            if data_type.value in ("spot", "futures", "funding_rates")
+        ]
+        logger.info("Running Binance REST gap repair")
+        repair_report = repair_binance_gaps(
+            db_path=db_path,
+            tables=repair_tables,
+            symbols=symbols,
+            intervals=[interval.value],
+        )
+        logger.info(repair_report.summary())
 
     # Log summary
     log_ingestion_summary(
@@ -602,5 +682,6 @@ def update_binance_market_data(
         start_date=start_date,
         end_date=end_date,
         interval=interval,
-        show_availability=True
+        show_availability=True,
+        data_types=data_types,
     )

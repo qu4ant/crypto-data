@@ -5,8 +5,8 @@ Reusable validation functions for crypto data schemas.
 These checks are used across multiple schemas for consistency.
 """
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 
 
 def check_ohlc_relationships(df: pd.DataFrame) -> bool:
@@ -36,30 +36,27 @@ def check_ohlc_relationships(df: pd.DataFrame) -> bool:
     violations = []
 
     # Check high >= low
-    if (df['high'] < df['low']).any():
-        violations.append('high < low')
+    if (df["high"] < df["low"]).any():
+        violations.append("high < low")
 
     # Check high >= open
-    if (df['high'] < df['open']).any():
-        violations.append('high < open')
+    if (df["high"] < df["open"]).any():
+        violations.append("high < open")
 
     # Check high >= close
-    if (df['high'] < df['close']).any():
-        violations.append('high < close')
+    if (df["high"] < df["close"]).any():
+        violations.append("high < close")
 
     # Check low <= open
-    if (df['low'] > df['open']).any():
-        violations.append('low > open')
+    if (df["low"] > df["open"]).any():
+        violations.append("low > open")
 
     # Check low <= close
-    if (df['low'] > df['close']).any():
-        violations.append('low > close')
+    if (df["low"] > df["close"]).any():
+        violations.append("low > close")
 
-    if violations:
-        # This will be caught by Pandera and reported
-        return False
-
-    return True
+    # Pandera reports the False result; violations list is for callers/debugging.
+    return not violations
 
 
 def check_price_continuity(df: pd.DataFrame, sigma: float = 5.0) -> bool:
@@ -85,7 +82,7 @@ def check_price_continuity(df: pd.DataFrame, sigma: float = 5.0) -> bool:
         return True
 
     # Calculate log returns
-    returns = np.log(df['close'] / df['close'].shift(1))
+    returns = np.log(df["close"] / df["close"].shift(1))
     returns = returns.dropna()
 
     if len(returns) == 0:
@@ -130,7 +127,7 @@ def check_volume_outliers(df: pd.DataFrame, iqr_multiplier: float = 3.0) -> bool
         return True
 
     # Filter out zero volumes (common for some periods)
-    volumes = df['volume'][df['volume'] > 0]
+    volumes = df["volume"][df["volume"] > 0]
 
     if len(volumes) < 4:  # Need at least 4 values for quartiles
         return True
@@ -172,7 +169,7 @@ def check_timestamp_monotonic(df: pd.DataFrame) -> bool:
         return True
 
     # Check if timestamps are strictly increasing
-    return df['timestamp'].is_monotonic_increasing
+    return df["timestamp"].is_monotonic_increasing
 
 
 def check_no_duplicate_ranks_per_date(df: pd.DataFrame) -> bool:
@@ -193,6 +190,6 @@ def check_no_duplicate_ranks_per_date(df: pd.DataFrame) -> bool:
         return True
 
     # Check for duplicates in (date, rank) combinations
-    duplicates = df.duplicated(subset=['date', 'rank']).sum()
+    duplicates = df.duplicated(subset=["date", "rank"]).sum()
 
     return duplicates == 0

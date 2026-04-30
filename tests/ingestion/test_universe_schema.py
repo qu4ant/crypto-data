@@ -9,20 +9,20 @@ from crypto_data.schemas.universe import UNIVERSE_SCHEMA
 
 def _valid_row(**overrides: object) -> dict:
     base = {
-        'provider': 'coinmarketcap',
-        'provider_id': 1,
-        'date': pd.Timestamp('2024-01-01'),
-        'symbol': 'BTC',
-        'name': 'Bitcoin',
-        'slug': 'bitcoin',
-        'rank': 1,
-        'market_cap': 1_000_000.0,
-        'fully_diluted_market_cap': 1_100_000.0,
-        'circulating_supply': 19_000_000.0,
-        'max_supply': 21_000_000.0,
-        'tags': 'mineable,pow',
-        'platform': None,
-        'date_added': pd.Timestamp('2010-07-13'),
+        "provider": "coinmarketcap",
+        "provider_id": 1,
+        "date": pd.Timestamp("2024-01-01"),
+        "symbol": "BTC",
+        "name": "Bitcoin",
+        "slug": "bitcoin",
+        "rank": 1,
+        "market_cap": 1_000_000.0,
+        "fully_diluted_market_cap": 1_100_000.0,
+        "circulating_supply": 19_000_000.0,
+        "max_supply": 21_000_000.0,
+        "tags": "mineable,pow",
+        "platform": None,
+        "date_added": pd.Timestamp("2010-07-13"),
     }
     base.update(overrides)
     return base
@@ -34,7 +34,7 @@ def test_valid_dataframe_passes():
 
 
 def test_provider_must_be_coinmarketcap():
-    df = pd.DataFrame([_valid_row(provider='coingecko')])
+    df = pd.DataFrame([_valid_row(provider="coingecko")])
     with pytest.raises(pa.errors.SchemaError):
         UNIVERSE_SCHEMA.validate(df)
 
@@ -57,18 +57,22 @@ def test_duplicate_identity_rejected():
 
 
 def test_distinct_dates_same_id_allowed():
-    df = pd.DataFrame([
-        _valid_row(date=pd.Timestamp('2024-01-01')),
-        _valid_row(date=pd.Timestamp('2024-01-02')),
-    ])
+    df = pd.DataFrame(
+        [
+            _valid_row(date=pd.Timestamp("2024-01-01")),
+            _valid_row(date=pd.Timestamp("2024-01-02")),
+        ]
+    )
     UNIVERSE_SCHEMA.validate(df)
 
 
 def test_distinct_provider_ids_same_date_allowed():
-    df = pd.DataFrame([
-        _valid_row(provider_id=1, symbol='BTC', rank=1),
-        _valid_row(provider_id=1027, symbol='ETH', name='Ethereum', slug='ethereum', rank=2),
-    ])
+    df = pd.DataFrame(
+        [
+            _valid_row(provider_id=1, symbol="BTC", rank=1),
+            _valid_row(provider_id=1027, symbol="ETH", name="Ethereum", slug="ethereum", rank=2),
+        ]
+    )
     UNIVERSE_SCHEMA.validate(df)
 
 
@@ -86,7 +90,7 @@ def test_rank_must_be_positive():
 
 def test_name_required():
     row = _valid_row()
-    row['name'] = None
+    row["name"] = None
     df = pd.DataFrame([row])
     with pytest.raises(pa.errors.SchemaError):
         UNIVERSE_SCHEMA.validate(df)

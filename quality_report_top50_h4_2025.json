@@ -1,0 +1,2397 @@
+[
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-02-03T04:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.18476627409111823
+    },
+    "severity": "WARN",
+    "symbol": "BCHUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 3,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-11-07T20:00:00",
+    "message": "3 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.27258349726458764
+    },
+    "severity": "WARN",
+    "symbol": "FILUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.2687435432264558
+    },
+    "severity": "WARN",
+    "symbol": "LTCUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.29774685906792175
+    },
+    "severity": "WARN",
+    "symbol": "FETUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.26738563783377334
+    },
+    "severity": "WARN",
+    "symbol": "WLDUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.2792926287071266
+    },
+    "severity": "WARN",
+    "symbol": "VETUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.2841115509334459
+    },
+    "severity": "WARN",
+    "symbol": "ATOMUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.29044152532287215
+    },
+    "severity": "WARN",
+    "symbol": "OPUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.28793662253588403
+    },
+    "severity": "WARN",
+    "symbol": "DOTUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.24350123917006014
+    },
+    "severity": "WARN",
+    "symbol": "PEPEUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 4,
+    "first_timestamp": "2025-01-20T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "4 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.35020242943311486
+    },
+    "severity": "WARN",
+    "symbol": "TRUMPUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.31013299102252584
+    },
+    "severity": "WARN",
+    "symbol": "ICPUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.21893656151658028
+    },
+    "severity": "WARN",
+    "symbol": "NEARUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.2004228209845168
+    },
+    "severity": "WARN",
+    "symbol": "POLUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-01-26T16:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-01-26T16:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.320266679248803
+    },
+    "severity": "WARN",
+    "symbol": "JUPUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 2,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-11-11T00:00:00",
+    "message": "2 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.26612654856813206
+    },
+    "severity": "WARN",
+    "symbol": "UNIUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.24571096534325718
+    },
+    "severity": "WARN",
+    "symbol": "AVAXUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.11398737837888716
+    },
+    "severity": "WARN",
+    "symbol": "BNBUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 2,
+    "first_timestamp": "2025-04-13T20:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-04-14T00:00:00",
+    "message": "2 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 2.517403174471332
+    },
+    "severity": "WARN",
+    "symbol": "OMUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.3281103482940849
+    },
+    "severity": "WARN",
+    "symbol": "ASTERUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.26363800681930055
+    },
+    "severity": "WARN",
+    "symbol": "TONUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.2784654173468569
+    },
+    "severity": "WARN",
+    "symbol": "BONKUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 2,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "2 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.24215500695308348
+    },
+    "severity": "WARN",
+    "symbol": "ETCUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.3250138202450828
+    },
+    "severity": "WARN",
+    "symbol": "SUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.26462908110475447
+    },
+    "severity": "WARN",
+    "symbol": "APTUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-03-02T16:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-03-02T16:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.2671452792064097
+    },
+    "severity": "WARN",
+    "symbol": "ADAUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.27724757720715043
+    },
+    "severity": "WARN",
+    "symbol": "RENDERUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.3639836609097139
+    },
+    "severity": "WARN",
+    "symbol": "TIAUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.20774203047411335
+    },
+    "severity": "WARN",
+    "symbol": "HBARUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.22257895169443115
+    },
+    "severity": "WARN",
+    "symbol": "SEIUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.23769149767526856
+    },
+    "severity": "WARN",
+    "symbol": "TAOUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.2809919513818084
+    },
+    "severity": "WARN",
+    "symbol": "ARBUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 9,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-11-08T16:00:00",
+    "message": "9 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 249452297.4
+    },
+    "severity": "WARN",
+    "symbol": "FETUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 7,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-11-28T04:00:00",
+    "message": "7 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 163173.514
+    },
+    "severity": "WARN",
+    "symbol": "BCHUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 5,
+    "first_timestamp": "2025-01-18T20:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "5 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 7038818.526
+    },
+    "severity": "WARN",
+    "symbol": "SOLUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 14,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2026-01-29T04:00:00",
+    "message": "14 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 195188350.9
+    },
+    "severity": "WARN",
+    "symbol": "WLDUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 3,
+    "first_timestamp": "2025-07-11T08:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "3 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 403866794.57
+    },
+    "severity": "WARN",
+    "symbol": "ENAUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 5,
+    "first_timestamp": "2025-01-21T12:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T08:00:00",
+    "message": "5 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 1477581726.3
+    },
+    "severity": "WARN",
+    "symbol": "VETUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 2,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "2 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 2162162.231
+    },
+    "severity": "WARN",
+    "symbol": "LTCUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 21,
+    "first_timestamp": "2025-01-01T16:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "21 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 494527661.0
+    },
+    "severity": "WARN",
+    "symbol": "XLMUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 25,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2026-01-31T20:00:00",
+    "message": "25 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 64182416.79
+    },
+    "severity": "WARN",
+    "symbol": "FILUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 2,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "2 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 140310217.7
+    },
+    "severity": "WARN",
+    "symbol": "SUIUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 3,
+    "first_timestamp": "2025-09-17T12:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "3 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 285458922.0
+    },
+    "severity": "WARN",
+    "symbol": "SKYUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 47,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2026-01-19T12:00:00",
+    "message": "47 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 14408485.25
+    },
+    "severity": "WARN",
+    "symbol": "ICPUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 7,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-11-09T04:00:00",
+    "message": "7 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 36282440.2
+    },
+    "severity": "WARN",
+    "symbol": "NEARUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 16,
+    "first_timestamp": "2025-01-19T12:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-27T20:00:00",
+    "message": "16 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 54248569.995
+    },
+    "severity": "WARN",
+    "symbol": "TRUMPUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 2,
+    "first_timestamp": "2025-03-02T20:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "2 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 41734.73429
+    },
+    "severity": "WARN",
+    "symbol": "BTCUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 4,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "4 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 18044492.0
+    },
+    "severity": "WARN",
+    "symbol": "LINKUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 2,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T04:00:00",
+    "message": "2 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 94177347.0
+    },
+    "severity": "WARN",
+    "symbol": "ONDOUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 2,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "2 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 279030.8477
+    },
+    "severity": "WARN",
+    "symbol": "TAOUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 3,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "3 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 345265943.4
+    },
+    "severity": "WARN",
+    "symbol": "ARBUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 3,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "3 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 255316293.8
+    },
+    "severity": "WARN",
+    "symbol": "SEIUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 33,
+    "first_timestamp": "2025-04-13T20:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-12-16T20:00:00",
+    "message": "33 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 337310303.0
+    },
+    "severity": "WARN",
+    "symbol": "OMUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 7,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-12-19T12:00:00",
+    "message": "7 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 901756.752
+    },
+    "severity": "WARN",
+    "symbol": "BNBUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 1,
+    "first_timestamp": "2025-11-02T16:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-11-02T16:00:00",
+    "message": "1 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 289917796.21
+    },
+    "severity": "WARN",
+    "symbol": "ASTERUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 3,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2026-01-31T20:00:00",
+    "message": "3 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 11074342.61
+    },
+    "severity": "WARN",
+    "symbol": "AVAXUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 5,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-11-11T16:00:00",
+    "message": "5 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 24456439.65
+    },
+    "severity": "WARN",
+    "symbol": "UNIUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 3,
+    "first_timestamp": "2025-09-26T08:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "3 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 72093006353.0
+    },
+    "severity": "WARN",
+    "symbol": "PUMPUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 11,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-11-07T20:00:00",
+    "message": "11 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 4434755.39
+    },
+    "severity": "WARN",
+    "symbol": "ETCUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 7,
+    "first_timestamp": "2025-01-15T16:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "7 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 845056387.0
+    },
+    "severity": "WARN",
+    "symbol": "XRPUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 2,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-11-08T12:00:00",
+    "message": "2 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 175181758.6
+    },
+    "severity": "WARN",
+    "symbol": "SUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 4,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T04:00:00",
+    "message": "4 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 9555495.11
+    },
+    "severity": "WARN",
+    "symbol": "ATOMUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 5,
+    "first_timestamp": "2025-01-20T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-07-29T12:00:00",
+    "message": "5 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 1045027233.7
+    },
+    "severity": "WARN",
+    "symbol": "TRXUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 14,
+    "first_timestamp": "2025-10-01T20:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-11-16T20:00:00",
+    "message": "14 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 1536188.25
+    },
+    "severity": "WARN",
+    "symbol": "ZECUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 12,
+    "first_timestamp": "2025-01-17T12:00:00",
+    "interval": "4h",
+    "last_timestamp": "2026-01-05T20:00:00",
+    "message": "12 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 9668023270734.0
+    },
+    "severity": "WARN",
+    "symbol": "SHIBUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 4,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-11-07T20:00:00",
+    "message": "4 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 13323117.85
+    },
+    "severity": "WARN",
+    "symbol": "RENDERUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 1,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-02-03T04:00:00",
+    "message": "1 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 1114056.6473
+    },
+    "severity": "WARN",
+    "symbol": "ETHUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 3,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-11-08T00:00:00",
+    "message": "3 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 35862924.85
+    },
+    "severity": "WARN",
+    "symbol": "TIAUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 9,
+    "first_timestamp": "2025-01-15T16:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "9 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 180931621.0
+    },
+    "severity": "WARN",
+    "symbol": "ALGOUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 4,
+    "first_timestamp": "2025-01-16T16:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "4 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 651678088.0
+    },
+    "severity": "WARN",
+    "symbol": "HBARUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 2,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "2 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 4333207373.0
+    },
+    "severity": "WARN",
+    "symbol": "DOGEUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 8,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "8 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 36234177.95
+    },
+    "severity": "WARN",
+    "symbol": "TONUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 5334732177643.0
+    },
+    "severity": "WARN",
+    "symbol": "BONKUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 8,
+    "first_timestamp": "2025-09-01T16:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-11-10T08:00:00",
+    "message": "8 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 2118960570.5
+    },
+    "severity": "WARN",
+    "symbol": "WLFIUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 12,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "12 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 825867071.6
+    },
+    "severity": "WARN",
+    "symbol": "ADAUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 2,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "2 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 13316575.26
+    },
+    "severity": "WARN",
+    "symbol": "APTUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 25,
+    "first_timestamp": "2025-01-18T12:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "25 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 172707552.9
+    },
+    "severity": "WARN",
+    "symbol": "JUPUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 6,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2026-01-10T12:00:00",
+    "message": "6 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 126101678.5
+    },
+    "severity": "WARN",
+    "symbol": "POLUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 4,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "4 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 116919249.73
+    },
+    "severity": "WARN",
+    "symbol": "OPUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 4,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-11-07T20:00:00",
+    "message": "4 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 38860031.483
+    },
+    "severity": "WARN",
+    "symbol": "DOTUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 5,
+    "first_timestamp": "2025-01-20T20:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-11-08T20:00:00",
+    "message": "5 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 445285.419
+    },
+    "severity": "WARN",
+    "symbol": "AAVEUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 3,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "3 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 38590588900510.0
+    },
+    "severity": "WARN",
+    "symbol": "PEPEUSDT",
+    "table": "spot"
+  },
+  {
+    "check_name": "time_gaps",
+    "count": 1,
+    "first_timestamp": "2025-07-10T08:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-07-10T08:00:00",
+    "message": "1 gaps detected; max gap 8h vs expected 4h",
+    "metadata": {
+      "expected_seconds": 14400,
+      "max_delta_seconds": 28800
+    },
+    "severity": "ERROR",
+    "symbol": "PUMPUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-02-03T04:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.1848330319936099
+    },
+    "severity": "WARN",
+    "symbol": "BCHUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.26745239156308226
+    },
+    "severity": "WARN",
+    "symbol": "WLDUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.27832311200445237
+    },
+    "severity": "WARN",
+    "symbol": "VETUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 3,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-11-07T20:00:00",
+    "message": "3 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.28227177972353346
+    },
+    "severity": "WARN",
+    "symbol": "FILUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.2697218102011218
+    },
+    "severity": "WARN",
+    "symbol": "LTCUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.29702860680894205
+    },
+    "severity": "WARN",
+    "symbol": "FETUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.29032904492328565
+    },
+    "severity": "WARN",
+    "symbol": "ATOMUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 3,
+    "first_timestamp": "2025-01-19T08:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-01-20T00:00:00",
+    "message": "3 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.45930418725620314
+    },
+    "severity": "WARN",
+    "symbol": "TRUMPUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.21084073342853787
+    },
+    "severity": "WARN",
+    "symbol": "HBARUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.36563618467409914
+    },
+    "severity": "WARN",
+    "symbol": "TIAUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.278003158351946
+    },
+    "severity": "WARN",
+    "symbol": "RENDERUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.2817503543560819
+    },
+    "severity": "WARN",
+    "symbol": "ARBUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.2233320349638111
+    },
+    "severity": "WARN",
+    "symbol": "SEIUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.23907793748947084
+    },
+    "severity": "WARN",
+    "symbol": "TAOUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.25022668645559165
+    },
+    "severity": "WARN",
+    "symbol": "PEPEUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.2951776429229981
+    },
+    "severity": "WARN",
+    "symbol": "OPUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.2902324436377864
+    },
+    "severity": "WARN",
+    "symbol": "DOTUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.22027990916525028
+    },
+    "severity": "WARN",
+    "symbol": "NEARUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.3160116538387285
+    },
+    "severity": "WARN",
+    "symbol": "ICPUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 2,
+    "first_timestamp": "2025-02-21T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "2 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.5721122865074423
+    },
+    "severity": "WARN",
+    "symbol": "IPUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.2566097234062076
+    },
+    "severity": "WARN",
+    "symbol": "KASUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-03-02T16:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-03-02T16:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.2666640004754509
+    },
+    "severity": "WARN",
+    "symbol": "ADAUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.26904818646060097
+    },
+    "severity": "WARN",
+    "symbol": "APTUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 2,
+    "first_timestamp": "2025-04-13T20:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-04-14T00:00:00",
+    "message": "2 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 2.5507283167197357
+    },
+    "severity": "WARN",
+    "symbol": "OMUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.11452454508893149
+    },
+    "severity": "WARN",
+    "symbol": "BNBUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.2891689467179686
+    },
+    "severity": "WARN",
+    "symbol": "BONKUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.2648776297594328
+    },
+    "severity": "WARN",
+    "symbol": "TONUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-01-26T16:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-01-26T16:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.31962021430439586
+    },
+    "severity": "WARN",
+    "symbol": "JUPUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.20201596599735655
+    },
+    "severity": "WARN",
+    "symbol": "POLUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 2,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "2 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.24637068721319036
+    },
+    "severity": "WARN",
+    "symbol": "ETCUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.32687007968038106
+    },
+    "severity": "WARN",
+    "symbol": "SUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 2,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-11-11T00:00:00",
+    "message": "2 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.2662153534842907
+    },
+    "severity": "WARN",
+    "symbol": "UNIUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 0.24832839238425716
+    },
+    "severity": "WARN",
+    "symbol": "AVAXUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "price_return_outliers",
+    "count": 1,
+    "first_timestamp": "2025-07-10T08:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-07-10T08:00:00",
+    "message": "1 extreme log-return outliers detected",
+    "metadata": {
+      "max_abs_log_return": 2.207661013580618
+    },
+    "severity": "WARN",
+    "symbol": "PUMPUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 3,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "3 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 603431.682
+    },
+    "severity": "WARN",
+    "symbol": "BCHUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 28,
+    "first_timestamp": "2025-04-28T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2026-01-20T20:00:00",
+    "message": "28 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 410821.098
+    },
+    "severity": "WARN",
+    "symbol": "XMRUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 5,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-11-08T12:00:00",
+    "message": "5 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 659447256.0
+    },
+    "severity": "WARN",
+    "symbol": "FETUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 19,
+    "first_timestamp": "2025-01-01T16:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "19 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 1235280563.0
+    },
+    "severity": "WARN",
+    "symbol": "XLMUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 17,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2026-01-31T20:00:00",
+    "message": "17 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 406079859.8
+    },
+    "severity": "WARN",
+    "symbol": "FILUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 466825306.9
+    },
+    "severity": "WARN",
+    "symbol": "SUIUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 8,
+    "first_timestamp": "2025-09-09T16:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-11-12T16:00:00",
+    "message": "8 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 910773956.0
+    },
+    "severity": "WARN",
+    "symbol": "SKYUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 7969052.65
+    },
+    "severity": "WARN",
+    "symbol": "LTCUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 58,
+    "first_timestamp": "2025-07-07T12:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-09-06T12:00:00",
+    "message": "58 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 792943250.0
+    },
+    "severity": "WARN",
+    "symbol": "MUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 12,
+    "first_timestamp": "2025-09-08T12:00:00",
+    "interval": "4h",
+    "last_timestamp": "2026-01-29T04:00:00",
+    "message": "12 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 728698486.0
+    },
+    "severity": "WARN",
+    "symbol": "WLDUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 3,
+    "first_timestamp": "2025-01-21T12:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "3 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 3727449041.0
+    },
+    "severity": "WARN",
+    "symbol": "VETUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 2,
+    "first_timestamp": "2025-07-21T16:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "2 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 1784314801.0
+    },
+    "severity": "WARN",
+    "symbol": "ENAUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 4,
+    "first_timestamp": "2025-01-18T16:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "4 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 462090027.9
+    },
+    "severity": "WARN",
+    "symbol": "ONDOUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 8,
+    "first_timestamp": "2025-06-24T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "8 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 786152496.0
+    },
+    "severity": "WARN",
+    "symbol": "SEIUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 5,
+    "first_timestamp": "2025-06-30T16:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "5 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 1106820169.3
+    },
+    "severity": "WARN",
+    "symbol": "ARBUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 849534.18
+    },
+    "severity": "WARN",
+    "symbol": "TAOUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 10,
+    "first_timestamp": "2025-01-18T16:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-27T20:00:00",
+    "message": "10 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 168018874.76
+    },
+    "severity": "WARN",
+    "symbol": "TRUMPUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 1,
+    "first_timestamp": "2025-04-07T16:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-04-07T16:00:00",
+    "message": "1 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 284460.151
+    },
+    "severity": "WARN",
+    "symbol": "BTCUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 2,
+    "first_timestamp": "2025-08-28T16:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "2 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 50939576.92
+    },
+    "severity": "WARN",
+    "symbol": "LINKUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 3,
+    "first_timestamp": "2025-06-28T20:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-07-13T16:00:00",
+    "message": "3 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 18886733039.0
+    },
+    "severity": "WARN",
+    "symbol": "PENGUUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 6,
+    "first_timestamp": "2025-01-18T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-09-07T00:00:00",
+    "message": "6 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 1344123461.0
+    },
+    "severity": "WARN",
+    "symbol": "TRXUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 3,
+    "first_timestamp": "2025-10-01T20:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-11-08T20:00:00",
+    "message": "3 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 3102535.159
+    },
+    "severity": "WARN",
+    "symbol": "ZECUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 3,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "3 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 50993162.35
+    },
+    "severity": "WARN",
+    "symbol": "ATOMUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 3,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2026-01-05T20:00:00",
+    "message": "3 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 27704638253.0
+    },
+    "severity": "WARN",
+    "symbol": "SHIBUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 3,
+    "first_timestamp": "2025-10-31T16:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-12-20T16:00:00",
+    "message": "3 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 769646878.0
+    },
+    "severity": "WARN",
+    "symbol": "CCUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 4,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-11-25T12:00:00",
+    "message": "4 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 1105522152.0
+    },
+    "severity": "WARN",
+    "symbol": "KASUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 43,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2026-01-31T20:00:00",
+    "message": "43 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 35820748.0
+    },
+    "severity": "WARN",
+    "symbol": "ICPUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 73,
+    "first_timestamp": "2025-02-14T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2026-01-21T04:00:00",
+    "message": "73 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 215186428.6
+    },
+    "severity": "WARN",
+    "symbol": "IPUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 2,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-11-07T20:00:00",
+    "message": "2 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 157584405.0
+    },
+    "severity": "WARN",
+    "symbol": "NEARUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 2,
+    "first_timestamp": "2025-10-25T16:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-11-01T08:00:00",
+    "message": "2 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 185073317.8
+    },
+    "severity": "WARN",
+    "symbol": "VIRTUALUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 24,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2026-01-13T20:00:00",
+    "message": "24 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 526815780.0
+    },
+    "severity": "WARN",
+    "symbol": "POLUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 24,
+    "first_timestamp": "2025-01-18T12:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "24 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 892056035.0
+    },
+    "severity": "WARN",
+    "symbol": "JUPUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 2,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-11-08T00:00:00",
+    "message": "2 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 229943300.0
+    },
+    "severity": "WARN",
+    "symbol": "TIAUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 11,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2026-01-11T20:00:00",
+    "message": "11 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 51709067.8
+    },
+    "severity": "WARN",
+    "symbol": "RENDERUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 8,
+    "first_timestamp": "2025-01-16T16:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "8 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 1687001943.0
+    },
+    "severity": "WARN",
+    "symbol": "HBARUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 7,
+    "first_timestamp": "2025-01-16T16:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "7 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 649459547.1
+    },
+    "severity": "WARN",
+    "symbol": "ALGOUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 3,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-14T08:00:00",
+    "message": "3 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 15606910930.0
+    },
+    "severity": "WARN",
+    "symbol": "DOGEUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 8,
+    "first_timestamp": "2025-09-01T16:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-09-05T16:00:00",
+    "message": "8 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 8083338674.0
+    },
+    "severity": "WARN",
+    "symbol": "WLFIUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 11,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "11 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 3350901974.0
+    },
+    "severity": "WARN",
+    "symbol": "ADAUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 74231521.1
+    },
+    "severity": "WARN",
+    "symbol": "APTUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 11,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "11 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 129920747.4
+    },
+    "severity": "WARN",
+    "symbol": "TONUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 5,
+    "first_timestamp": "2025-07-06T08:00:00",
+    "interval": "4h",
+    "last_timestamp": "2026-01-04T16:00:00",
+    "message": "5 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 25838034944.0
+    },
+    "severity": "WARN",
+    "symbol": "BONKUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 61,
+    "first_timestamp": "2025-06-18T16:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-09-07T16:00:00",
+    "message": "61 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 2795165265.0
+    },
+    "severity": "WARN",
+    "symbol": "MYXUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 6,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-13T12:00:00",
+    "message": "6 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 2408855.52
+    },
+    "severity": "WARN",
+    "symbol": "BNBUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 28,
+    "first_timestamp": "2025-04-13T20:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-12-17T16:00:00",
+    "message": "28 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 1489320783.5
+    },
+    "severity": "WARN",
+    "symbol": "OMUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 148649631137.0
+    },
+    "severity": "WARN",
+    "symbol": "PEPEUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 2,
+    "first_timestamp": "2025-07-28T08:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "2 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 463757094.9
+    },
+    "severity": "WARN",
+    "symbol": "OPUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 3,
+    "first_timestamp": "2025-03-04T16:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "3 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 1714097.3
+    },
+    "severity": "WARN",
+    "symbol": "AAVEUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 4,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2026-01-31T20:00:00",
+    "message": "4 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 161064220.6
+    },
+    "severity": "WARN",
+    "symbol": "DOTUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 1,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "1 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 35428818.0
+    },
+    "severity": "WARN",
+    "symbol": "AVAXUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 6,
+    "first_timestamp": "2025-06-10T16:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-11-11T16:00:00",
+    "message": "6 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 79448153.0
+    },
+    "severity": "WARN",
+    "symbol": "UNIUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 6,
+    "first_timestamp": "2025-01-16T16:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-10-11T00:00:00",
+    "message": "6 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 2060672689.1
+    },
+    "severity": "WARN",
+    "symbol": "XRPUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 2,
+    "first_timestamp": "2025-10-11T00:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-11-08T12:00:00",
+    "message": "2 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 399031788.0
+    },
+    "severity": "WARN",
+    "symbol": "SUSDT",
+    "table": "futures"
+  },
+  {
+    "check_name": "volume_outliers",
+    "count": 6,
+    "first_timestamp": "2025-02-03T04:00:00",
+    "interval": "4h",
+    "last_timestamp": "2025-11-07T20:00:00",
+    "message": "6 volume outliers detected by IQR",
+    "metadata": {
+      "max_volume": 21355577.64
+    },
+    "severity": "WARN",
+    "symbol": "ETCUSDT",
+    "table": "futures"
+  }
+]
