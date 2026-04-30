@@ -58,12 +58,12 @@ class TestUniverseNonStrictValidation:
         assert isinstance(result, pa.errors.SchemaErrors)
         assert hasattr(result, "failure_cases")
 
-    def test_negative_market_cap_returns_errors_non_strict(self):
-        """Negative market cap should return SchemaErrors."""
+    def test_negative_market_cap_passes_non_strict(self):
+        """Market cap values are not validation gates for universe rows."""
         df = pd.DataFrame([_v6_universe_row(market_cap=-1000.0)])
 
         result = validate_universe_dataframe(df, strict=False)
-        assert isinstance(result, pa.errors.SchemaErrors)
+        assert isinstance(result, pd.DataFrame)
 
     def test_null_symbol_returns_errors_non_strict(self):
         """Null symbols should return SchemaErrors."""

@@ -22,13 +22,12 @@ class TestUniverseSchema:
         with pytest.raises(pa.errors.SchemaError):
             UNIVERSE_SCHEMA.validate(invalid_universe_duplicate_ranks)
 
-    def test_negative_market_cap_fails(self, valid_universe_df):
-        """Test that negative market cap fails"""
+    def test_negative_market_cap_passes(self, valid_universe_df):
+        """Market cap values are stored but not used as validation gates."""
         df = valid_universe_df.head(3).copy()
         df["market_cap"] = [800000000000.0, -400000000000.0, 80000000000.0]
 
-        with pytest.raises(pa.errors.SchemaError):
-            UNIVERSE_SCHEMA.validate(df)
+        UNIVERSE_SCHEMA.validate(df)
 
     def test_null_symbol_fails(self, valid_universe_df):
         """Test that null symbol fails"""

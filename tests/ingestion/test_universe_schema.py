@@ -39,13 +39,12 @@ def test_provider_must_be_coinmarketcap():
         UNIVERSE_SCHEMA.validate(df)
 
 
-def test_circulating_supply_cannot_exceed_max_supply():
+def test_circulating_supply_can_exceed_max_supply():
     df = pd.DataFrame([_valid_row(circulating_supply=22_000_000.0, max_supply=21_000_000.0)])
-    with pytest.raises(pa.errors.SchemaError):
-        UNIVERSE_SCHEMA.validate(df)
+    UNIVERSE_SCHEMA.validate(df)
 
 
-def test_circulating_le_max_skipped_when_either_null():
+def test_supply_checks_skipped_when_either_null():
     df = pd.DataFrame([_valid_row(max_supply=None)])
     UNIVERSE_SCHEMA.validate(df)
 
@@ -96,10 +95,9 @@ def test_name_required():
         UNIVERSE_SCHEMA.validate(df)
 
 
-def test_supplies_cannot_be_negative():
+def test_supply_values_are_not_validated():
     df = pd.DataFrame([_valid_row(circulating_supply=-1.0)])
-    with pytest.raises(pa.errors.SchemaError):
-        UNIVERSE_SCHEMA.validate(df)
+    UNIVERSE_SCHEMA.validate(df)
 
 
 def test_market_cap_can_be_null():

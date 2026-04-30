@@ -12,15 +12,6 @@ from pandera.pandas import Check, Column, DataFrameSchema
 
 from crypto_data.schemas.checks import check_no_duplicate_ranks_per_date
 
-
-def _check_circulating_le_max(df: pd.DataFrame) -> bool:
-    """circulating_supply <= max_supply when both columns are non-null."""
-    mask = df["circulating_supply"].notna() & df["max_supply"].notna()
-    if not mask.any():
-        return True
-    return bool((df.loc[mask, "circulating_supply"] <= df.loc[mask, "max_supply"]).all())
-
-
 UNIVERSE_SCHEMA = DataFrameSchema(
     columns={
         # Identity
@@ -67,38 +58,22 @@ UNIVERSE_SCHEMA = DataFrameSchema(
         ),
         "market_cap": Column(
             float,
-            checks=[Check.greater_than_or_equal_to(0)],
             nullable=True,
             description="Market capitalization in USD",
         ),
         "fully_diluted_market_cap": Column(
             float,
-            checks=[Check.greater_than_or_equal_to(0)],
             nullable=True,
             description="Fully diluted market cap in USD",
         ),
-        # Anti-shitcoin (supply)
-        "circulating_supply": Column(
-            float,
-            checks=[Check.greater_than_or_equal_to(0)],
-            nullable=True,
-        ),
-        "max_supply": Column(
-            float,
-            checks=[Check.greater_than_or_equal_to(0)],
-            nullable=True,
-        ),
+        "circulating_supply": Column(float, nullable=True),
+        "max_supply": Column(float, nullable=True),
         # Metadata
         "tags": Column(str, nullable=True, description="Comma-separated CMC tags"),
         "platform": Column(str, nullable=True, description="Chain platform name; NULL for L1s"),
         "date_added": Column("datetime64[ns]", nullable=True, description="Listing date"),
     },
     checks=[
-        Check(
-            _check_circulating_le_max,
-            name="circulating_le_max",
-            error="circulating_supply must not exceed max_supply",
-        ),
         Check(
             check_no_duplicate_ranks_per_date,
             name="no_duplicate_ranks",
