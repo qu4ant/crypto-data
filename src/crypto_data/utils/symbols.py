@@ -86,7 +86,7 @@ def get_binance_symbols_from_universe(
             # Intentionally build a UNION across the full period.
             # This is a download-time superset, not a tradable PIT universe.
             result = conn.execute("""
-                SELECT DISTINCT symbol, categories
+                SELECT DISTINCT symbol, tags
                 FROM crypto_universe
                 WHERE date >= ?
                     AND date <= ?
@@ -98,9 +98,9 @@ def get_binance_symbols_from_universe(
         # symbol from the download superset. This protects re-runs over legacy
         # unfiltered universe tables where some snapshots may have stale/null tags.
         symbol_exclusions = {}
-        for symbol, categories in result:
+        for symbol, tags in result:
             symbol_exclusions.setdefault(symbol, False)
-            if has_excluded_tag(categories, exclude_tags):
+            if has_excluded_tag(tags, exclude_tags):
                 symbol_exclusions[symbol] = True
 
         base_symbols = [

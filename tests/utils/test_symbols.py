@@ -23,29 +23,32 @@ def test_db_with_universe():
         # Create database and populate with test data
         db = CryptoDatabase(db_path)
 
-        # Insert sample universe data
+        # Insert sample universe data (v6 schema)
         # BTC: always in top 50 (all months)
         # ETH: always in top 50 (all months)
         # SOL: enters top 50 in March (ranks 51 → 20)
         # DOGE: exits top 50 in February (ranks 45 → 60)
         db.conn.execute("""
-            INSERT INTO crypto_universe (date, symbol, rank, market_cap, categories)
+            INSERT INTO crypto_universe
+            (provider, provider_id, date, symbol, name, slug, rank,
+             market_cap, fully_diluted_market_cap,
+             circulating_supply, max_supply, tags, platform, date_added)
             VALUES
-                ('2024-01-01', 'BTC', 1, 800000000000, NULL),
-                ('2024-01-01', 'ETH', 2, 400000000000, NULL),
-                ('2024-01-01', 'DOGE', 45, 10000000000, NULL),
+                ('coinmarketcap', 1,    '2024-01-01', 'BTC',  'Bitcoin',  'bitcoin',  1, 800000000000, NULL, NULL, NULL, '', NULL, NULL),
+                ('coinmarketcap', 1027, '2024-01-01', 'ETH',  'Ethereum', 'ethereum', 2, 400000000000, NULL, NULL, NULL, '', NULL, NULL),
+                ('coinmarketcap', 74,   '2024-01-01', 'DOGE', 'Dogecoin', 'dogecoin', 45, 10000000000, NULL, NULL, NULL, '', NULL, NULL),
 
-                ('2024-02-01', 'BTC', 1, 850000000000, NULL),
-                ('2024-02-01', 'ETH', 2, 420000000000, NULL),
-                ('2024-02-01', 'DOGE', 60, 9000000000, NULL),
+                ('coinmarketcap', 1,    '2024-02-01', 'BTC',  'Bitcoin',  'bitcoin',  1, 850000000000, NULL, NULL, NULL, '', NULL, NULL),
+                ('coinmarketcap', 1027, '2024-02-01', 'ETH',  'Ethereum', 'ethereum', 2, 420000000000, NULL, NULL, NULL, '', NULL, NULL),
+                ('coinmarketcap', 74,   '2024-02-01', 'DOGE', 'Dogecoin', 'dogecoin', 60, 9000000000,  NULL, NULL, NULL, '', NULL, NULL),
 
-                ('2024-03-01', 'BTC', 1, 900000000000, NULL),
-                ('2024-03-01', 'ETH', 2, 450000000000, NULL),
-                ('2024-03-01', 'SOL', 20, 15000000000, NULL),
+                ('coinmarketcap', 1,    '2024-03-01', 'BTC',  'Bitcoin',  'bitcoin',  1, 900000000000, NULL, NULL, NULL, '', NULL, NULL),
+                ('coinmarketcap', 1027, '2024-03-01', 'ETH',  'Ethereum', 'ethereum', 2, 450000000000, NULL, NULL, NULL, '', NULL, NULL),
+                ('coinmarketcap', 5426, '2024-03-01', 'SOL',  'Solana',   'solana',   20, 15000000000, NULL, NULL, NULL, '', NULL, NULL),
 
-                ('2024-04-01', 'BTC', 1, 920000000000, NULL),
-                ('2024-04-01', 'ETH', 2, 460000000000, NULL),
-                ('2024-04-01', 'SOL', 18, 16000000000, NULL)
+                ('coinmarketcap', 1,    '2024-04-01', 'BTC',  'Bitcoin',  'bitcoin',  1, 920000000000, NULL, NULL, NULL, '', NULL, NULL),
+                ('coinmarketcap', 1027, '2024-04-01', 'ETH',  'Ethereum', 'ethereum', 2, 460000000000, NULL, NULL, NULL, '', NULL, NULL),
+                ('coinmarketcap', 5426, '2024-04-01', 'SOL',  'Solana',   'solana',   18, 16000000000, NULL, NULL, NULL, '', NULL, NULL)
         """)
 
         db.close()
@@ -166,8 +169,12 @@ def test_handles_symbols_with_special_characters(test_db_with_universe):
 
     # Add a symbol with numbers (e.g., "1INCH")
     db.conn.execute("""
-        INSERT INTO crypto_universe (date, symbol, rank, market_cap, categories)
-        VALUES ('2024-01-01', '1INCH', 30, 5000000000, NULL)
+        INSERT INTO crypto_universe
+        (provider, provider_id, date, symbol, name, slug, rank,
+         market_cap, fully_diluted_market_cap,
+         circulating_supply, max_supply, tags, platform, date_added)
+        VALUES ('coinmarketcap', 8104, '2024-01-01', '1INCH', '1inch Network', '1inch',
+                30, 5000000000, NULL, NULL, NULL, '', NULL, NULL)
     """)
     db.close()
 
@@ -185,12 +192,15 @@ def test_excludes_synthetic_assets_by_default(test_db_with_universe):
     """Default symbol extraction should filter old unfiltered universe rows."""
     db = CryptoDatabase(test_db_with_universe)
     db.conn.execute("""
-        INSERT INTO crypto_universe (date, symbol, rank, market_cap, categories)
+        INSERT INTO crypto_universe
+        (provider, provider_id, date, symbol, name, slug, rank,
+         market_cap, fully_diluted_market_cap,
+         circulating_supply, max_supply, tags, platform, date_added)
         VALUES
-            ('2024-01-01', 'USDT', 3, 95000000000, 'stablecoin,asset-backed-stablecoin'),
-            ('2024-01-01', 'WBTC', 4, 12000000000, 'wrapped-tokens'),
-            ('2024-01-01', 'PAXG', 5, 1000000000, 'tokenized-gold'),
-            ('2024-01-01', 'TSLA', 6, 900000000, 'tokenized-stock')
+            ('coinmarketcap', 825,   '2024-01-01', 'USDT', 'Tether USDt',     'tether',          3, 95000000000, NULL, NULL, NULL, 'stablecoin,asset-backed-stablecoin', NULL, NULL),
+            ('coinmarketcap', 3717,  '2024-01-01', 'WBTC', 'Wrapped Bitcoin', 'wrapped-bitcoin', 4, 12000000000, NULL, NULL, NULL, 'wrapped-tokens',                     NULL, NULL),
+            ('coinmarketcap', 4705,  '2024-01-01', 'PAXG', 'PAX Gold',        'pax-gold',        5, 1000000000,  NULL, NULL, NULL, 'tokenized-gold',                     NULL, NULL),
+            ('coinmarketcap', 12345, '2024-01-01', 'TSLA', 'Tesla Tokenized', 'tesla-tokenized', 6, 900000000,   NULL, NULL, NULL, 'tokenized-stock',                    NULL, NULL)
     """)
     db.close()
 
@@ -212,8 +222,12 @@ def test_symbol_extraction_allows_explicit_filter_opt_out(test_db_with_universe)
     """Passing empty filter lists should disable the package defaults."""
     db = CryptoDatabase(test_db_with_universe)
     db.conn.execute("""
-        INSERT INTO crypto_universe (date, symbol, rank, market_cap, categories)
-        VALUES ('2024-01-01', 'USDT', 3, 95000000000, 'stablecoin')
+        INSERT INTO crypto_universe
+        (provider, provider_id, date, symbol, name, slug, rank,
+         market_cap, fully_diluted_market_cap,
+         circulating_supply, max_supply, tags, platform, date_added)
+        VALUES ('coinmarketcap', 825, '2024-01-01', 'USDT', 'Tether USDt', 'tether',
+                3, 95000000000, NULL, NULL, NULL, 'stablecoin', NULL, NULL)
     """)
     db.close()
 
