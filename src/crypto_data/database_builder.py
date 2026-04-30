@@ -22,6 +22,7 @@ from crypto_data.clients.coinmarketcap import CoinMarketCapClient
 from crypto_data.database import CryptoDatabase
 from crypto_data.enums import DataType, Interval
 from crypto_data.schemas import UNIVERSE_SCHEMA
+from crypto_data.tables import UNIVERSE_COLUMNS
 from crypto_data.universe_filters import (
     has_excluded_symbol,
     has_excluded_tag,
@@ -34,24 +35,6 @@ from crypto_data.utils.runtime import run_async_from_sync
 from crypto_data.utils.symbols import get_binance_symbols_from_universe
 
 logger = logging.getLogger(__name__)
-
-UNIVERSE_COLUMNS = [
-    "provider",
-    "provider_id",
-    "date",
-    "symbol",
-    "name",
-    "slug",
-    "rank",
-    "market_cap",
-    "fully_diluted_market_cap",
-    "circulating_supply",
-    "max_supply",
-    "tags",
-    "platform",
-    "date_added",
-]
-
 
 # =============================================================================
 # HELPER FUNCTIONS

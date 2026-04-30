@@ -9,18 +9,26 @@ from __future__ import annotations
 
 import logging
 import tempfile
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 
-from dateutil.relativedelta import relativedelta
-
-from crypto_data.binance_datasets.base import DownloadResult, Period
+from crypto_data.binance_datasets.base import DownloadResult
 from crypto_data.binance_datasets.registry import get_binance_dataset_strategy
 from crypto_data.binance_downloader import BinanceDataVisionDownloader
 from crypto_data.binance_importer import BinanceDuckDBImporter
 from crypto_data.binance_repair import repair_binance_gaps
+from crypto_data.completeness import (
+    filter_existing_periods as _filter_existing_periods,
+)
+from crypto_data.completeness import (
+    kline_close_window as _kline_close_window,
+)
+from crypto_data.completeness import (
+    period_exists_in_db,
+)
 from crypto_data.database import CryptoDatabase
 from crypto_data.enums import DataType, Interval
+from crypto_data.tables import is_kline_table
 from crypto_data.utils.dates import parse_date_range
 from crypto_data.utils.ingestion_helpers import initialize_ingestion_stats, log_ingestion_summary
 from crypto_data.utils.runtime import run_async_from_sync
@@ -28,48 +36,9 @@ from crypto_data.utils.runtime import run_async_from_sync
 logger = logging.getLogger(__name__)
 
 
-def _interval_to_seconds(interval: str | None) -> int | None:
-    """
-    Convert Binance interval string to seconds.
-
-    Returns None for unsupported/ambiguous intervals.
-    """
-    if not interval:
-        return None
-
-    try:
-        value = int(interval[:-1])
-        unit = interval[-1]
-    except (ValueError, TypeError):
-        return None
-
-    if value <= 0:
-        return None
-
-    if unit == "m":
-        return value * 60
-    if unit == "h":
-        return value * 3600
-    if unit == "d":
-        return value * 86400
-    if unit == "w":
-        return value * 7 * 86400
-    if unit == "M":
-        # Month interval length is variable.
-        return None
-
-    return None
-
-
-def _kline_close_window(start: datetime, end: datetime) -> tuple[datetime, datetime]:
-    """
-    Return the requested kline close-time window.
-
-    User-facing date ranges are calendar-day inclusive. Because kline rows are
-    keyed by candle close time, the first valid close is strictly after the
-    start midnight and the final valid close is the midnight after end_date.
-    """
-    return start, end + timedelta(days=1)
+def _period_exists_in_db(conn, table: str, symbol: str, interval: str | None, period) -> bool:
+    """Backward-compatible private alias for tests/internal callers."""
+    return period_exists_in_db(conn, table, symbol, interval, period)
 
 
 def _prune_klines_outside_date_range(
@@ -105,184 +74,6 @@ def _prune_klines_outside_date_range(
             delete_sql,
             ["binance", interval.value, *symbols, window_start, window_end],
         )
-
-
-def _period_exists_in_db(
-    conn, table: str, symbol: str, interval: str | None, period: Period
-) -> bool:
-    """
-    Check if data already exists in DB for a given period.
-
-    Parameters
-    ----------
-    conn : duckdb.DuckDBPyConnection
-        Database connection
-    table : str
-        Table name ('spot', 'futures', 'open_interest', 'funding_rates')
-    symbol : str
-        Symbol to check (e.g., 'BTCUSDT')
-    interval : Optional[str]
-        Kline interval (required for spot/futures)
-    period : Period
-        Period to check
-    Returns
-    -------
-    bool
-        True if data exists for this period
-    """
-    # Parse period to get date bounds
-    if period.is_monthly:
-        # Monthly: '2024-01' -> 2024-01-01 to 2024-02-01
-        start = datetime.strptime(period.value, "%Y-%m")
-        end = start + relativedelta(months=1)
-    else:
-        # Daily: '2024-01-15' -> 2024-01-15 to 2024-01-16
-        start = datetime.strptime(period.value, "%Y-%m-%d")
-        end = start + relativedelta(days=1)
-
-    # Build query based on table type
-    if table in ("spot", "futures"):
-        # Completeness check for OHLCV:
-        # 1) At least one row exists in the period
-        # 2) Rows are contiguous for the detected interval
-        # 3) Coverage reaches both period edges (with one-interval tolerance)
-        #
-        # Edge coverage avoids false positives where only a contiguous sub-range
-        # exists in the middle of the month/day.
-        query = f"""
-            SELECT
-                MIN(timestamp) as min_ts,
-                MAX(timestamp) as max_ts,
-                COUNT(*) as row_count
-            FROM {table}
-            WHERE exchange = ?
-              AND symbol = ?
-              AND interval = ?
-              AND timestamp > ?
-              AND timestamp <= ?
-        """
-        result = conn.execute(query, ["binance", symbol, interval, start, end]).fetchone()
-
-        if not result or result[2] == 0:
-            return False
-
-        min_ts, max_ts, row_count = result
-        step_seconds = _interval_to_seconds(interval)
-
-        if step_seconds is None:
-            # Preserve previous behavior for unsupported intervals.
-            return True
-
-        # Check interior continuity (no missing rows between observed bounds).
-        observed_seconds = (max_ts - min_ts).total_seconds()
-        expected_rows = int(observed_seconds // step_seconds) + 1
-        if row_count < expected_rows:
-            return False
-
-        # Check coverage near both period boundaries.
-        edge_tolerance = timedelta(seconds=step_seconds)
-        period_start_ceiling = start + edge_tolerance
-
-        covers_period_start = min_ts <= period_start_ceiling
-        covers_period_end = max_ts >= end
-
-        return covers_period_start and covers_period_end
-    # open_interest and funding_rates do not have an interval column, but
-    # a single row is not enough to prove that a daily/monthly file was
-    # imported completely. Require edge coverage and no large internal gap
-    # before skipping a period.
-    query = f"""
-            SELECT
-                MIN(timestamp) as min_ts,
-                MAX(timestamp) as max_ts,
-                COUNT(*) as row_count
-            FROM {table}
-            WHERE exchange = ?
-              AND symbol = ?
-              AND timestamp >= ?
-              AND timestamp < ?
-        """
-    result = conn.execute(query, ["binance", symbol, start, end]).fetchone()
-
-    if not result or result[2] == 0:
-        return False
-
-    min_ts, max_ts, row_count = result
-    if row_count < 2:
-        return False
-
-    if table == "open_interest":
-        edge_tolerance = timedelta(hours=1)
-        max_gap_tolerance = timedelta(hours=1)
-    else:
-        edge_tolerance = timedelta(hours=8)
-        max_gap_tolerance = timedelta(hours=8)
-
-    covers_period_start = min_ts <= start + edge_tolerance
-    covers_period_end = max_ts >= end - edge_tolerance
-    if not (covers_period_start and covers_period_end):
-        return False
-
-    gap_result = conn.execute(
-        f"""
-            WITH ordered AS (
-                SELECT
-                    timestamp,
-                    timestamp - LAG(timestamp) OVER (ORDER BY timestamp) AS diff
-                FROM {table}
-                WHERE exchange = ?
-                  AND symbol = ?
-                  AND timestamp >= ?
-                  AND timestamp < ?
-            )
-            SELECT MAX(diff)
-            FROM ordered
-            WHERE diff IS NOT NULL
-            """,
-        ["binance", symbol, start, end],
-    ).fetchone()
-    max_gap = gap_result[0] if gap_result else None
-
-    return max_gap is not None and max_gap <= max_gap_tolerance
-
-
-def _filter_existing_periods(
-    conn, table: str, symbol: str, interval: str | None, periods: list[Period]
-) -> tuple[list[Period], int]:
-    """
-    Filter out periods that already have data in the database.
-
-    Parameters
-    ----------
-    conn : duckdb.DuckDBPyConnection
-        Database connection
-    table : str
-        Table name
-    symbol : str
-        Symbol to check
-    interval : Optional[str]
-        Kline interval
-    periods : List[Period]
-        All periods to potentially download
-    Returns
-    -------
-    Tuple[List[Period], int]
-        (periods_to_download, count_skipped)
-    """
-    missing = []
-    skipped = 0
-
-    for period in periods:
-        if getattr(period, "replace_existing", False):
-            missing.append(period)
-            continue
-
-        if _period_exists_in_db(conn, table, symbol, interval, period):
-            skipped += 1
-        else:
-            missing.append(period)
-
-    return missing, skipped
 
 
 def _process_results(
@@ -323,8 +114,7 @@ def _process_results(
                     symbol,
                     period=result.period,
                     replace_existing=(
-                        importer.dataset.table_name in ("spot", "futures")
-                        and len(result.period) == 10
+                        is_kline_table(importer.dataset.table_name) and len(result.period) == 10
                     ),
                     window_start=window_start,
                     window_end=window_end,

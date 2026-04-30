@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [6.0.0] - 2026-04-30
+
+### 🚨 Breaking Changes
+
+**Enriched CoinMarketCap Universe Schema**
+- `crypto_universe` now uses `(provider, provider_id, date)` as the primary key.
+- Universe rows now store enriched CMC fields: `name`, `slug`, `fully_diluted_market_cap`, supply fields, `tags`, `platform`, and `date_added`.
+- Pre-v6 DuckDB files must be deleted and re-ingested.
+
+### ✨ New Features
+
+**Additional Kline Interval**
+- Added `Interval.MIN_3` for Binance `3m` klines.
+- OHLCV schema interval validation now derives from shared interval metadata.
+
+### 📦 Improvements
+
+**Internal Architecture Simplification**
+- Added shared table metadata in `crypto_data.tables`.
+- Added shared interval metadata in `crypto_data.intervals`.
+- Moved gap enumeration into neutral `crypto_data.gaps`, used by both quality audits and repair.
+- Added shared idempotent DuckDB insert helper in `crypto_data.db_write`.
+- Moved period completeness checks out of `binance_pipeline.py` into `crypto_data.completeness`.
+
+### 📝 Documentation
+
+- Updated README badges and examples for v6.0.0.
+- Updated developer notes to reflect the v6 schema and interval set.
+
+---
+
 ## [5.0.0] - 2025-11-21
 
 ### 🚨 Breaking Changes

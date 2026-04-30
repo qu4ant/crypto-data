@@ -46,6 +46,8 @@ class Interval(str, Enum):
     ----------
     MIN_1 : str
         1 minute interval
+    MIN_3 : str
+        3 minute interval
     MIN_5 : str
         5 minute interval
     MIN_15 : str
@@ -81,6 +83,7 @@ class Interval(str, Enum):
     """
 
     MIN_1 = "1m"
+    MIN_3 = "3m"
     MIN_5 = "5m"
     MIN_15 = "15m"
     MIN_30 = "30m"

@@ -17,6 +17,7 @@ import pandera.pandas as pa
 from crypto_data.binance_datasets.base import BinanceDatasetStrategy, Period
 from crypto_data.enums import DataType, Interval
 from crypto_data.schemas import OHLCV_SCHEMA
+from crypto_data.tables import KLINE_TABLE_COLUMNS, get_table_spec
 from crypto_data.utils.dates import generate_day_list, generate_month_list
 
 logger = logging.getLogger(__name__)
@@ -38,22 +39,8 @@ KLINES_COLUMNS = [
     "ignore",
 ]
 
-# Final columns for database import
-FINAL_COLUMNS = [
-    "exchange",
-    "symbol",
-    "interval",
-    "timestamp",
-    "open",
-    "high",
-    "low",
-    "close",
-    "volume",
-    "quote_volume",
-    "trades_count",
-    "taker_buy_base_volume",
-    "taker_buy_quote_volume",
-]
+# Backward-compatible alias for tests/internal callers.
+FINAL_COLUMNS = list(KLINE_TABLE_COLUMNS)
 
 RECENT_DAILY_REFRESH_DAYS = 3
 
@@ -122,7 +109,7 @@ class BinanceKlinesDataset(BinanceDatasetStrategy):
     @property
     def default_max_concurrent(self) -> int:
         """Return the default maximum concurrent downloads (20 for klines)."""
-        return 20
+        return get_table_spec(self.table_name).default_max_concurrent or 20
 
     @property
     def interval(self) -> Interval:

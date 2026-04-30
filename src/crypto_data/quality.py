@@ -18,30 +18,15 @@ import duckdb
 import pandas as pd
 from pandera.pandas import Check, Column, DataFrameSchema
 
+from crypto_data.gaps import enumerate_kline_gaps, enumerate_metric_gaps
+from crypto_data.tables import (
+    FUNDING_RATES_EXPECTED_SECONDS,
+    KLINE_TABLES,
+    OPEN_INTEREST_EXPECTED_SECONDS,
+    SUPPORTED_TABLES,
+    UNIVERSE_TABLE,
+)
 from crypto_data.utils.dates import Frequency, generate_date_list
-
-KLINE_TABLES = ("spot", "futures")
-METRIC_TABLES = ("open_interest", "funding_rates")
-UNIVERSE_TABLE = "crypto_universe"
-SUPPORTED_TABLES = (*KLINE_TABLES, *METRIC_TABLES, UNIVERSE_TABLE)
-
-KLINE_INTERVAL_SECONDS = {
-    "1m": 60,
-    "3m": 3 * 60,
-    "5m": 5 * 60,
-    "15m": 15 * 60,
-    "30m": 30 * 60,
-    "1h": 60 * 60,
-    "2h": 2 * 60 * 60,
-    "4h": 4 * 60 * 60,
-    "6h": 6 * 60 * 60,
-    "8h": 8 * 60 * 60,
-    "12h": 12 * 60 * 60,
-    "1d": 24 * 60 * 60,
-    "3d": 3 * 24 * 60 * 60,
-    "1w": 7 * 24 * 60 * 60,
-    # Binance monthly candles are calendar-month based, not fixed seconds.
-}
 
 FINDING_COLUMNS = [
     "severity",
@@ -247,7 +232,14 @@ def _audit_open_interest(
 ) -> list[QualityFinding]:
     findings: list[QualityFinding] = []
     findings.extend(_check_metric_duplicates(conn, "open_interest", symbols))
-    findings.extend(_check_metric_gaps(conn, "open_interest", symbols, expected_seconds=3600))
+    findings.extend(
+        _check_metric_gaps(
+            conn,
+            "open_interest",
+            symbols,
+            expected_seconds=OPEN_INTEREST_EXPECTED_SECONDS,
+        )
+    )
     findings.extend(
         _check_metric_invalid_values(
             conn,
@@ -268,7 +260,14 @@ def _audit_funding_rates(
 ) -> list[QualityFinding]:
     findings: list[QualityFinding] = []
     findings.extend(_check_metric_duplicates(conn, "funding_rates", symbols))
-    findings.extend(_check_metric_gaps(conn, "funding_rates", symbols, expected_seconds=8 * 3600))
+    findings.extend(
+        _check_metric_gaps(
+            conn,
+            "funding_rates",
+            symbols,
+            expected_seconds=FUNDING_RATES_EXPECTED_SECONDS,
+        )
+    )
     findings.extend(
         _check_metric_invalid_values(
             conn,
@@ -355,8 +354,6 @@ def _check_kline_gaps(
     symbols: Sequence[str] | None,
     intervals: Sequence[str] | None,
 ) -> list[QualityFinding]:
-    from crypto_data.binance_repair import enumerate_kline_gaps
-
     gaps = enumerate_kline_gaps(conn, table=table, symbols=symbols, intervals=intervals)
     grouped: dict[tuple[str, str], list] = {}
     for gap in gaps:
@@ -715,8 +712,6 @@ def _check_metric_gaps(
     *,
     expected_seconds: int,
 ) -> list[QualityFinding]:
-    from crypto_data.binance_repair import enumerate_metric_gaps
-
     gaps = enumerate_metric_gaps(
         conn,
         table=table,

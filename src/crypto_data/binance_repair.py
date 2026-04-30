@@ -15,46 +15,26 @@ import aiohttp
 import duckdb
 import pandas as pd
 
-from crypto_data.binance_datasets.klines import FINAL_COLUMNS as KLINE_FINAL_COLUMNS
 from crypto_data.clients.binance_rest import BinanceRestClient
+from crypto_data.db_write import insert_idempotent
 from crypto_data.enums import DataType, Interval
+from crypto_data.gaps import GapBoundary, enumerate_kline_gaps, enumerate_metric_gaps
 from crypto_data.schemas import FUNDING_RATES_SCHEMA, OHLCV_SCHEMA
+from crypto_data.tables import (
+    FUNDING_RATES_COLUMNS,
+    FUNDING_RATES_EXPECTED_SECONDS,
+    KLINE_TABLE_COLUMNS,
+    KLINE_TABLES,
+    TABLE_SPECS,
+)
 from crypto_data.utils.runtime import run_async_from_sync
 
 logger = logging.getLogger(__name__)
 
-KLINE_INTERVAL_SECONDS = {
-    "1m": 60,
-    "3m": 3 * 60,
-    "5m": 5 * 60,
-    "15m": 15 * 60,
-    "30m": 30 * 60,
-    "1h": 60 * 60,
-    "2h": 2 * 60 * 60,
-    "4h": 4 * 60 * 60,
-    "6h": 6 * 60 * 60,
-    "8h": 8 * 60 * 60,
-    "12h": 12 * 60 * 60,
-    "1d": 24 * 60 * 60,
-    "3d": 3 * 24 * 60 * 60,
-    "1w": 7 * 24 * 60 * 60,
-}
-FUNDING_EXPECTED_SECONDS = 8 * 60 * 60
-DEFAULT_REPAIR_TABLES = ("spot", "futures", "funding_rates")
+FUNDING_EXPECTED_SECONDS = FUNDING_RATES_EXPECTED_SECONDS
+DEFAULT_REPAIR_TABLES = tuple(table for table, spec in TABLE_SPECS.items() if spec.repair_supported)
 
 GapReason = Literal["partial_fill", "network_error"]
-
-
-@dataclass(frozen=True)
-class GapBoundary:
-    """One internal missing range bounded by two observed rows."""
-
-    table: str
-    symbol: str
-    interval: str | None
-    prev_close: datetime
-    next_close: datetime
-    expected_seconds: int
 
 
 @dataclass(frozen=True)
@@ -126,111 +106,6 @@ class _FetchedGap:
     error: str | None = None
 
 
-def enumerate_kline_gaps(
-    conn: duckdb.DuckDBPyConnection,
-    table: str,
-    *,
-    symbols: Sequence[str] | None = None,
-    intervals: Sequence[str] | None = None,
-) -> list[GapBoundary]:
-    """List every individual gap in a kline table."""
-    if table not in ("spot", "futures"):
-        raise ValueError(f"enumerate_kline_gaps only supports spot/futures, got {table!r}")
-
-    expected_values = ", ".join(
-        f"('{interval}', {seconds})" for interval, seconds in KLINE_INTERVAL_SECONDS.items()
-    )
-    filter_sql, params = _filters(symbols=symbols, intervals=intervals, alias="t")
-    rows = conn.execute(
-        f"""
-        WITH expected(interval, expected_seconds) AS (
-            VALUES {expected_values}
-        ),
-        ordered AS (
-            SELECT
-                t.symbol,
-                t.interval,
-                t.timestamp,
-                LAG(t.timestamp) OVER (
-                    PARTITION BY t.exchange, t.symbol, t.interval
-                    ORDER BY t.timestamp
-                ) AS prev_timestamp,
-                expected.expected_seconds
-            FROM {table} AS t
-            JOIN expected ON expected.interval = t.interval
-            {filter_sql}
-        )
-        SELECT symbol, interval, prev_timestamp, timestamp, expected_seconds
-        FROM ordered
-        WHERE prev_timestamp IS NOT NULL
-          AND date_diff('second', prev_timestamp, timestamp) > expected_seconds
-        ORDER BY symbol, interval, timestamp
-        """,
-        params,
-    ).fetchall()
-
-    return [
-        GapBoundary(
-            table=table,
-            symbol=symbol,
-            interval=interval,
-            prev_close=prev_close,
-            next_close=next_close,
-            expected_seconds=int(expected_seconds),
-        )
-        for symbol, interval, prev_close, next_close, expected_seconds in rows
-    ]
-
-
-def enumerate_metric_gaps(
-    conn: duckdb.DuckDBPyConnection,
-    table: str,
-    expected_seconds: int,
-    *,
-    symbols: Sequence[str] | None = None,
-) -> list[GapBoundary]:
-    """List every individual gap in a single-cadence metric table."""
-    if table not in ("open_interest", "funding_rates"):
-        raise ValueError(
-            f"enumerate_metric_gaps only supports open_interest/funding_rates, got {table!r}"
-        )
-
-    filter_sql, params = _filters(symbols=symbols, alias="t")
-    rows = conn.execute(
-        f"""
-        WITH ordered AS (
-            SELECT
-                t.symbol,
-                t.timestamp,
-                LAG(t.timestamp) OVER (
-                    PARTITION BY t.exchange, t.symbol
-                    ORDER BY t.timestamp
-                ) AS prev_timestamp
-            FROM {table} AS t
-            {filter_sql}
-        )
-        SELECT symbol, prev_timestamp, timestamp
-        FROM ordered
-        WHERE prev_timestamp IS NOT NULL
-          AND date_diff('second', prev_timestamp, timestamp) > ?
-        ORDER BY symbol, timestamp
-        """,
-        [*params, expected_seconds],
-    ).fetchall()
-
-    return [
-        GapBoundary(
-            table=table,
-            symbol=symbol,
-            interval=None,
-            prev_close=prev_close,
-            next_close=next_close,
-            expected_seconds=expected_seconds,
-        )
-        for symbol, prev_close, next_close in rows
-    ]
-
-
 class KlinesRepairStrategy:
     """Fetch missing kline candles and parse them to DB-ready DataFrames."""
 
@@ -248,7 +123,7 @@ class KlinesRepairStrategy:
 
     def parse_payload(self, payload: list[list], symbol: str) -> pd.DataFrame:
         if not payload:
-            return pd.DataFrame(columns=KLINE_FINAL_COLUMNS)
+            return pd.DataFrame(columns=KLINE_TABLE_COLUMNS)
 
         df = pd.DataFrame(
             payload,
@@ -286,7 +161,7 @@ class KlinesRepairStrategy:
         df["symbol"] = symbol
         df["interval"] = self.interval.value
         df["timestamp"] = pd.to_datetime(df["close_time"] + 1, unit="ms").dt.ceil("1s")
-        df = df[KLINE_FINAL_COLUMNS].drop_duplicates(
+        df = df[list(KLINE_TABLE_COLUMNS)].drop_duplicates(
             subset=["exchange", "symbol", "interval", "timestamp"]
         )
         return df.reset_index(drop=True)
@@ -309,7 +184,7 @@ class KlinesRepairStrategy:
         if prev_ms % interval_ms != 0 or next_ms % interval_ms != 0:
             raise ValueError(f"off-grid gap bounds for {gap}")
         if start_ms > end_ms:
-            return pd.DataFrame(columns=KLINE_FINAL_COLUMNS)
+            return pd.DataFrame(columns=KLINE_TABLE_COLUMNS)
         if _expected_missing_count(gap) > self.rest_limit:
             raise ValueError(
                 f"gap too large for single REST call ({self.rest_limit} max); "
@@ -339,16 +214,17 @@ class FundingRatesRepairStrategy:
     REST_LIMIT = 1000
 
     def parse_payload(self, payload: list[dict], symbol: str) -> pd.DataFrame:
-        columns = ["exchange", "symbol", "timestamp", "funding_rate"]
         if not payload:
-            return pd.DataFrame(columns=columns)
+            return pd.DataFrame(columns=FUNDING_RATES_COLUMNS)
 
         df = pd.DataFrame(payload)
         df["exchange"] = "binance"
         df["symbol"] = symbol
         df["timestamp"] = pd.to_datetime(df["fundingTime"].astype("int64"), unit="ms")
         df["funding_rate"] = df["fundingRate"].astype(float)
-        df = df[columns].drop_duplicates(subset=["exchange", "symbol", "timestamp"])
+        df = df[list(FUNDING_RATES_COLUMNS)].drop_duplicates(
+            subset=["exchange", "symbol", "timestamp"]
+        )
         return df.reset_index(drop=True)
 
     async def fetch_repair_rows(self, client, gap: GapBoundary) -> pd.DataFrame:
@@ -357,7 +233,7 @@ class FundingRatesRepairStrategy:
         end_ms = _to_utc_ms(gap.next_close) - 1
 
         if start_ms > end_ms:
-            return pd.DataFrame(columns=["exchange", "symbol", "timestamp", "funding_rate"])
+            return pd.DataFrame(columns=FUNDING_RATES_COLUMNS)
         if (end_ms - start_ms) >= self.REST_LIMIT * interval_ms:
             raise ValueError(
                 f"funding gap too large for single REST call ({self.REST_LIMIT} max); "
@@ -548,7 +424,7 @@ def _enumerate_repair_gaps(
 
 
 def _strategy_for_gap(gap: GapBoundary) -> KlinesRepairStrategy | FundingRatesRepairStrategy:
-    if gap.table in ("spot", "futures"):
+    if gap.table in KLINE_TABLES:
         if gap.interval is None:
             raise ValueError(f"kline gap has no interval: {gap}")
         data_type = DataType.SPOT if gap.table == "spot" else DataType.FUTURES
@@ -559,37 +435,11 @@ def _strategy_for_gap(gap: GapBoundary) -> KlinesRepairStrategy | FundingRatesRe
 
 
 def _insert_idempotent(conn: duckdb.DuckDBPyConnection, table: str, df: pd.DataFrame) -> int:
-    if df.empty:
-        return 0
-
-    if table in ("spot", "futures"):
-        join_condition = (
-            "existing.exchange = incoming.exchange "
-            "AND existing.symbol = incoming.symbol "
-            "AND existing.interval = incoming.interval "
-            "AND existing.timestamp = incoming.timestamp"
-        )
-    else:
-        join_condition = (
-            "existing.exchange = incoming.exchange "
-            "AND existing.symbol = incoming.symbol "
-            "AND existing.timestamp = incoming.timestamp"
-        )
-
     conn.execute("BEGIN TRANSACTION")
     try:
-        inserted_count = conn.execute(
-            f"""
-            SELECT COUNT(*)
-            FROM df AS incoming
-            LEFT JOIN {table} AS existing
-              ON {join_condition}
-            WHERE existing.exchange IS NULL
-            """
-        ).fetchone()[0]
-        conn.execute(f"INSERT OR IGNORE INTO {table} SELECT * FROM df")
+        inserted_count = insert_idempotent(conn, table, df)
         conn.execute("COMMIT")
-        return int(inserted_count)
+        return inserted_count
     except Exception:
         conn.execute("ROLLBACK")
         raise
@@ -646,26 +496,6 @@ def _replace_symbol(gap: GapBoundary, symbol: str) -> GapBoundary:
     )
 
 
-def _filters(
-    *,
-    symbols: Sequence[str] | None = None,
-    intervals: Sequence[str] | None = None,
-    alias: str = "t",
-) -> tuple[str, list[Any]]:
-    clauses: list[str] = []
-    params: list[Any] = []
-    if symbols:
-        placeholders = ", ".join(["?"] * len(symbols))
-        clauses.append(f"{alias}.symbol IN ({placeholders})")
-        params.extend(symbols)
-    if intervals:
-        placeholders = ", ".join(["?"] * len(intervals))
-        clauses.append(f"{alias}.interval IN ({placeholders})")
-        params.extend(intervals)
-    filter_sql = "WHERE " + " AND ".join(clauses) if clauses else ""
-    return filter_sql, params
-
-
 def _validate_repair_tables(tables: Sequence[str]) -> None:
     unsupported = sorted(set(tables) - set(DEFAULT_REPAIR_TABLES))
     if unsupported:
@@ -673,9 +503,9 @@ def _validate_repair_tables(tables: Sequence[str]) -> None:
 
 
 def _empty_df_for_table(table: str) -> pd.DataFrame:
-    if table in ("spot", "futures"):
-        return pd.DataFrame(columns=KLINE_FINAL_COLUMNS)
-    return pd.DataFrame(columns=["exchange", "symbol", "timestamp", "funding_rate"])
+    if table in KLINE_TABLES:
+        return pd.DataFrame(columns=KLINE_TABLE_COLUMNS)
+    return pd.DataFrame(columns=FUNDING_RATES_COLUMNS)
 
 
 class _NullAsyncContext:

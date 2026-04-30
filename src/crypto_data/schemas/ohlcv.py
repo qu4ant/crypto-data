@@ -15,6 +15,7 @@ Features:
 import pandera.pandas as pa
 from pandera.pandas import Check, Column, DataFrameSchema
 
+from crypto_data.intervals import SUPPORTED_KLINE_INTERVALS
 from crypto_data.schemas.checks import (
     check_ohlc_relationships,
     check_price_continuity,
@@ -46,27 +47,7 @@ OHLCV_SCHEMA = DataFrameSchema(
         ),
         "interval": Column(
             str,
-            checks=[
-                Check.isin(
-                    [
-                        "1m",
-                        "3m",
-                        "5m",
-                        "15m",
-                        "30m",
-                        "1h",
-                        "2h",
-                        "4h",
-                        "6h",
-                        "8h",
-                        "12h",
-                        "1d",
-                        "3d",
-                        "1w",
-                        "1M",
-                    ]
-                )
-            ],
+            checks=[Check.isin(SUPPORTED_KLINE_INTERVALS)],
             nullable=False,
             description="Kline interval (e.g., '5m', '1h', '1d')",
         ),

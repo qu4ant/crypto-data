@@ -10,10 +10,10 @@ import pytest
 from crypto_data.binance_repair import (
     FUNDING_EXPECTED_SECONDS,
     FundingRatesRepairStrategy,
-    GapBoundary,
     KlinesRepairStrategy,
 )
 from crypto_data.enums import DataType, Interval
+from crypto_data.gaps import GapBoundary
 
 
 def _kline_for_close(close_ts: pd.Timestamp, interval_seconds: int = 4 * 3600) -> list:

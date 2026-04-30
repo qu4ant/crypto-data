@@ -9,11 +9,12 @@ import zipfile
 from datetime import datetime, timedelta
 from pathlib import Path
 
-import duckdb
 import pandas as pd
 import pandera.pandas as pa
 
 from crypto_data.binance_datasets.base import BinanceDatasetStrategy
+from crypto_data.db_write import insert_idempotent
+from crypto_data.tables import is_kline_table
 
 logger = logging.getLogger(__name__)
 
@@ -113,9 +114,7 @@ class BinanceDuckDBImporter:
             # Parse CSV using the dataset handler.
             df = self.dataset.parse_csv(csv_path, symbol)
 
-            if table in ("spot", "futures") and (
-                window_start is not None or window_end is not None
-            ):
+            if is_kline_table(table) and (window_start is not None or window_end is not None):
                 timestamps = df["timestamp"]
                 keep = True
                 if window_start is not None:
@@ -141,7 +140,7 @@ class BinanceDuckDBImporter:
                 raise ValueError(f"Data validation failed for {symbol}: Invalid data format") from e
 
             if replace_existing:
-                if table not in ("spot", "futures") or not period:
+                if not is_kline_table(table) or not period:
                     raise ValueError("replace_existing requires a daily kline period")
 
                 start = datetime.strptime(period, "%Y-%m-%d")
@@ -161,38 +160,11 @@ class BinanceDuckDBImporter:
                 logger.debug(f"  Replaced {len(df)} rows for {symbol} {table} {period}")
                 return len(df)
 
-            # Insert into DuckDB. Use an idempotent row-level insert so a
-            # re-downloaded period can repair partial data without failing on
-            # rows that are already present.
-            key_columns = (
-                ["exchange", "symbol", "interval", "timestamp"]
-                if table in ("spot", "futures")
-                else ["exchange", "symbol", "timestamp"]
-            )
-            join_conditions = " AND ".join(
-                f"existing.{col} = incoming.{col}" for col in key_columns
-            )
-            inserted_count = conn.execute(f"""
-                SELECT COUNT(*)
-                FROM df AS incoming
-                LEFT JOIN {table} AS existing
-                  ON {join_conditions}
-                WHERE existing.exchange IS NULL
-            """).fetchone()[0]
-
-            try:
-                conn.execute(f"INSERT OR IGNORE INTO {table} SELECT * FROM df")
-                logger.debug(f"  Import successful: {inserted_count} new rows")
-                return inserted_count
-            except duckdb.ConstraintException:
-                logger.debug(f"  Skipped duplicate data for {symbol} {table}")
-                return 0
-            except Exception as insert_error:
-                # Fallback for constraint messages from alternative drivers.
-                if "duplicate key" in str(insert_error).lower():
-                    logger.debug(f"  Skipped duplicate data for {symbol} {table}")
-                    return 0
-                raise
+            # Use an idempotent row-level insert so a re-downloaded period can
+            # repair partial data without failing on rows that already exist.
+            inserted_count = insert_idempotent(conn, table, df)
+            logger.debug(f"  Import successful: {inserted_count} new rows")
+            return inserted_count
 
         except Exception as e:
             if not isinstance(e, ValueError):

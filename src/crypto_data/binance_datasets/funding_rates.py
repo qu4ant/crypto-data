@@ -16,13 +16,14 @@ import pandera.pandas as pa
 from crypto_data.binance_datasets.base import BinanceDatasetStrategy, Period
 from crypto_data.enums import DataType
 from crypto_data.schemas import FUNDING_RATES_SCHEMA
+from crypto_data.tables import FUNDING_RATES_COLUMNS, get_table_spec
 from crypto_data.utils.dates import generate_month_list
 
 logger = logging.getLogger(__name__)
 
 
-# Final columns for database import
-FINAL_COLUMNS = ["exchange", "symbol", "timestamp", "funding_rate"]
+# Backward-compatible alias for tests/internal callers.
+FINAL_COLUMNS = list(FUNDING_RATES_COLUMNS)
 
 
 class BinanceFundingRatesDataset(BinanceDatasetStrategy):
@@ -59,7 +60,7 @@ class BinanceFundingRatesDataset(BinanceDatasetStrategy):
     @property
     def default_max_concurrent(self) -> int:
         """Return the default maximum concurrent downloads (50 for monthly metrics)."""
-        return 50
+        return get_table_spec(self.table_name).default_max_concurrent or 50
 
     def generate_periods(self, start: datetime, end: datetime) -> list[Period]:
         """

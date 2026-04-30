@@ -16,6 +16,7 @@ from datetime import date
 from pathlib import Path
 
 from crypto_data.enums import DataType, Interval
+from crypto_data.tables import KLINE_TABLES, METRIC_TABLES
 from crypto_data.utils.formatting import (
     format_availability_bar,
     format_availability_bar_daily,
@@ -24,7 +25,7 @@ from crypto_data.utils.formatting import (
 
 logger = logging.getLogger(__name__)
 
-ALL_DATA_TYPES = ("spot", "futures", "open_interest", "funding_rates")
+ALL_DATA_TYPES = (*KLINE_TABLES, *METRIC_TABLES)
 
 
 def initialize_ingestion_stats() -> dict[str, int]:

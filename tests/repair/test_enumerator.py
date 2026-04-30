@@ -5,12 +5,8 @@ from __future__ import annotations
 import pandas as pd
 import pytest
 
-from crypto_data.binance_repair import (
-    FUNDING_EXPECTED_SECONDS,
-    GapBoundary,
-    enumerate_kline_gaps,
-    enumerate_metric_gaps,
-)
+from crypto_data.gaps import GapBoundary, enumerate_kline_gaps, enumerate_metric_gaps
+from crypto_data.tables import FUNDING_RATES_EXPECTED_SECONDS
 from tests.repair.conftest import _insert_funding, _insert_klines
 
 
@@ -92,7 +88,7 @@ def test_funding_no_gap_returns_empty(empty_db):
         enumerate_metric_gaps(
             empty_db.conn,
             table="funding_rates",
-            expected_seconds=FUNDING_EXPECTED_SECONDS,
+            expected_seconds=FUNDING_RATES_EXPECTED_SECONDS,
         )
         == []
     )
@@ -102,7 +98,7 @@ def test_funding_single_gap(db_with_funding_gap):
     gaps = enumerate_metric_gaps(
         db_with_funding_gap.conn,
         table="funding_rates",
-        expected_seconds=FUNDING_EXPECTED_SECONDS,
+        expected_seconds=FUNDING_RATES_EXPECTED_SECONDS,
     )
 
     assert len(gaps) == 1
@@ -123,7 +119,7 @@ def test_funding_filter_by_symbol(empty_db):
     gaps = enumerate_metric_gaps(
         empty_db.conn,
         table="funding_rates",
-        expected_seconds=FUNDING_EXPECTED_SECONDS,
+        expected_seconds=FUNDING_RATES_EXPECTED_SECONDS,
         symbols=["BTCUSDT"],
     )
 

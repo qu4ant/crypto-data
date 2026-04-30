@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-**Crypto Data v5.0.0** - DuckDB ingestion pipeline for cryptocurrency market data.
+**Crypto Data v6.0.0** - DuckDB ingestion pipeline for cryptocurrency market data.
 
 - Downloads OHLCV from Binance Data Vision + universe rankings from CoinMarketCap
 - **Ingestion-only** package - users query directly with DuckDB SQL
@@ -20,7 +20,7 @@ create_binance_database(
     start_date='2024-01-01',
     end_date='2024-12-31',
     top_n=100,
-    interval=Interval.MIN_5,  # MIN_1, MIN_5, MIN_15, HOUR_1, HOUR_4, DAY_1, etc.
+    interval=Interval.MIN_5,  # MIN_1, MIN_3, MIN_5, MIN_15, HOUR_1, HOUR_4, DAY_1, etc.
     data_types=[DataType.SPOT, DataType.FUTURES],  # OPEN_INTEREST, FUNDING_RATES
     exclude_tags=['stablecoin', 'wrapped-tokens'],
     exclude_symbols=['LUNA', 'FTT']

@@ -16,13 +16,14 @@ import pandera.pandas as pa
 from crypto_data.binance_datasets.base import BinanceDatasetStrategy, Period
 from crypto_data.enums import DataType
 from crypto_data.schemas import OPEN_INTEREST_SCHEMA
+from crypto_data.tables import OPEN_INTEREST_COLUMNS, get_table_spec
 from crypto_data.utils.dates import generate_day_list
 
 logger = logging.getLogger(__name__)
 
 
-# Final columns for database import
-FINAL_COLUMNS = ["exchange", "symbol", "timestamp", "open_interest"]
+# Backward-compatible alias for tests/internal callers.
+FINAL_COLUMNS = list(OPEN_INTEREST_COLUMNS)
 
 
 class BinanceOpenInterestDataset(BinanceDatasetStrategy):
@@ -59,7 +60,7 @@ class BinanceOpenInterestDataset(BinanceDatasetStrategy):
     @property
     def default_max_concurrent(self) -> int:
         """Return the default maximum concurrent downloads (100 for daily metrics)."""
-        return 100
+        return get_table_spec(self.table_name).default_max_concurrent or 100
 
     def generate_periods(self, start: datetime, end: datetime) -> list[Period]:
         """
