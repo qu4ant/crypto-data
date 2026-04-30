@@ -45,7 +45,7 @@ def test_database_creation():
         assert 'close' in spot_columns
         assert 'volume' in spot_columns
 
-        # Verify crypto_universe schema
+        # Verify crypto_universe schema (v6.0.0)
         universe_schema = db.execute("""
             SELECT column_name
             FROM information_schema.columns
@@ -54,11 +54,17 @@ def test_database_creation():
 
         universe_columns = [row[0] for row in universe_schema]
 
-        assert 'date' in universe_columns
-        assert 'symbol' in universe_columns
-        assert 'rank' in universe_columns
-        assert 'market_cap' in universe_columns
-        assert 'categories' in universe_columns
+        expected_columns = {
+            'provider', 'provider_id', 'date', 'symbol', 'name', 'slug',
+            'rank', 'market_cap', 'fully_diluted_market_cap',
+            'circulating_supply', 'max_supply',
+            'tags', 'platform', 'date_added',
+        }
+        assert expected_columns.issubset(set(universe_columns)), (
+            f"Missing columns: {expected_columns - set(universe_columns)}"
+        )
+        # Old column should be gone:
+        assert 'categories' not in universe_columns
 
         db.close()
 
@@ -92,13 +98,15 @@ def test_execute_query_with_results():
         try:
             db = CryptoDatabase(str(db_path))
 
-            # Insert test data
+            # Insert test data with the v6 schema
             db.conn.execute("""
                 INSERT INTO crypto_universe
-                (date, symbol, rank, market_cap, categories)
+                (provider, provider_id, date, symbol, name, slug, rank,
+                 market_cap, fully_diluted_market_cap,
+                 circulating_supply, max_supply, tags, platform, date_added)
                 VALUES
-                    ('2024-01-01', 'BTC', 1, 800000000000, NULL),
-                    ('2024-01-01', 'ETH', 2, 400000000000, NULL)
+                    ('coinmarketcap', 1,    '2024-01-01', 'BTC', 'Bitcoin',  'bitcoin',  1, 800000000000, 900000000000, 19000000, 21000000, NULL, NULL, '2010-07-13'),
+                    ('coinmarketcap', 1027, '2024-01-01', 'ETH', 'Ethereum', 'ethereum', 2, 400000000000, 400000000000, 120000000, NULL, NULL, NULL, '2015-08-07')
             """)
 
             # Query using execute() method

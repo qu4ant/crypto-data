@@ -161,25 +161,40 @@ class CryptoDatabase:
         logger.debug("Created funding_rates table")
 
     def _create_crypto_universe(self):
-        """Create crypto_universe table for CoinMarketCap rankings."""
+        """Create crypto_universe table for CoinMarketCap rankings (v6.0.0)."""
         self.conn.execute("""
             CREATE TABLE IF NOT EXISTS crypto_universe (
-                date DATE NOT NULL,
-                symbol VARCHAR NOT NULL,
-                rank INTEGER NOT NULL,
-                market_cap DOUBLE,
-                categories VARCHAR,
-                PRIMARY KEY (date, symbol)
+                provider                 VARCHAR  NOT NULL CHECK (provider = 'coinmarketcap'),
+                provider_id              BIGINT   NOT NULL,
+                date                     DATE     NOT NULL,
+                symbol                   VARCHAR  NOT NULL,
+                name                     VARCHAR  NOT NULL,
+                slug                     VARCHAR,
+                rank                     INTEGER  NOT NULL,
+                market_cap               DOUBLE,
+                fully_diluted_market_cap DOUBLE,
+                circulating_supply       DOUBLE,
+                max_supply               DOUBLE,
+                tags                     VARCHAR,
+                platform                 VARCHAR,
+                date_added               DATE,
+                PRIMARY KEY (provider, provider_id, date)
             )
         """)
 
-        # Create index for common queries (backtesting, symbol selection)
+        # Index for universe selection (top-N by date)
         self.conn.execute("""
             CREATE INDEX IF NOT EXISTS idx_universe_date_rank
             ON crypto_universe(date, rank)
         """)
 
-        logger.debug("Created crypto_universe table")
+        # Index for Binance joins (u.symbol || 'USDT' = s.symbol)
+        self.conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_universe_date_symbol
+            ON crypto_universe(date, symbol)
+        """)
+
+        logger.debug("Created crypto_universe table (v6.0.0)")
 
     def execute(self, sql: str):
         """
