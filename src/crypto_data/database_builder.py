@@ -16,10 +16,12 @@ from pathlib import Path
 from typing import List, Dict, Optional, Set, Tuple
 import duckdb
 import pandas as pd
+import pandera.pandas as pa
 
 from crypto_data.clients.coinmarketcap import CoinMarketCapClient
 from crypto_data.database import CryptoDatabase
 from crypto_data.enums import DataType, Interval
+from crypto_data.schemas import UNIVERSE_SCHEMA
 from crypto_data.universe_filters import (
     has_excluded_symbol,
     has_excluded_tag,
@@ -32,6 +34,13 @@ from crypto_data.utils.runtime import run_async_from_sync
 from crypto_data.utils.symbols import get_binance_symbols_from_universe
 
 logger = logging.getLogger(__name__)
+
+UNIVERSE_COLUMNS = [
+    'provider', 'provider_id', 'date', 'symbol', 'name', 'slug', 'rank',
+    'market_cap', 'fully_diluted_market_cap',
+    'circulating_supply', 'max_supply',
+    'tags', 'platform', 'date_added',
+]
 
 
 # =============================================================================
@@ -91,12 +100,14 @@ async def _fetch_snapshot(
     Returns
     -------
     Tuple[pd.DataFrame, Set[str], Set[str]]
-        - DataFrame with columns: date, symbol, rank, market_cap, categories
+        - DataFrame with v6 universe columns (see UNIVERSE_COLUMNS)
         - Set of symbols excluded by tags
         - Set of symbols excluded by symbol blacklist
     """
     # Fetch from CoinMarketCap historical listings API (async)
     coins = await client.get_historical_listings(date_str, top_n)
+    if not coins:
+        raise ValueError(f"CoinMarketCap returned no listings for {date_str}")
 
     # Convert excluded tags to lowercase once (for case-insensitive matching)
     excluded_tags_lower = [tag.lower() for tag in excluded_tags]
@@ -110,43 +121,75 @@ async def _fetch_snapshot(
     excluded_by_symbol: Set[str] = set()
 
     for coin in coins:
-        symbol = coin.get('symbol', '').upper()
-        rank = coin.get('cmcRank', 0)
+        symbol = str(coin.get('symbol') or '').upper()
+        rank = coin.get('cmcRank')
 
-        # Get tags (similar to CoinGecko categories)
-        tags = coin.get('tags', [])
-        tags_str = ','.join(tags) if tags else ''
+        tags = coin.get('tags') or []
+        tags_str = ','.join(tags)
 
-        # Filter based on excluded tags/tag families (case-insensitive)
         if has_excluded_tag(tags, excluded_tags_lower):
             logger.debug(f"  → Filtered {symbol} (excluded tag)")
             excluded_by_tag.add(symbol)
             continue
 
-        # Filter based on excluded symbols (case-insensitive)
         if has_excluded_symbol(symbol, excluded_symbols_upper):
             logger.debug(f"  → Filtered {symbol} (blacklisted symbol)")
             excluded_by_symbol.add(symbol)
             continue
 
-        # Get market cap from quotes
-        market_cap = 0
-        quotes = coin.get('quotes', [])
-        if quotes and len(quotes) > 0:
-            market_cap = quotes[0].get('marketCap', 0)
+        quotes = coin.get('quotes') or []
+        first_quote = quotes[0] if quotes else {}
+        market_cap = first_quote.get('marketCap')
+        fdmc = first_quote.get('fullyDilutedMarketCap')
 
-        record = {
+        platform_field = coin.get('platform') or {}
+        platform_name = platform_field.get('name') if isinstance(platform_field, dict) else None
+
+        # `errors='coerce'` returns NaT for None or unparseable values, which
+        # plays cleanly with the nullable datetime64[ns] column downstream.
+        date_added = pd.to_datetime(coin.get('dateAdded'), errors='coerce')
+
+        records.append({
+            'provider': 'coinmarketcap',
+            'provider_id': int(coin['id']),
             'date': date,
             'symbol': symbol,
+            'name': coin.get('name') or '',
+            'slug': coin.get('slug'),
             'rank': rank,
             'market_cap': market_cap,
-            'categories': tags_str  # Store tags as comma-separated string
-        }
+            'fully_diluted_market_cap': fdmc,
+            'circulating_supply': coin.get('circulatingSupply'),
+            'max_supply': coin.get('maxSupply'),
+            'tags': tags_str,
+            'platform': platform_name,
+            'date_added': date_added,
+        })
 
-        records.append(record)
+    # Convert to DataFrame with stable columns, then deduplicate duplicate
+    # symbols defensively before schema validation. CMC can expose duplicate
+    # tickers for wrapped/secondary listings; keep the canonical lowest-rank
+    # row and make the cleanup visible.
+    df = pd.DataFrame(records, columns=UNIVERSE_COLUMNS)
+    if not df.empty:
+        before_dedup = len(df)
+        df = df.sort_values(
+            by=['provider_id', 'rank', 'market_cap'],
+            ascending=[True, True, False],
+            na_position='last',
+        ).drop_duplicates(subset=['provider', 'provider_id', 'date'], keep='first')
+        dropped = before_dedup - len(df)
+        if dropped:
+            logger.warning(
+                "Dropped %s duplicate universe rows for %s on key ['provider', 'provider_id', 'date']",
+                dropped,
+                date_str,
+            )
 
-    # Convert to DataFrame
-    df = pd.DataFrame(records)
+    try:
+        df = UNIVERSE_SCHEMA.validate(df)
+    except pa.errors.SchemaError as e:
+        raise ValueError(f"Universe validation failed for {date_str}") from e
 
     return df, excluded_by_tag, excluded_by_symbol
 
@@ -283,6 +326,10 @@ async def update_coinmarketcap_universe(
                 conn.execute("DELETE FROM crypto_universe WHERE date = ?", [date_str])
                 logger.debug(f"Deleted existing records for {date_str}")
 
+                # Validate immediately before insertion as a DB boundary guard.
+                if len(df_new) > 0:
+                    df_new = UNIVERSE_SCHEMA.validate(df_new)
+
                 # Insert new data if we have any
                 if len(df_new) > 0:
                     conn.execute("INSERT INTO crypto_universe SELECT * FROM df_new")
@@ -344,6 +391,7 @@ def create_binance_database(
     universe_frequency: Frequency = 'monthly',
     skip_existing_universe: bool = True,
     daily_quota: int = 200,
+    repair_gaps_via_api: bool = False,
 ):
     """
     Complete workflow: universe + binance in one call.
@@ -389,6 +437,9 @@ def create_binance_database(
         Skip dates already present in crypto_universe (default: True)
     daily_quota : int
         Daily request quota for CMC sliding-window limiter (default: 200)
+    repair_gaps_via_api : bool
+        When True, run Binance REST gap repair after Data Vision ingestion
+        finishes (default: False).
 
     Example
     -------
@@ -481,7 +532,9 @@ def create_binance_database(
         max_concurrent_klines=20,  # Optimal S3 performance for high-frequency data
         max_concurrent_metrics=100,  # Higher for daily open_interest (365 files/year)
         max_concurrent_funding=50,  # Higher for monthly funding_rates (12 files/year)
-        failure_threshold=3  # Stop after 3 consecutive missing months
+        failure_threshold=3,  # Stop after 3 consecutive missing months
+        repair_gaps_via_api=repair_gaps_via_api,
+        prune_klines_to_date_range=True,
     )
 
     logger.info("")
