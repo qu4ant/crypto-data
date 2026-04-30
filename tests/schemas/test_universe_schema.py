@@ -27,41 +27,26 @@ class TestUniverseSchema:
         with pytest.raises(pa.errors.SchemaError):
             UNIVERSE_SCHEMA.validate(invalid_universe_duplicate_ranks)
 
-    def test_negative_market_cap_fails(self):
+    def test_negative_market_cap_fails(self, valid_universe_df):
         """Test that negative market cap fails"""
-        df = pd.DataFrame({
-            'date': [datetime(2024, 1, 1)] * 3,
-            'symbol': ['BTC', 'ETH', 'BNB'],
-            'rank': [1, 2, 3],
-            'market_cap': [800000000000.0, -400000000000.0, 80000000000.0],  # Negative
-            'categories': ['currency', 'smart-contracts', 'exchange-token']
-        })
+        df = valid_universe_df.head(3).copy()
+        df['market_cap'] = [800000000000.0, -400000000000.0, 80000000000.0]
 
         with pytest.raises(pa.errors.SchemaError):
             UNIVERSE_SCHEMA.validate(df)
 
-    def test_null_symbol_fails(self):
+    def test_null_symbol_fails(self, valid_universe_df):
         """Test that null symbol fails"""
-        df = pd.DataFrame({
-            'date': [datetime(2024, 1, 1)] * 3,
-            'symbol': ['BTC', None, 'BNB'],  # Null
-            'rank': [1, 2, 3],
-            'market_cap': [800000000000.0, 400000000000.0, 80000000000.0],
-            'categories': ['currency', 'smart-contracts', 'exchange-token']
-        })
+        df = valid_universe_df.head(3).copy()
+        df['symbol'] = ['BTC', None, 'BNB']
 
         with pytest.raises(pa.errors.SchemaError):
             UNIVERSE_SCHEMA.validate(df)
 
-    def test_rank_less_than_one_fails(self):
+    def test_rank_less_than_one_fails(self, valid_universe_df):
         """Test that rank < 1 fails"""
-        df = pd.DataFrame({
-            'date': [datetime(2024, 1, 1)] * 3,
-            'symbol': ['BTC', 'ETH', 'BNB'],
-            'rank': [0, 1, 2],  # Rank 0 is invalid
-            'market_cap': [800000000000.0, 400000000000.0, 80000000000.0],
-            'categories': ['currency', 'smart-contracts', 'exchange-token']
-        })
+        df = valid_universe_df.head(3).copy()
+        df['rank'] = [0, 1, 2]
 
         with pytest.raises(pa.errors.SchemaError):
             UNIVERSE_SCHEMA.validate(df)

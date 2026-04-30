@@ -118,37 +118,64 @@ def funding_rates_extreme():
 
 @pytest.fixture
 def valid_universe_df():
-    """Valid universe DataFrame"""
+    """Valid universe DataFrame (v6 schema)"""
     return pd.DataFrame({
+        'provider': ['coinmarketcap'] * 6,
+        'provider_id': [1, 1027, 1839, 1, 1027, 5426],
         'date': [datetime(2024, 1, 1)] * 3 + [datetime(2024, 2, 1)] * 3,
         'symbol': ['BTC', 'ETH', 'BNB', 'BTC', 'ETH', 'SOL'],
+        'name': ['Bitcoin', 'Ethereum', 'BNB', 'Bitcoin', 'Ethereum', 'Solana'],
+        'slug': ['bitcoin', 'ethereum', 'bnb', 'bitcoin', 'ethereum', 'solana'],
         'rank': [1, 2, 3, 1, 2, 3],
         'market_cap': [800000000000.0, 400000000000.0, 80000000000.0,
                        850000000000.0, 420000000000.0, 90000000000.0],
-        'categories': ['currency', 'smart-contracts', 'exchange-token',
-                       'currency', 'smart-contracts', 'smart-contracts']
+        'fully_diluted_market_cap': [None, None, None, None, None, None],
+        'circulating_supply': [None, None, None, None, None, None],
+        'max_supply': [None, None, None, None, None, None],
+        'tags': ['currency', 'smart-contracts', 'exchange-token',
+                 'currency', 'smart-contracts', 'smart-contracts'],
+        'platform': [None, None, None, None, None, None],
+        'date_added': [pd.NaT] * 6,
     })
 
 
 @pytest.fixture
 def invalid_universe_duplicate_ranks():
-    """Universe DataFrame with duplicate ranks on same date"""
+    """Universe DataFrame with duplicate ranks on same date (v6 schema)"""
     return pd.DataFrame({
+        'provider': ['coinmarketcap'] * 3,
+        'provider_id': [1, 1027, 1839],
         'date': [datetime(2024, 1, 1)] * 3,
         'symbol': ['BTC', 'ETH', 'BNB'],
+        'name': ['Bitcoin', 'Ethereum', 'BNB'],
+        'slug': ['bitcoin', 'ethereum', 'bnb'],
         'rank': [1, 1, 3],  # Duplicate rank 1
         'market_cap': [800000000000.0, 400000000000.0, 80000000000.0],
-        'categories': ['currency', 'smart-contracts', 'exchange-token']
+        'fully_diluted_market_cap': [None, None, None],
+        'circulating_supply': [None, None, None],
+        'max_supply': [None, None, None],
+        'tags': ['currency', 'smart-contracts', 'exchange-token'],
+        'platform': [None, None, None],
+        'date_added': [pd.NaT] * 3,
     })
 
 
 @pytest.fixture
 def invalid_universe_rank_gaps():
-    """Universe DataFrame with gaps in ranks (1, 2, 4 instead of 1, 2, 3)"""
+    """Universe DataFrame with gaps in ranks (1, 2, 4 instead of 1, 2, 3) (v6 schema)"""
     return pd.DataFrame({
+        'provider': ['coinmarketcap'] * 3,
+        'provider_id': [1, 1027, 1839],
         'date': [datetime(2024, 1, 1)] * 3,
         'symbol': ['BTC', 'ETH', 'BNB'],
+        'name': ['Bitcoin', 'Ethereum', 'BNB'],
+        'slug': ['bitcoin', 'ethereum', 'bnb'],
         'rank': [1, 2, 4],  # Gap: missing rank 3
         'market_cap': [800000000000.0, 400000000000.0, 80000000000.0],
-        'categories': ['currency', 'smart-contracts', 'exchange-token']
+        'fully_diluted_market_cap': [None, None, None],
+        'circulating_supply': [None, None, None],
+        'max_supply': [None, None, None],
+        'tags': ['currency', 'smart-contracts', 'exchange-token'],
+        'platform': [None, None, None],
+        'date_added': [pd.NaT] * 3,
     })

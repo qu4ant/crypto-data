@@ -19,18 +19,34 @@ from crypto_data.schemas import (
 )
 
 
+def _v6_universe_row(**overrides) -> dict:
+    """Single-row v6 universe payload with sensible defaults."""
+    base = {
+        'provider': 'coinmarketcap',
+        'provider_id': 1,
+        'date': pd.Timestamp('2024-01-01'),
+        'symbol': 'BTC',
+        'name': 'Bitcoin',
+        'slug': 'bitcoin',
+        'rank': 1,
+        'market_cap': 1_000_000_000.0,
+        'fully_diluted_market_cap': None,
+        'circulating_supply': None,
+        'max_supply': None,
+        'tags': 'currency',
+        'platform': None,
+        'date_added': pd.NaT,
+    }
+    base.update(overrides)
+    return base
+
+
 class TestUniverseNonStrictValidation:
     """Test non-strict validation for universe schema."""
 
     def test_valid_data_passes_non_strict(self):
         """Valid data should pass even in non-strict mode."""
-        df = pd.DataFrame({
-            'date': [pd.Timestamp('2024-01-01')],
-            'symbol': ['BTC'],
-            'rank': [1],
-            'market_cap': [1000000000.0],
-            'categories': ['currency']
-        })
+        df = pd.DataFrame([_v6_universe_row()])
 
         result = validate_universe_dataframe(df, strict=False)
         assert isinstance(result, pd.DataFrame)
@@ -38,13 +54,7 @@ class TestUniverseNonStrictValidation:
 
     def test_invalid_rank_returns_errors_non_strict(self):
         """Invalid rank should return SchemaErrors, not raise."""
-        df = pd.DataFrame({
-            'date': [pd.Timestamp('2024-01-01')],
-            'symbol': ['BTC'],
-            'rank': [0],  # Invalid: must be >= 1
-            'market_cap': [1000000000.0],
-            'categories': ['currency']
-        })
+        df = pd.DataFrame([_v6_universe_row(rank=0)])
 
         result = validate_universe_dataframe(df, strict=False)
         assert isinstance(result, pa.errors.SchemaErrors)
@@ -52,26 +62,14 @@ class TestUniverseNonStrictValidation:
 
     def test_negative_market_cap_returns_errors_non_strict(self):
         """Negative market cap should return SchemaErrors."""
-        df = pd.DataFrame({
-            'date': [pd.Timestamp('2024-01-01')],
-            'symbol': ['BTC'],
-            'rank': [1],
-            'market_cap': [-1000.0],  # Invalid: negative
-            'categories': ['currency']
-        })
+        df = pd.DataFrame([_v6_universe_row(market_cap=-1000.0)])
 
         result = validate_universe_dataframe(df, strict=False)
         assert isinstance(result, pa.errors.SchemaErrors)
 
     def test_null_symbol_returns_errors_non_strict(self):
         """Null symbols should return SchemaErrors."""
-        df = pd.DataFrame({
-            'date': [pd.Timestamp('2024-01-01')],
-            'symbol': [None],  # Invalid: null
-            'rank': [1],
-            'market_cap': [1000000000.0],
-            'categories': ['currency']
-        })
+        df = pd.DataFrame([_v6_universe_row(symbol=None)])
 
         result = validate_universe_dataframe(df, strict=False)
         assert isinstance(result, pa.errors.SchemaErrors)
@@ -232,13 +230,7 @@ class TestErrorStructure:
 
     def test_schema_errors_have_failure_cases(self):
         """SchemaErrors should contain failure_cases DataFrame for debugging."""
-        df = pd.DataFrame({
-            'date': [pd.Timestamp('2024-01-01')],
-            'symbol': ['BTC'],
-            'rank': [0],  # Invalid
-            'market_cap': [1000000000.0],
-            'categories': ['currency']
-        })
+        df = pd.DataFrame([_v6_universe_row(rank=0)])
 
         errors = validate_universe_dataframe(df, strict=False)
         assert isinstance(errors, pa.errors.SchemaErrors)

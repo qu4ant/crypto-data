@@ -10,6 +10,8 @@ import pandas as pd
 import pandera.pandas as pa
 from pandera.pandas import Column, Check, DataFrameSchema
 
+from crypto_data.schemas.checks import check_no_duplicate_ranks_per_date
+
 
 def _check_circulating_le_max(df: pd.DataFrame) -> bool:
     """circulating_supply <= max_supply when both columns are non-null."""
@@ -100,6 +102,11 @@ UNIVERSE_SCHEMA = DataFrameSchema(
             _check_circulating_le_max,
             name='circulating_le_max',
             error="circulating_supply must not exceed max_supply",
+        ),
+        Check(
+            check_no_duplicate_ranks_per_date,
+            name='no_duplicate_ranks',
+            error="Duplicate ranks detected on same date",
         ),
     ],
     strict=True,

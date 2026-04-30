@@ -1,8 +1,16 @@
 """
-Crypto Data Infrastructure Package v5.0.0
+Crypto Data Infrastructure Package v6.0.0
 
 Pure data ingestion pipeline for cryptocurrency data.
 Downloads from Binance Data Vision and CoinMarketCap → Populates DuckDB.
+
+BREAKING CHANGE (v6.0.0): Enriched CMC universe schema
+- crypto_universe primary key: (provider, provider_id, date)
+- 14 columns: provider, provider_id, date, symbol, name, slug, rank,
+  market_cap, fully_diluted_market_cap, circulating_supply, max_supply,
+  tags, platform, date_added
+- 'categories' column is renamed to 'tags' (matches CMC API field)
+- Pre-v6 databases must be deleted and re-ingested
 
 BREAKING CHANGE (v5.0.0): Type-safe enums
 - All data type and interval parameters now require enums instead of strings
@@ -23,6 +31,7 @@ Public API:
     - CryptoDatabase: Database schema management
     - update_coinmarketcap_universe(): Async download and import CoinMarketCap rankings
     - update_binance_market_data(): Download and import Binance market data
+    - repair_binance_gaps(): Fill Binance Data Vision gaps from public REST
     - create_binance_database(): Complete workflow (universe -> Binance)
     - setup_colored_logging(), get_logger(): Logging utilities
     - Pandera schemas: OHLCV_SCHEMA, OPEN_INTEREST_SCHEMA, FUNDING_RATES_SCHEMA, UNIVERSE_SCHEMA
@@ -39,6 +48,7 @@ from .universe_filters import DEFAULT_UNIVERSE_EXCLUDE_SYMBOLS, DEFAULT_UNIVERSE
 from .utils.symbols import get_binance_symbols_from_universe
 from .enums import DataType, Interval
 from .binance_pipeline import update_binance_market_data
+from .binance_repair import RepairReport, UnrecoverableGap, repair_binance_gaps
 
 # Import Pandera schemas and validation functions
 from .schemas import (
@@ -60,7 +70,7 @@ from .schemas import (
     validate_universe_dataframe
 )
 
-__version__ = "5.0.0"
+__version__ = "6.0.0"
 __author__ = "Crypto Data Contributors"
 
 __all__ = [
@@ -69,9 +79,12 @@ __all__ = [
     "create_binance_database",
     "update_binance_market_data",
     "update_coinmarketcap_universe",
+    "repair_binance_gaps",
     "get_binance_symbols_from_universe",
     "DEFAULT_UNIVERSE_EXCLUDE_TAGS",
     "DEFAULT_UNIVERSE_EXCLUDE_SYMBOLS",
+    "RepairReport",
+    "UnrecoverableGap",
 
     # Logging
     "setup_colored_logging",

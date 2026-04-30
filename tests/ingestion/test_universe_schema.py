@@ -66,8 +66,8 @@ def test_distinct_dates_same_id_allowed():
 
 def test_distinct_provider_ids_same_date_allowed():
     df = pd.DataFrame([
-        _valid_row(provider_id=1, symbol='BTC'),
-        _valid_row(provider_id=1027, symbol='ETH', name='Ethereum', slug='ethereum'),
+        _valid_row(provider_id=1, symbol='BTC', rank=1),
+        _valid_row(provider_id=1027, symbol='ETH', name='Ethereum', slug='ethereum', rank=2),
     ])
     UNIVERSE_SCHEMA.validate(df)
 
