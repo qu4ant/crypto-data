@@ -47,7 +47,7 @@ import pytest
 from crypto_data.schemas.universe import UNIVERSE_SCHEMA
 
 
-def _valid_row(**overrides):
+def _valid_row(**overrides: object) -> dict:
     base = {
         'provider': 'coinmarketcap',
         'provider_id': 1,
@@ -183,11 +183,12 @@ Pandera schema for validating CoinMarketCap-enriched universe ranking data.
 Identity is `(provider, provider_id, date)`. `symbol` is mutable / not identity.
 """
 
+import pandas as pd
 import pandera.pandas as pa
 from pandera.pandas import Column, Check, DataFrameSchema
 
 
-def _check_circulating_le_max(df) -> bool:
+def _check_circulating_le_max(df: pd.DataFrame) -> bool:
     """circulating_supply <= max_supply when both columns are non-null."""
     mask = df['circulating_supply'].notna() & df['max_supply'].notna()
     if not mask.any():
@@ -286,14 +287,21 @@ UNIVERSE_SCHEMA = DataFrameSchema(
 )
 
 
-def validate_universe_dataframe(df, strict: bool = True):
+def validate_universe_dataframe(
+    df: pd.DataFrame,
+    *,
+    strict: bool = True,
+) -> pd.DataFrame | pa.errors.SchemaErrors:
     """Validate a universe DataFrame against UNIVERSE_SCHEMA.
 
-    Parameters
-    ----------
-    df : pd.DataFrame
-    strict : bool
-        If True, raise on first error. If False, accumulate errors lazily.
+    Args:
+        df: DataFrame to validate.
+        strict: If True, raise on first error. If False, accumulate errors lazily
+            and return them as a SchemaErrors object instead of a DataFrame.
+
+    Returns:
+        The validated DataFrame on success, or a SchemaErrors object when
+        strict=False and validation failed.
     """
     if strict:
         return UNIVERSE_SCHEMA.validate(df, lazy=False)
@@ -464,7 +472,7 @@ from crypto_data import CryptoDatabase
 from crypto_data.database_builder import update_coinmarketcap_universe
 
 
-def _full_btc_payload():
+def _full_btc_payload() -> dict:
     return {
         'id': 1,
         'name': 'Bitcoin',
@@ -485,7 +493,7 @@ def _full_btc_payload():
     }
 
 
-def _full_token_payload():
+def _full_token_payload() -> dict:
     return {
         'id': 1027,
         'name': 'Ethereum',
@@ -506,7 +514,7 @@ def _full_token_payload():
     }
 
 
-def _erc20_payload():
+def _erc20_payload() -> dict:
     return {
         'id': 7083,
         'name': 'Uniswap',
@@ -529,7 +537,7 @@ def _erc20_payload():
     }
 
 
-def _ingest(payload_list, dates, top_n):
+def _ingest(payload_list: list[dict], dates: list[str], top_n: int) -> list[tuple]:
     with tempfile.TemporaryDirectory() as tmpdir:
         db_path = Path(tmpdir) / 'test.db'
         with patch('crypto_data.database_builder.CoinMarketCapClient') as MockClient:
@@ -775,44 +783,72 @@ git commit -m "feat(ingest): extract enriched CMC fields into v6 universe record
 
 Several tests in `test_universe_ingestion.py` insert legacy-shaped rows directly via `conn.execute("INSERT INTO crypto_universe SELECT * FROM initial_data")` using a 5-column DataFrame. These will fail under the v6 DDL.
 
-Find each occurrence of a DataFrame fixture like:
-```python
-initial_data = pd.DataFrame([
-    {'date': pd.Timestamp('2024-01-01'), 'symbol': 'BTC', 'rank': 1, 'market_cap': 1000000, 'categories': ''}
-])
-conn.execute("INSERT INTO crypto_universe SELECT * FROM initial_data")
-```
-
-And replace with a parametrized SQL INSERT specifying explicit columns. Use this helper at the top of the file (after imports):
+Add the following dataclass + helper near the top of the file (after the existing imports). All 6 fields are required — no `None`-as-control-signal, no magic-number fallbacks:
 
 ```python
-def _legacy_insert_compat(conn, *, date, symbol, rank, market_cap, name=None, provider_id=None):
-    """Insert a single universe row using the v6 schema with sensible test defaults."""
-    conn.execute("""
+from dataclasses import dataclass
+import duckdb
+
+
+@dataclass(frozen=True)
+class UniverseRowFixture:
+    """Test fixture for a single crypto_universe v6 row.
+
+    All fields are required so test intent stays explicit at the call site.
+    The fixture only covers the identity + selection columns; nullable
+    metadata (slug, FDMC, supplies, tags, platform, date_added) is set to
+    NULL in the helper.
+    """
+    provider_id: int
+    date: str
+    symbol: str
+    name: str
+    rank: int
+    market_cap: float
+
+
+def _insert_universe_row(conn: duckdb.DuckDBPyConnection, row: UniverseRowFixture) -> None:
+    """Insert a single universe row into a freshly created v6 schema."""
+    conn.execute(
+        """
         INSERT INTO crypto_universe
         (provider, provider_id, date, symbol, name, slug, rank,
          market_cap, fully_diluted_market_cap,
          circulating_supply, max_supply, tags, platform, date_added)
         VALUES
         ('coinmarketcap', ?, ?, ?, ?, NULL, ?, ?, NULL, NULL, NULL, '', NULL, NULL)
-    """, [
-        provider_id if provider_id is not None else hash(symbol) % 1_000_000 + 1,
-        date, symbol, name or symbol, rank, market_cap,
-    ])
+        """,
+        [row.provider_id, row.date, row.symbol, row.name, row.rank, row.market_cap],
+    )
 ```
 
-Then replace each legacy-style fixture with a `_legacy_insert_compat(...)` call. Specifically:
+Then replace each legacy-style fixture by constructing a `UniverseRowFixture` and calling `_insert_universe_row`. Use this stable id mapping (matching Step 2 mock payloads): BTC=1/Bitcoin, ETH=1027/Ethereum, SOL=5426/Solana, OLD=99001/Legacy Asset.
 
-- `test_universe_rollback_on_error` (around line 28-32): replace the 4-line DataFrame+INSERT with `_legacy_insert_compat(conn, date='2024-01-01', symbol='BTC', rank=1, market_cap=1_000_000)`.
-- `test_universe_no_rollback_after_commit` (around line 65-72): replace with `_legacy_insert_compat(conn, date='2024-01-01', symbol='OLD', rank=1, market_cap=1_000)`.
-- `test_universe_transaction_atomicity` (around line 299-303): replace the 2-row DataFrame block with two `_legacy_insert_compat(...)` calls and update the `new_data` block (line 325-328) the same way.
-- `test_update_coinmarketcap_universe_rejects_invalid_snapshot_data` (around line 211-214): change the inline `INSERT` to:
+- `test_universe_rollback_on_error` (around line 28-32): replace the 4-line DataFrame+INSERT with
   ```python
-  _legacy_insert_compat(db.conn, date='2024-01-01', symbol='BTC', rank=1, market_cap=1_000_000)
+  _insert_universe_row(conn, UniverseRowFixture(
+      provider_id=1, date='2024-01-01', symbol='BTC',
+      name='Bitcoin', rank=1, market_cap=1_000_000.0,
+  ))
   ```
-- `test_update_coinmarketcap_universe_skip_existing_filters_present_dates` (around line 383-386): same pattern.
-- `test_update_coinmarketcap_universe_skip_existing_is_date_only` (around line 416-419): same pattern.
-- `test_update_coinmarketcap_universe_skip_existing_disabled_fetches_all` (around line 458-461): same pattern.
+- `test_universe_no_rollback_after_commit` (around line 65-72):
+  ```python
+  _insert_universe_row(conn, UniverseRowFixture(
+      provider_id=99001, date='2024-01-01', symbol='OLD',
+      name='Legacy Asset', rank=1, market_cap=1_000.0,
+  ))
+  ```
+- `test_universe_transaction_atomicity` (around line 299-303): replace the 2-row DataFrame block with two `_insert_universe_row(conn, UniverseRowFixture(...))` calls (BTC id=1, ETH id=1027, both at `date='2024-01-01'`, ranks 1/2, market caps 1_000_000 / 500_000). Update the `new_data` block (line 325-328) similarly with `UniverseRowFixture(provider_id=5426, date='2024-01-01', symbol='SOL', name='Solana', rank=1, market_cap=2_000_000.0)`.
+- `test_update_coinmarketcap_universe_rejects_invalid_snapshot_data` (around line 211-214):
+  ```python
+  _insert_universe_row(db.conn, UniverseRowFixture(
+      provider_id=1, date='2024-01-01', symbol='BTC',
+      name='Bitcoin', rank=1, market_cap=1_000_000.0,
+  ))
+  ```
+- `test_update_coinmarketcap_universe_skip_existing_filters_present_dates` (around line 383-386): same as above (BTC id=1).
+- `test_update_coinmarketcap_universe_skip_existing_is_date_only` (around line 416-419): same as above (BTC id=1).
+- `test_update_coinmarketcap_universe_skip_existing_disabled_fetches_all` (around line 458-461): same as above (BTC id=1).
 
 - [ ] **Step 2: Update mock CMC payloads to include `id` and `name`**
 
@@ -925,71 +961,88 @@ case, where CMC keeps `id` constant while displayed `symbol` changes.
 import tempfile
 from pathlib import Path
 
+import duckdb
+import pandera.pandas as pa  # noqa: F401  (kept for consistency with other test files)
 import pytest
 
 from crypto_data import CryptoDatabase
+from tests.ingestion.test_universe_ingestion import (
+    UniverseRowFixture,
+    _insert_universe_row,
+)
 
 
-def _insert_row(conn, *, date, provider_id, symbol, name, rank=1):
-    conn.execute("""
-        INSERT INTO crypto_universe
-        (provider, provider_id, date, symbol, name, slug, rank,
-         market_cap, fully_diluted_market_cap,
-         circulating_supply, max_supply, tags, platform, date_added)
-        VALUES
-        ('coinmarketcap', ?, ?, ?, ?, NULL, ?,
-         1000000.0, 1000000.0, NULL, NULL, '', NULL, NULL)
-    """, [provider_id, date, symbol, name, rank])
+_SYNTHETIC_ID: int = 99_999
+_DEFAULT_RANK: int = 1
+_DEFAULT_MARKET_CAP: float = 1_000_000.0
 
 
-def test_same_provider_id_with_different_symbols_across_dates():
+def test_same_provider_id_with_different_symbols_across_dates() -> None:
     """Two snapshots for the same listing with different tickers form one series."""
     with tempfile.TemporaryDirectory() as tmpdir:
         db_path = Path(tmpdir) / 'test.db'
         db = CryptoDatabase(str(db_path))
 
-        # Synthetic asset: provider_id=99999. Symbol observed as 'OLD' on day1,
-        # then renamed by the provider (in-listing) to 'NEW' on day2.
-        _insert_row(db.conn, date='2024-01-01', provider_id=99999, symbol='OLD', name='Synthetic Asset')
-        _insert_row(db.conn, date='2024-01-02', provider_id=99999, symbol='NEW', name='Synthetic Asset')
+        # Synthetic asset: provider_id=_SYNTHETIC_ID. Symbol observed as 'OLD'
+        # on day1, then renamed by the provider (in-listing) to 'NEW' on day2.
+        _insert_universe_row(db.conn, UniverseRowFixture(
+            provider_id=_SYNTHETIC_ID, date='2024-01-01', symbol='OLD',
+            name='Synthetic Asset', rank=_DEFAULT_RANK, market_cap=_DEFAULT_MARKET_CAP,
+        ))
+        _insert_universe_row(db.conn, UniverseRowFixture(
+            provider_id=_SYNTHETIC_ID, date='2024-01-02', symbol='NEW',
+            name='Synthetic Asset', rank=_DEFAULT_RANK, market_cap=_DEFAULT_MARKET_CAP,
+        ))
 
         distinct_ids = db.execute("""
             SELECT COUNT(DISTINCT provider_id) FROM crypto_universe
-            WHERE provider_id = 99999
-        """).fetchone()[0]
+            WHERE provider_id = ?
+        """, [_SYNTHETIC_ID]).fetchone()[0]
         assert distinct_ids == 1
 
         symbols_by_date = db.execute("""
             SELECT date, symbol FROM crypto_universe
-            WHERE provider_id = 99999 ORDER BY date
-        """).fetchall()
+            WHERE provider_id = ? ORDER BY date
+        """, [_SYNTHETIC_ID]).fetchall()
         assert [row[1] for row in symbols_by_date] == ['OLD', 'NEW']
 
         db.close()
 
 
-def test_pk_rejects_duplicate_provider_id_date():
+def test_pk_rejects_duplicate_provider_id_date() -> None:
     """The PK (provider, provider_id, date) blocks a same-day duplicate."""
     with tempfile.TemporaryDirectory() as tmpdir:
         db_path = Path(tmpdir) / 'test.db'
         db = CryptoDatabase(str(db_path))
 
-        _insert_row(db.conn, date='2024-01-01', provider_id=99999, symbol='X', name='X')
-        with pytest.raises(Exception):
-            _insert_row(db.conn, date='2024-01-01', provider_id=99999, symbol='Y', name='X')
+        _insert_universe_row(db.conn, UniverseRowFixture(
+            provider_id=_SYNTHETIC_ID, date='2024-01-01', symbol='X',
+            name='X', rank=_DEFAULT_RANK, market_cap=_DEFAULT_MARKET_CAP,
+        ))
+        with pytest.raises(duckdb.ConstraintException):
+            _insert_universe_row(db.conn, UniverseRowFixture(
+                provider_id=_SYNTHETIC_ID, date='2024-01-01', symbol='Y',
+                name='X', rank=_DEFAULT_RANK, market_cap=_DEFAULT_MARKET_CAP,
+            ))
 
         db.close()
 
 
-def test_distinct_provider_ids_remain_separate_series():
+def test_distinct_provider_ids_remain_separate_series() -> None:
     """Cross-listing rebrand: same symbol later, different provider_id → two series.
     This documents what provider_id does NOT unify (consumer must UNION manually)."""
     with tempfile.TemporaryDirectory() as tmpdir:
         db_path = Path(tmpdir) / 'test.db'
         db = CryptoDatabase(str(db_path))
 
-        _insert_row(db.conn, date='2024-01-01', provider_id=3890, symbol='MATIC', name='Polygon')
-        _insert_row(db.conn, date='2024-09-01', provider_id=28321, symbol='POL', name='POL (prev. MATIC)')
+        _insert_universe_row(db.conn, UniverseRowFixture(
+            provider_id=3890, date='2024-01-01', symbol='MATIC',
+            name='Polygon', rank=_DEFAULT_RANK, market_cap=_DEFAULT_MARKET_CAP,
+        ))
+        _insert_universe_row(db.conn, UniverseRowFixture(
+            provider_id=28321, date='2024-09-01', symbol='POL',
+            name='POL (prev. MATIC)', rank=_DEFAULT_RANK, market_cap=_DEFAULT_MARKET_CAP,
+        ))
 
         distinct_ids = db.execute("""
             SELECT COUNT(DISTINCT provider_id) FROM crypto_universe
