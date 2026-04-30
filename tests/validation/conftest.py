@@ -27,16 +27,6 @@ DEFAULT_VALIDATION_EXCLUDE_TAGS = DEFAULT_UNIVERSE_EXCLUDE_TAGS
 DEFAULT_VALIDATION_EXCLUDE_SYMBOLS: list[str] = []
 
 
-# Validation tolerances
-VALIDATION_CONFIG = {
-    "price_tolerance": 1e-8,  # For OHLC prices (8 decimal places)
-    "volume_tolerance": 1e-4,  # 0.01% for volumes
-    "market_cap_tolerance": 0.01,  # 1% for market cap (CMC rounding)
-    "rank_tolerance": 0,  # Exact match for ranks
-    "trades_count_tolerance": 0,  # Exact match for trade counts
-}
-
-
 @dataclass
 class ValidationMismatch:
     """Single validation mismatch"""
@@ -366,15 +356,3 @@ async def cmc_client():
 
     async with CoinMarketCapClient() as client:
         yield client
-
-
-@pytest.fixture
-def validation_collector():
-    """Fresh validation collector for each test"""
-    return ValidationCollector()
-
-
-@pytest.fixture
-def validation_config():
-    """Validation tolerance configuration"""
-    return VALIDATION_CONFIG

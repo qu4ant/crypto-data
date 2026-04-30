@@ -7,7 +7,6 @@ from typing import Literal
 
 import pandera.pandas as pa
 
-from crypto_data.intervals import KLINE_INTERVAL_SECONDS
 from crypto_data.schemas import (
     FUNDING_RATES_SCHEMA,
     OHLCV_SCHEMA,
@@ -144,16 +143,6 @@ def is_kline_table(table: str) -> bool:
     return get_table_spec(table).kind == "kline"
 
 
-def is_metric_table(table: str) -> bool:
-    """Return True for single-cadence metric tables."""
-    return get_table_spec(table).kind == "metric"
-
-
 def primary_key_for(table: str) -> tuple[str, ...]:
     """Return the DuckDB primary key columns for a table."""
     return get_table_spec(table).primary_key
-
-
-def expected_seconds_for_interval(interval: str) -> int | None:
-    """Return fixed cadence seconds for a kline interval."""
-    return KLINE_INTERVAL_SECONDS.get(interval)

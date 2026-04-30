@@ -199,26 +199,3 @@ def invalid_universe_duplicate_ranks():
             "date_added": [pd.NaT] * 3,
         }
     )
-
-
-@pytest.fixture
-def invalid_universe_rank_gaps():
-    """Universe DataFrame with gaps in ranks (1, 2, 4 instead of 1, 2, 3) (v6 schema)"""
-    return pd.DataFrame(
-        {
-            "provider": ["coinmarketcap"] * 3,
-            "provider_id": [1, 1027, 1839],
-            "date": [datetime(2024, 1, 1)] * 3,
-            "symbol": ["BTC", "ETH", "BNB"],
-            "name": ["Bitcoin", "Ethereum", "BNB"],
-            "slug": ["bitcoin", "ethereum", "bnb"],
-            "rank": [1, 2, 4],  # Gap: missing rank 3
-            "market_cap": [800000000000.0, 400000000000.0, 80000000000.0],
-            "fully_diluted_market_cap": [None, None, None],
-            "circulating_supply": [None, None, None],
-            "max_supply": [None, None, None],
-            "tags": ["currency", "smart-contracts", "exchange-token"],
-            "platform": [None, None, None],
-            "date_added": [pd.NaT] * 3,
-        }
-    )
