@@ -48,7 +48,7 @@ create_binance_database(
 
 | Table | Primary Key | Notes |
 |-------|-------------|-------|
-| `crypto_universe` | `(date, symbol)` | Snapshot dates (daily/weekly/monthly), base assets (BTC not BTCUSDT) |
+| `crypto_universe` | `(provider, provider_id, date)` | CoinMarketCap-enriched snapshots; columns: `provider`, `provider_id` (cmc_id), `date`, `symbol` (mutable, not identity), `name`, `slug`, `rank`, `market_cap`, `fully_diluted_market_cap`, `circulating_supply`, `max_supply`, `tags`, `platform`, `date_added` |
 | `spot`, `futures` | `(exchange, symbol, interval, timestamp)` | Binance-only; `exchange` is constrained to `binance`; `timestamp` is candle close time |
 
 **OHLCV columns**: exchange, symbol, interval, timestamp, open, high, low, close, volume, quote_volume, trades_count, taker_buy_*
@@ -98,9 +98,10 @@ Schemas: `OHLCV_SCHEMA`, `OPEN_INTEREST_SCHEMA`, `FUNDING_RATES_SCHEMA`, `UNIVER
 
 ```sql
 -- Case-sensitive LIKE: use ILIKE or LOWER()
--- Universe JOIN: u.symbol || 'USDT' = s.symbol
+-- Universe JOIN: u.symbol || 'USDT' = s.symbol  (symbol is mutable, not identity)
+-- Track an asset across symbol renames via provider_id.
 -- Check top N status (don't use spot/futures for this):
-SELECT date, symbol, rank FROM crypto_universe WHERE symbol = 'TON' AND rank <= 50;
+SELECT date, symbol, rank FROM crypto_universe WHERE provider_id = 11419 AND rank <= 50;
 ```
 
 ## Environment

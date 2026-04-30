@@ -12,6 +12,10 @@
 
 ---
 
+> **v6.0.0 — breaking schema change.** The `crypto_universe` table now uses `(provider, provider_id, date)` as primary key and stores 14 enriched fields including `name`, `slug`, `fully_diluted_market_cap`, supply fields, `platform`, and `date_added`. **Delete pre-v6 `.db` files** and re-ingest with your existing scripts.
+
+---
+
 ## 🎯 Overview
 
 **Crypto Data** is an ingestion pipeline that automatically downloads cryptocurrency market data and stores it in a local DuckDB database.
@@ -304,9 +308,11 @@ WHERE exchange = 'binance'
 ORDER BY timestamp;
 ```
 
-### 3. Join Universe + Prices (Market Cap)
+### 3. Join Universe + Prices Point-in-Time
 
 ```sql
+-- Note: timestamp is candle close time. The -1 second maps each candle
+-- to the period that just closed, which matters at monthly boundaries.
 SELECT
     u.date,
     u.symbol,
@@ -317,7 +323,7 @@ SELECT
 FROM crypto_universe u
 JOIN spot s
   ON u.symbol || 'USDT' = s.symbol
-  AND u.date = DATE_TRUNC('day', s.timestamp)
+  AND u.date = DATE_TRUNC('month', s.timestamp - INTERVAL '1 second')
 WHERE s.exchange = 'binance'
   AND s.interval = '1h'
   AND u.date >= '2024-01-01'
@@ -709,8 +715,11 @@ update_binance_market_data(
 ## 🧪 Tests
 
 ```bash
-# All tests
+# Default local test suite (external validation tests are skipped)
 pytest tests/ -v
+
+# External validation against Binance/CoinMarketCap APIs
+pytest tests/ -v --run-validation
 
 # Basic tests only
 pytest tests/database/test_database_basic.py -v
@@ -719,7 +728,8 @@ pytest tests/database/test_database_basic.py -v
 pytest tests/ --cov=crypto_data --cov-report=html
 ```
 
-**Test Results**: 347 tests passing, 88.44% coverage
+External validation tests may download a temporary database and call public APIs.
+They can also be enabled with `CRYPTO_DATA_RUN_VALIDATION=1`.
 
 ---
 
