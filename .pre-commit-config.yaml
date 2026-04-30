@@ -1,0 +1,66 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: check-ast
+      - id: check-yaml
+      - id: check-toml
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: check-merge-conflict
+      - id: debug-statements
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+
+  # Ruff lint + format check, pinned to the project's uv.lock version.
+  # Local hooks (rather than astral-sh/ruff-pre-commit) avoid version drift
+  # between pre-commit and `uv run ruff` invocations elsewhere.
+  - repo: local
+    hooks:
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+
+      - id: ruff-format-check
+        name: ruff format check
+        entry: uv run ruff format --check --force-exclude
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+
+      # mypy on the whole src/ tree. pass_filenames=false because mypy needs
+      # the full import graph to resolve cross-file types correctly.
+      - id: mypy
+        name: mypy (src)
+        entry: uv run mypy src
+        language: system
+        types: [python]
+        pass_filenames: false
+        require_serial: true
+
+      # Vulture: dead-code finder. Pre-push only — false-positive heavy in
+      # pre-commit (fixtures, decorator-based entry points, magic methods).
+      # Reads paths + min_confidence from [tool.vulture] in pyproject.toml.
+      - id: vulture
+        name: vulture (dead code)
+        entry: uv run vulture
+        language: system
+        types: [python]
+        pass_filenames: false
+        require_serial: true
+        stages: [pre-push]
+
+      # Deptry: dependency hygiene. Pre-push only because it scans the package
+      # against pyproject.toml and is a global packaging check, not a local
+      # per-file lint.
+      - id: deptry
+        name: deptry (dependency hygiene)
+        entry: uv run deptry .
+        language: system
+        types: [python]
+        pass_filenames: false
+        require_serial: true
+        stages: [pre-push]

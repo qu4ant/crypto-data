@@ -37,6 +37,7 @@ classifiers = [
 
 dependencies = [
     "aiohttp>=3.9.0",
+    "numpy>=1.24.0",
     "pandas>=2.0.0",
     "duckdb>=0.9.0",
     "pyarrow>=19.0.0",
@@ -48,9 +49,12 @@ dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
     "pytest-asyncio>=0.21.0",
-    "black>=22.0.0",
-    "flake8>=5.0.0",
-    "mypy>=1.0.0",
+    "mypy>=1.10.0",
+    "types-python-dateutil>=2.9.0",
+    "ruff>=0.5.0",
+    "vulture>=2.11",
+    "deptry>=0.16.0",
+    "pre-commit>=3.7.0",
     "requests-mock>=1.9.0",
     "pandera[strategies]>=0.18.0",
     "ibis-framework[duckdb]>=8.0.0",
@@ -73,23 +77,145 @@ where = ["src"]
 [tool.setuptools.package-data]
 crypto_data = ["py.typed"]
 
-[tool.black]
+[tool.ruff]
 line-length = 100
-target-version = ['py38', 'py39', 'py310', 'py311', 'py312']
-include = '\.pyi?$'
-extend-exclude = '''
-/(
-  # directories
-  \.eggs
-  | \.git
-  | \.hg
-  | \.mypy_cache
-  | \.tox
-  | \.venv
-  | build
-  | dist
-)/
-'''
+target-version = "py310"
+src = ["src", "tests"]
+extend-exclude = [
+    ".eggs",
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".tox",
+    ".venv",
+    "build",
+    "dist",
+    "notebooks",
+]
+
+[tool.ruff.lint]
+select = [
+    "F",     # Pyflakes (unused imports, undefined names)
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "I",     # isort (import sorting)
+    "UP",    # pyupgrade (modern Python syntax)
+    "B",     # flake8-bugbear (common bugs)
+    "SIM",   # flake8-simplify
+    "C4",    # flake8-comprehensions
+    "C90",   # McCabe complexity
+    "S",     # flake8-bandit (security)
+    "RUF",   # Ruff-specific rules
+    "PERF",  # perflint (performance anti-patterns)
+    "PD",    # pandas-vet
+    "NPY",   # numpy-specific rules
+    "PTH",   # flake8-use-pathlib
+    "RET",   # flake8-return
+]
+ignore = [
+    "E501",   # line too long (formatter handles this)
+    "S101",   # assert usage (needed in pytest)
+    "PD002",  # inplace=True — acceptable, style preference
+    "PD011",  # .values vs .to_numpy() — cosmetic
+    "RET504", # unnecessary assignment before return — often clearer
+    "S608",   # SQL injection — queries use enum-derived table names, not user input
+    "B008",   # function call in default arg — needed for some factory patterns
+    "B905",   # zip without strict — acceptable when lengths are guaranteed equal
+    "RUF059", # unused unpacked variable — common in test/script tuple unpacking
+    "RUF005", # iterable unpacking vs concat — cosmetic preference
+    "RUF022", # __all__ sort order — manual ordering is fine
+]
+
+[tool.ruff.lint.mccabe]
+# Orchestrators (import_file, get_json, log_ingestion_summary,
+# update_coinmarketcap_universe) sit in the 13–15 range and don't simplify
+# without obscuring the workflow. Tighten back to 12 if a future split helps.
+max-complexity = 15
+
+[tool.ruff.lint.per-file-ignores]
+# Tests are looser: real-world fixtures, mocks, tempdirs, and explicit comparisons.
+"tests/**" = [
+    "S101", "S105", "S106", "S311", "NPY002",
+    "PTH109", "PTH123",  # os.getcwd / open() — fine in tests
+    "S108",              # /tmp paths in fixtures
+    "RUF012",            # mutable class attrs in test helpers
+    "RUF043",            # regex literal patterns in pytest.raises
+    "B007", "B017",      # unused loop vars / pytest.raises(Exception)
+    "F841",              # unused locals (debug-aid in test bodies)
+    "C901",              # complexity in validation helpers
+    "SIM103", "SIM108", "SIM117",  # readability over conciseness in tests
+    "PERF401",           # explicit append loops in test helpers
+    "S310",              # urlopen in API validation tests
+]
+"scripts/**" = ["S101", "T201", "PTH109", "PTH123"]
+"notebooks/**" = ["E402", "T201", "PD011"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.10"
+warn_unused_configs = true
+ignore_missing_imports = true
+no_implicit_optional = true
+# Progressive adoption: keep mypy structural checks on, but mute the error
+# classes that pre-date typing (gather(return_exceptions=True) unions, Pandera
+# SchemaErrors return type, lazy None-default attributes). var-annotated and
+# import-untyped stay loud — those are real bugs.
+disable_error_code = [
+    "no-any-return",   # legacy: many helpers forward Any from duckdb / pandas
+    "union-attr",      # legacy: gather(return_exceptions=True) yields Result | BaseException
+    "attr-defined",    # legacy: dataset-strategy duck typing
+    "arg-type",        # legacy: aiohttp request_info Optional, Path Optional
+    "assignment",      # legacy: client objects initialized to None pre-async-init
+    "misc",            # legacy: Optional tuple unpacking
+    "return-value",    # legacy: Pandera SchemaErrors vs DataFrame[Any]
+    "index",           # legacy: Optional tuple indexing in repair
+]
+
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+
+[[tool.mypy.overrides]]
+# Pandera's @pa.dataframe_check decorator wraps methods as classmethods, but
+# mypy can't always see through the decorator and reports spurious "self"
+# errors. Suppress those in the schemas package only.
+module = "crypto_data.schemas.*"
+disable_error_code = ["misc", "no-any-return"]
+
+[tool.vulture]
+paths = ["src", "tests"]
+min_confidence = 80
+exclude = ["notebooks/", "scripts/"]
+# Allowlist: signatures imposed by the language/test fixtures, not real dead code.
+ignore_names = [
+    "exc_type", "exc_val", "exc_tb", "tb",  # __exit__ / __aexit__ required params
+    "args", "kwargs",                        # *args / **kwargs in mocks and decorators
+]
+
+[tool.deptry]
+exclude = ["notebooks", "\\.venv", "tests", "scripts"]
+known_first_party = ["crypto_data"]
+# Recognize tools used via uv/pre-commit/pytest entry points, not Python imports.
+extend_exclude = []
+
+[tool.deptry.package_module_name_map]
+# Pandera ships a top-level package; tell deptry the import names match.
+"types-python-dateutil" = "dateutil"
+
+[tool.deptry.per_rule_ignores]
+# Dev tooling consumed via CLI / pre-commit, not via `import`.
+DEP002 = [
+    "pytest", "pytest-cov", "pytest-asyncio",
+    "mypy", "ruff", "vulture", "deptry", "pre-commit",
+    "types-python-dateutil",
+    "requests-mock",
+    "ibis-framework",
+    "scipy",
+    "pyarrow",  # used by pandas/duckdb arrow interop, not imported directly
+]
 
 [tool.coverage.run]
 source = ["src/crypto_data"]
