@@ -10,7 +10,7 @@ existing `crypto-data` ingestion package.
 
 The system must support:
 
-- one mutable live DuckDB database on the ops VPS
+- one mutable working DuckDB database on the ops VPS
 - immutable release snapshots for laptops and production machines
 - a versioned JSON config as the source of truth for each run
 - a metadata JSON file next to each snapshot
@@ -22,7 +22,7 @@ responsible for orchestration, locking, publication, metadata, and retention.
 
 ## Non-Goals
 
-- Do not use a shared network mount as a live DuckDB database.
+- Do not use a shared network mount as a working DuckDB database.
 - Do not let multiple machines write to the same DuckDB file.
 - Do not move storage to Hetzner Storage Box or Object Storage in V1.
 - Do not introduce Parquet as the source of truth in V1.
@@ -44,7 +44,7 @@ VPS layout:
 
 ```text
 /srv/crypto-data/
-  live/
+  work/
     crypto_data.duckdb
   releases/
     crypto_data_2026-05.duckdb
@@ -62,12 +62,16 @@ VPS layout:
 The VPS ops machine is the only writer. It owns:
 
 ```text
-/srv/crypto-data/live/crypto_data.duckdb
+/srv/crypto-data/work/crypto_data.duckdb
 ```
 
 Cron or a manual operator runs the update process on the VPS. Laptops and
-production machines must not read from or write to `live/`. They consume only
+production machines must not read from or write to `work/`. They consume only
 published release snapshots.
+
+The word `work` is intentional. This dataset is primarily for historical
+backtests and research, not a live market-serving database. `current.txt` means
+the latest published dataset snapshot, not a real-time database.
 
 ### Snapshot Model
 
@@ -114,7 +118,7 @@ Example:
 ```json
 {
   "name": "top50_h4_daily",
-  "db_path": "/srv/crypto-data/live/crypto_data.duckdb",
+  "db_path": "/srv/crypto-data/work/crypto_data.duckdb",
   "start_date": "2022-01-01",
   "end_date": "2026-04-01",
   "top_n": 50,
@@ -140,7 +144,7 @@ Rules:
 - `data_types` must map to `crypto_data.DataType` enum members.
 - `exclude_tags` may be the string `DEFAULT_UNIVERSE_EXCLUDE_TAGS` or an explicit
   list of tag strings.
-- `db_path` points to the live mutable database on the VPS.
+- `db_path` points to the mutable working database on the VPS.
 - `retention_months` controls release cleanup.
 - `quality_check.enabled` controls whether the quality validation step runs.
 - `quality_check.output_file` may be `auto` in V1, which writes the report next
@@ -160,13 +164,13 @@ Responsibilities:
 - convert enum strings to `Interval` and `DataType`
 - resolve `DEFAULT_UNIVERSE_EXCLUDE_TAGS`
 - acquire a non-blocking file lock
-- ensure `/srv/crypto-data/live`, `/srv/crypto-data/releases`, and
+- ensure `/srv/crypto-data/work`, `/srv/crypto-data/releases`, and
   `/srv/crypto-data/logs` exist
 - call `setup_colored_logging()`
 - call `create_binance_database(...)`
 - return non-zero on invalid config or failed ingestion
 - run the existing quality validation script when `quality_check.enabled` is true
-- copy the live DB to a release file
+- copy the working DB to a release file
 - compute `sha256`
 - write metadata JSON
 - update `current.txt`
@@ -185,9 +189,9 @@ duplicating logic in shell.
 manual run or cron
   -> publish_snapshot.py CONFIG
   -> file lock acquired
-  -> create_binance_database(db_path=/srv/crypto-data/live/crypto_data.duckdb, ...)
+  -> create_binance_database(db_path=/srv/crypto-data/work/crypto_data.duckdb, ...)
   -> validate data quality if enabled
-  -> copy live DB to releases/crypto_data_YYYY-MM.duckdb.tmp
+  -> copy working DB to releases/crypto_data_YYYY-MM.duckdb.tmp
   -> compute checksum
   -> write metadata tmp
   -> atomic rename tmp files to final release files
@@ -233,7 +237,7 @@ Example:
   },
   "config": {
     "name": "top50_h4_daily",
-    "db_path": "/srv/crypto-data/live/crypto_data.duckdb",
+    "db_path": "/srv/crypto-data/work/crypto_data.duckdb",
     "start_date": "2022-01-01",
     "end_date": "2026-04-01",
     "top_n": 50,
@@ -337,7 +341,7 @@ V1 should include tests for `ops/publish_snapshot.py`:
 
 Manual acceptance checklist:
 
-- ingestion writes to `/srv/crypto-data/live/crypto_data.duckdb`
+- ingestion writes to `/srv/crypto-data/work/crypto_data.duckdb`
 - release DB appears in `/srv/crypto-data/releases`
 - `.sha256` validates against the release DB
 - `.metadata.json` contains the exact config used
@@ -350,7 +354,7 @@ Manual acceptance checklist:
 The V1 implementation is complete when:
 
 - a config JSON can drive ingestion without editing Python constants
-- the live DB is updated only on the VPS path
+- the working DB is updated only on the VPS path
 - a release snapshot is published with checksum, metadata, and either a passed
   validation report or an explicit `validation.status=skipped`
 - `current.txt` points to the latest published snapshot
