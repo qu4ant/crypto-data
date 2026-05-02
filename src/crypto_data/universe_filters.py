@@ -2,16 +2,22 @@
 Shared CoinMarketCap universe filtering rules.
 
 The defaults keep synthetic/pegged assets out of both universe ingestion and
-download symbol extraction: stablecoins, wrapped assets, and tokenized assets.
+download symbol extraction: stablecoins, wrapped assets, and explicit
+tokenized commodities/gold tags.
 """
 
 from collections.abc import Iterable, Sequence
 
 DEFAULT_UNIVERSE_EXCLUDE_TAGS = [
     "stablecoin",
+    "asset-backed-stablecoin",
+    "algorithmic-stablecoin",
+    "usd-stablecoin",
+    "fiat-stablecoin",
+    "eur-stablecoin",
     "wrapped-tokens",
-    "tokenized",
-    "tokenised",
+    "tokenized-gold",
+    "tokenized-commodities",
 ]
 
 DEFAULT_UNIVERSE_EXCLUDE_SYMBOLS: list[str] = []
@@ -47,18 +53,19 @@ def _iter_tags(tags: object) -> Iterable[str]:
 
 def has_excluded_tag(tags: object, exclude_tags: Sequence[str]) -> bool:
     """
-    Return True when a CMC tag matches an excluded tag or tag family.
+    Return True when a CMC tag exactly matches an excluded tag.
 
-    Matching is case-insensitive and substring-based so ``tokenized`` excludes
-    ``tokenized-gold`` / ``tokenized-stock`` without maintaining every subtype.
+    Matching is case-insensitive and exact to avoid excluding protocols or
+    infrastructure assets tagged with broad categories such as
+    ``stablecoin-protocol`` or ``tokenized-stock``.
     """
-    excluded_tags = [_normalize_tag(tag) for tag in exclude_tags if tag]
+    excluded_tags = {_normalize_tag(tag) for tag in exclude_tags if tag}
     if not excluded_tags:
         return False
 
     for tag in _iter_tags(tags):
         normalized_tag = _normalize_tag(tag)
-        if any(excluded in normalized_tag for excluded in excluded_tags):
+        if normalized_tag in excluded_tags:
             return True
     return False
 

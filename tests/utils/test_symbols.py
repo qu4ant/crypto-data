@@ -169,7 +169,7 @@ def test_handles_symbols_with_special_characters(test_db_with_universe):
 
 
 def test_excludes_synthetic_assets_by_default(test_db_with_universe):
-    """Default symbol extraction should filter old unfiltered universe rows."""
+    """Default symbol extraction should avoid broad tag false positives."""
     db = CryptoDatabase(test_db_with_universe)
     db.conn.execute("""
         INSERT INTO crypto_universe
@@ -180,7 +180,9 @@ def test_excludes_synthetic_assets_by_default(test_db_with_universe):
             ('coinmarketcap', 825,   '2024-01-01', 'USDT', 'Tether USDt',     'tether',          3, 95000000000, NULL, NULL, NULL, 'stablecoin,asset-backed-stablecoin', NULL, NULL),
             ('coinmarketcap', 3717,  '2024-01-01', 'WBTC', 'Wrapped Bitcoin', 'wrapped-bitcoin', 4, 12000000000, NULL, NULL, NULL, 'wrapped-tokens',                     NULL, NULL),
             ('coinmarketcap', 4705,  '2024-01-01', 'PAXG', 'PAX Gold',        'pax-gold',        5, 1000000000,  NULL, NULL, NULL, 'tokenized-gold',                     NULL, NULL),
-            ('coinmarketcap', 12345, '2024-01-01', 'TSLA', 'Tesla Tokenized', 'tesla-tokenized', 6, 900000000,   NULL, NULL, NULL, 'tokenized-stock',                    NULL, NULL)
+            ('coinmarketcap', 5176,  '2024-01-01', 'XAUT', 'Tether Gold',     'tether-gold',     6, 900000000,   NULL, NULL, NULL, 'tokenized-commodities',              NULL, NULL),
+            ('coinmarketcap', 1975,  '2024-01-01', 'LINK', 'Chainlink',       'chainlink',       7, 800000000,   NULL, NULL, NULL, 'tokenized-stock',                    NULL, NULL),
+            ('coinmarketcap', 35336, '2024-01-01', 'XPL',  'Plasma',          'plasma',          8, 700000000,   NULL, NULL, NULL, 'stablecoin-protocol',                NULL, NULL)
     """)
     db.close()
 
@@ -192,7 +194,9 @@ def test_excludes_synthetic_assets_by_default(test_db_with_universe):
     assert "USDTUSDT" not in symbols
     assert "WBTCUSDT" not in symbols
     assert "PAXGUSDT" not in symbols
-    assert "TSLAUSDT" not in symbols
+    assert "XAUTUSDT" not in symbols
+    assert "LINKUSDT" in symbols
+    assert "XPLUSDT" in symbols
 
 
 def test_symbol_extraction_allows_explicit_filter_opt_out(test_db_with_universe):

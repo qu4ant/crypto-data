@@ -374,7 +374,7 @@ def test_universe_idempotent():
 
 
 def test_update_coinmarketcap_universe_excludes_synthetic_assets_by_default():
-    """Default universe ingestion should exclude stable, wrapped, and tokenized assets."""
+    """Default universe ingestion should avoid broad tag false positives."""
     with tempfile.TemporaryDirectory() as tmpdir:
         db_path = Path(tmpdir) / "test.db"
 
@@ -412,12 +412,28 @@ def test_update_coinmarketcap_universe_excludes_synthetic_assets_by_default():
                 "tags": ["tokenized-gold"],
             },
             {
-                "id": 12345,
-                "symbol": "TSLA",
-                "name": "Tesla Tokenized",
+                "id": 5176,
+                "symbol": "XAUT",
+                "name": "Tether Gold",
                 "cmcRank": 5,
                 "quotes": [{"marketCap": 600000}],
+                "tags": ["tokenized-commodities"],
+            },
+            {
+                "id": 1975,
+                "symbol": "LINK",
+                "name": "Chainlink",
+                "cmcRank": 6,
+                "quotes": [{"marketCap": 500000}],
                 "tags": ["tokenized-stock"],
+            },
+            {
+                "id": 35336,
+                "symbol": "XPL",
+                "name": "Plasma",
+                "cmcRank": 7,
+                "quotes": [{"marketCap": 400000}],
+                "tags": ["stablecoin-protocol"],
             },
         ]
 
@@ -432,7 +448,7 @@ def test_update_coinmarketcap_universe_excludes_synthetic_assets_by_default():
                 update_coinmarketcap_universe(
                     db_path=str(db_path),
                     dates=["2024-01-01"],
-                    top_n=5,
+                    top_n=7,
                 )
             )
 
@@ -442,8 +458,8 @@ def test_update_coinmarketcap_universe_excludes_synthetic_assets_by_default():
         """).fetchall()
         db.close()
 
-        assert [row[0] for row in rows] == ["BTC"]
-        assert exclusions["by_tag"] == {"USDT", "WBTC", "PAXG", "TSLA"}
+        assert [row[0] for row in rows] == ["BTC", "LINK", "XPL"]
+        assert exclusions["by_tag"] == {"USDT", "WBTC", "PAXG", "XAUT"}
 
 
 def test_update_coinmarketcap_universe_allows_explicit_filter_opt_out():
