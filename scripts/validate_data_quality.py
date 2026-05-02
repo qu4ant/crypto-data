@@ -8,10 +8,12 @@ import json
 import sys
 from pathlib import Path
 
+from crypto_data.import_anomalies import default_import_anomaly_report_path
 from crypto_data.quality import (
     SUPPORTED_TABLES,
     QualityConfig,
     audit_database,
+    findings_from_import_anomaly_jsonl,
     findings_to_jsonable,
     format_findings,
     has_errors,
@@ -44,6 +46,13 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--json",
         dest="json_path",
         help="Optional path to write the detailed report as JSON.",
+    )
+    parser.add_argument(
+        "--import-anomalies-jsonl",
+        help=(
+            "Optional import anomaly JSONL path. Defaults to "
+            "logs/{db_stem}_import_anomalies.jsonl when that file exists."
+        ),
     )
     parser.add_argument(
         "--fail-on-warning",
@@ -122,6 +131,20 @@ def main(argv: list[str] | None = None) -> int:
         intervals=args.interval,
         config=config,
     )
+    import_anomaly_path = (
+        Path(args.import_anomalies_jsonl)
+        if args.import_anomalies_jsonl
+        else default_import_anomaly_report_path(db_path)
+    )
+    if args.import_anomalies_jsonl or import_anomaly_path.exists():
+        findings.extend(
+            findings_from_import_anomaly_jsonl(
+                import_anomaly_path,
+                tables=args.tables,
+                symbols=args.symbol,
+                intervals=args.interval,
+            )
+        )
 
     print(format_findings(findings, db_path=db_path))
 

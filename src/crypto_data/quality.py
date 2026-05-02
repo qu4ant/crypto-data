@@ -8,6 +8,7 @@ statistical anomalies after data has landed in the database.
 
 from __future__ import annotations
 
+import json
 from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
 from datetime import date, datetime
@@ -19,6 +20,7 @@ import pandas as pd
 from pandera.pandas import Check, Column, DataFrameSchema
 
 from crypto_data.gaps import enumerate_kline_gaps, enumerate_metric_gaps
+from crypto_data.intervals import KLINE_INTERVAL_SECONDS
 from crypto_data.tables import (
     FUNDING_RATES_EXPECTED_SECONDS,
     KLINE_TABLES,
@@ -64,13 +66,21 @@ FINDINGS_SCHEMA = DataFrameSchema(
 class QualityConfig:
     """Thresholds for statistical quality checks."""
 
-    price_return_sigma: float = 10.0
-    volume_iqr_multiplier: float = 10.0
+    price_return_sigma: float = 20.0
+    volume_iqr_multiplier: float = 20.0
     open_interest_change_iqr_multiplier: float = 8.0
     funding_rate_abs_warn: float = 0.01
     funding_rate_mean_abs_warn: float = 0.001
     funding_rate_std_warn: float = 0.01
     min_outlier_observations: int = 20
+    timestamp_alignment_tolerance_seconds: int = 0
+    quote_volume_price_band_tolerance: float = 0.001
+    price_jump_abs_return_warn: float = 0.50
+    price_jump_mad_multiplier: float = 15.0
+    wick_range_pct_warn: float = 1.0
+    wick_side_pct_warn: float = 0.75
+    stale_run_min_duration_seconds: int = 86_400
+    stale_run_min_observations: int = 6
     universe_frequency: Frequency | None = None
     universe_start_date: str | date | datetime | None = None
     universe_end_date: str | date | datetime | None = None
@@ -166,6 +176,72 @@ def findings_to_jsonable(findings: Sequence[QualityFinding]) -> list[dict[str, A
     return [_jsonable(asdict(finding)) for finding in findings]
 
 
+def findings_from_import_anomaly_jsonl(
+    path: str | Path,
+    *,
+    tables: Sequence[str] | None = None,
+    symbols: Sequence[str] | None = None,
+    intervals: Sequence[str] | None = None,
+) -> list[QualityFinding]:
+    """Convert import anomaly JSONL records into warning findings."""
+    report_path = Path(path)
+    if not report_path.exists():
+        return []
+
+    selected_tables = set(_normalize_tables(tables))
+    selected_symbols = set(_normalize_values(symbols) or ())
+    selected_intervals = set(_normalize_values(intervals) or ())
+
+    findings: list[QualityFinding] = []
+    with report_path.open(encoding="utf-8") as f:
+        for line_number, line in enumerate(f, start=1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError as exc:
+                raise ValueError(
+                    f"Invalid import anomaly JSONL at {report_path}:{line_number}"
+                ) from exc
+
+            table = record.get("table") or record.get("table_name")
+            symbol = record.get("symbol")
+            interval = record.get("interval")
+            if table not in selected_tables:
+                continue
+            if selected_symbols and symbol not in selected_symbols:
+                continue
+            if selected_intervals and interval not in selected_intervals:
+                continue
+
+            check_name = str(record.get("check_name") or "import_anomaly")
+            count = int(record.get("count") or 0)
+            metadata = dict(record.get("metadata") or {})
+            metadata.update(
+                {
+                    "period": record.get("period"),
+                    "source_file": record.get("source_file"),
+                    "event_timestamp": record.get("event_timestamp"),
+                    "report_path": str(report_path),
+                }
+            )
+            findings.append(
+                QualityFinding(
+                    severity="WARN",
+                    table=table,
+                    check_name=check_name,
+                    message=f"{count} rows were handled during import before database insert",
+                    count=count,
+                    symbol=symbol,
+                    interval=interval,
+                    metadata=metadata,
+                )
+            )
+
+    return findings
+
+
 def format_findings(
     findings: Sequence[QualityFinding], *, db_path: str | Path | None = None
 ) -> str:
@@ -218,10 +294,15 @@ def _audit_kline_table(
     findings: list[QualityFinding] = []
     findings.extend(_check_kline_duplicates(conn, table, symbols, intervals))
     findings.extend(_check_kline_gaps(conn, table, symbols, intervals))
+    findings.extend(_check_kline_timestamp_alignment(conn, table, symbols, intervals, config))
     findings.extend(_check_kline_invalid_values(conn, table, symbols, intervals))
     findings.extend(_check_kline_ohlc(conn, table, symbols, intervals))
+    findings.extend(_check_kline_volume_price_consistency(conn, table, symbols, intervals, config))
     findings.extend(_check_kline_price_outliers(conn, table, symbols, intervals, config))
+    findings.extend(_check_kline_robust_price_jumps(conn, table, symbols, intervals, config))
+    findings.extend(_check_kline_wick_outliers(conn, table, symbols, intervals, config))
     findings.extend(_check_kline_volume_outliers(conn, table, symbols, intervals, config))
+    findings.extend(_check_kline_stale_price_runs(conn, table, symbols, intervals, config))
     return findings
 
 
@@ -290,10 +371,12 @@ def _audit_universe(
     findings: list[QualityFinding] = []
     findings.extend(_check_universe_duplicates(conn, symbols))
     findings.extend(_check_universe_duplicate_ranks(conn, symbols))
+    findings.extend(_check_universe_duplicate_symbols(conn, symbols))
     findings.extend(_check_universe_invalid_values(conn, symbols))
     if not symbols:
         findings.extend(_check_universe_date_coverage(conn, config))
         findings.extend(_check_universe_top_n_coverage(conn, config))
+        findings.extend(_check_universe_missing_ranks(conn, config))
         findings.extend(_check_universe_rank_ordering(conn))
     return findings
 
@@ -386,6 +469,80 @@ def _check_kline_gaps(
             )
         )
     return findings
+
+
+def _check_kline_timestamp_alignment(
+    conn: duckdb.DuckDBPyConnection,
+    table: str,
+    symbols: Sequence[str] | None,
+    intervals: Sequence[str] | None,
+    config: QualityConfig,
+) -> list[QualityFinding]:
+    checked_intervals = {
+        interval: seconds
+        for interval, seconds in KLINE_INTERVAL_SECONDS.items()
+        if seconds <= 86_400
+    }
+    expected_values = ", ".join(
+        f"('{interval}', {seconds})" for interval, seconds in checked_intervals.items()
+    )
+    filter_sql, params = _filters(symbols=symbols, intervals=intervals, alias="t")
+    rows = conn.execute(
+        f"""
+        WITH expected(interval, expected_seconds) AS (
+            VALUES {expected_values}
+        ),
+        offsets AS (
+            SELECT
+                t.symbol,
+                t.interval,
+                t.timestamp,
+                expected.expected_seconds,
+                CAST(epoch(t.timestamp) AS BIGINT) % expected.expected_seconds AS offset_seconds
+            FROM {table} AS t
+            JOIN expected ON expected.interval = t.interval
+            {filter_sql}
+        ),
+        violations AS (
+            SELECT
+                *,
+                LEAST(offset_seconds, expected_seconds - offset_seconds) AS distance_seconds
+            FROM offsets
+            WHERE offset_seconds > ?
+              AND expected_seconds - offset_seconds > ?
+        )
+        SELECT
+            symbol,
+            interval,
+            COUNT(*) AS bad_count,
+            MIN(timestamp) AS first_timestamp,
+            MAX(timestamp) AS last_timestamp,
+            MAX(distance_seconds) AS max_distance_seconds
+        FROM violations
+        GROUP BY symbol, interval
+        """,
+        [
+            *params,
+            config.timestamp_alignment_tolerance_seconds,
+            config.timestamp_alignment_tolerance_seconds,
+        ],
+    ).fetchall()
+
+    return [
+        QualityFinding(
+            severity="WARN",
+            table=table,
+            check_name="timestamp_alignment",
+            message=f"{bad_count} kline timestamps are not aligned to their interval boundary",
+            count=int(bad_count),
+            symbol=symbol,
+            interval=interval,
+            first_timestamp=first_timestamp,
+            last_timestamp=last_timestamp,
+            metadata={"max_distance_seconds": int(max_distance_seconds)},
+        )
+        for symbol, interval, bad_count, first_timestamp, last_timestamp, max_distance_seconds in rows
+    ]
 
 
 def _check_kline_invalid_values(
@@ -489,6 +646,157 @@ def _check_kline_ohlc(
     ]
 
 
+def _check_kline_volume_price_consistency(
+    conn: duckdb.DuckDBPyConnection,
+    table: str,
+    symbols: Sequence[str] | None,
+    intervals: Sequence[str] | None,
+    config: QualityConfig,
+) -> list[QualityFinding]:
+    filter_sql, params = _filters(symbols=symbols, intervals=intervals, alias="t")
+    rows = conn.execute(
+        f"""
+        WITH flags AS (
+            SELECT
+                t.symbol,
+                t.interval,
+                t.timestamp,
+                (
+                    t.volume IS NOT NULL AND isfinite(t.volume) AND t.volume > 0
+                    AND t.quote_volume IS NOT NULL AND isfinite(t.quote_volume)
+                    AND t.quote_volume = 0
+                ) AS positive_volume_zero_quote,
+                (
+                    t.quote_volume IS NOT NULL AND isfinite(t.quote_volume) AND t.quote_volume > 0
+                    AND t.volume IS NOT NULL AND isfinite(t.volume)
+                    AND t.volume = 0
+                ) AS positive_quote_zero_volume,
+                (
+                    t.trades_count IS NOT NULL AND t.trades_count = 0
+                    AND (
+                        (t.volume IS NOT NULL AND isfinite(t.volume) AND t.volume > 0)
+                        OR (
+                            t.quote_volume IS NOT NULL
+                            AND isfinite(t.quote_volume)
+                            AND t.quote_volume > 0
+                        )
+                    )
+                ) AS zero_trades_positive_volume,
+                (
+                    t.volume IS NOT NULL AND isfinite(t.volume) AND t.volume > 0
+                    AND t.quote_volume IS NOT NULL AND isfinite(t.quote_volume) AND t.quote_volume > 0
+                    AND t.low IS NOT NULL AND isfinite(t.low) AND t.low > 0
+                    AND t.high IS NOT NULL AND isfinite(t.high) AND t.high >= t.low
+                    AND (
+                        t.quote_volume < t.low * t.volume * (1 - ?)
+                        OR t.quote_volume > t.high * t.volume * (1 + ?)
+                    )
+                ) AS quote_volume_price_band,
+                (
+                    t.taker_buy_base_volume IS NOT NULL
+                    AND isfinite(t.taker_buy_base_volume)
+                    AND t.volume IS NOT NULL
+                    AND isfinite(t.volume)
+                    AND t.taker_buy_base_volume > t.volume * (1 + ?)
+                ) AS taker_base_exceeds_volume,
+                (
+                    t.taker_buy_quote_volume IS NOT NULL
+                    AND isfinite(t.taker_buy_quote_volume)
+                    AND t.quote_volume IS NOT NULL
+                    AND isfinite(t.quote_volume)
+                    AND t.taker_buy_quote_volume > t.quote_volume * (1 + ?)
+                ) AS taker_quote_exceeds_quote_volume
+            FROM {table} AS t
+            {filter_sql}
+        ),
+        grouped AS (
+            SELECT
+                symbol,
+                interval,
+                COUNT(*) FILTER (
+                    WHERE positive_volume_zero_quote
+                       OR positive_quote_zero_volume
+                       OR zero_trades_positive_volume
+                       OR quote_volume_price_band
+                       OR taker_base_exceeds_volume
+                       OR taker_quote_exceeds_quote_volume
+                ) AS bad_count,
+                MIN(timestamp) FILTER (
+                    WHERE positive_volume_zero_quote
+                       OR positive_quote_zero_volume
+                       OR zero_trades_positive_volume
+                       OR quote_volume_price_band
+                       OR taker_base_exceeds_volume
+                       OR taker_quote_exceeds_quote_volume
+                ) AS first_timestamp,
+                MAX(timestamp) FILTER (
+                    WHERE positive_volume_zero_quote
+                       OR positive_quote_zero_volume
+                       OR zero_trades_positive_volume
+                       OR quote_volume_price_band
+                       OR taker_base_exceeds_volume
+                       OR taker_quote_exceeds_quote_volume
+                ) AS last_timestamp,
+                SUM(CASE WHEN positive_volume_zero_quote THEN 1 ELSE 0 END) AS positive_volume_zero_quote_count,
+                SUM(CASE WHEN positive_quote_zero_volume THEN 1 ELSE 0 END) AS positive_quote_zero_volume_count,
+                SUM(CASE WHEN zero_trades_positive_volume THEN 1 ELSE 0 END) AS zero_trades_positive_volume_count,
+                SUM(CASE WHEN quote_volume_price_band THEN 1 ELSE 0 END) AS quote_volume_price_band_count,
+                SUM(CASE WHEN taker_base_exceeds_volume THEN 1 ELSE 0 END) AS taker_base_exceeds_volume_count,
+                SUM(CASE WHEN taker_quote_exceeds_quote_volume THEN 1 ELSE 0 END) AS taker_quote_exceeds_quote_volume_count
+            FROM flags
+            GROUP BY symbol, interval
+        )
+        SELECT *
+        FROM grouped
+        WHERE bad_count > 0
+        """,
+        [
+            config.quote_volume_price_band_tolerance,
+            config.quote_volume_price_band_tolerance,
+            config.quote_volume_price_band_tolerance,
+            config.quote_volume_price_band_tolerance,
+            *params,
+        ],
+    ).fetchall()
+
+    return [
+        QualityFinding(
+            severity="WARN",
+            table=table,
+            check_name="volume_price_inconsistency",
+            message=f"{bad_count} rows have inconsistent volume, quote volume, or taker volume",
+            count=int(bad_count),
+            symbol=symbol,
+            interval=interval,
+            first_timestamp=first_timestamp,
+            last_timestamp=last_timestamp,
+            metadata={
+                "positive_volume_zero_quote_count": int(positive_volume_zero_quote_count),
+                "positive_quote_zero_volume_count": int(positive_quote_zero_volume_count),
+                "zero_trades_positive_volume_count": int(zero_trades_positive_volume_count),
+                "quote_volume_price_band_count": int(quote_volume_price_band_count),
+                "taker_base_exceeds_volume_count": int(taker_base_exceeds_volume_count),
+                "taker_quote_exceeds_quote_volume_count": int(
+                    taker_quote_exceeds_quote_volume_count
+                ),
+            },
+        )
+        for (
+            symbol,
+            interval,
+            bad_count,
+            first_timestamp,
+            last_timestamp,
+            positive_volume_zero_quote_count,
+            positive_quote_zero_volume_count,
+            zero_trades_positive_volume_count,
+            quote_volume_price_band_count,
+            taker_base_exceeds_volume_count,
+            taker_quote_exceeds_quote_volume_count,
+        ) in rows
+    ]
+
+
 def _check_kline_price_outliers(
     conn: duckdb.DuckDBPyConnection,
     table: str,
@@ -574,6 +882,223 @@ def _check_kline_price_outliers(
     ]
 
 
+def _check_kline_robust_price_jumps(
+    conn: duckdb.DuckDBPyConnection,
+    table: str,
+    symbols: Sequence[str] | None,
+    intervals: Sequence[str] | None,
+    config: QualityConfig,
+) -> list[QualityFinding]:
+    filter_sql, params = _filters(symbols=symbols, intervals=intervals, alias="t")
+    where_sql = _append_condition(
+        filter_sql,
+        "t.close IS NOT NULL AND isfinite(t.close) AND t.close > 0",
+    )
+    rows = conn.execute(
+        f"""
+        WITH ordered AS (
+            SELECT
+                t.symbol,
+                t.interval,
+                t.timestamp,
+                t.close,
+                LAG(t.close) OVER (
+                    PARTITION BY t.exchange, t.symbol, t.interval
+                    ORDER BY t.timestamp
+                ) AS prev_close
+            FROM {table} AS t
+            {where_sql}
+        ),
+        returns AS (
+            SELECT
+                symbol,
+                interval,
+                timestamp,
+                close / prev_close - 1 AS relative_return,
+                ln(close / prev_close) AS log_return
+            FROM ordered
+            WHERE prev_close IS NOT NULL AND prev_close > 0
+        ),
+        medians AS (
+            SELECT
+                symbol,
+                interval,
+                COUNT(*) AS n,
+                quantile_cont(log_return, 0.5) AS median_log_return
+            FROM returns
+            GROUP BY symbol, interval
+        ),
+        deviations AS (
+            SELECT
+                r.*,
+                m.n,
+                m.median_log_return,
+                ABS(r.log_return - m.median_log_return) AS abs_deviation
+            FROM returns AS r
+            JOIN medians AS m USING (symbol, interval)
+        ),
+        stats AS (
+            SELECT
+                symbol,
+                interval,
+                n,
+                median_log_return,
+                quantile_cont(abs_deviation, 0.5) AS mad_log_return
+            FROM deviations
+            GROUP BY symbol, interval, n, median_log_return
+        ),
+        outliers AS (
+            SELECT d.*
+            FROM deviations AS d
+            JOIN stats AS s USING (symbol, interval)
+            WHERE s.n >= ?
+              AND ABS(d.relative_return) > ?
+              AND (
+                  (s.mad_log_return > 0 AND d.abs_deviation > ? * 1.4826 * s.mad_log_return)
+                  OR (s.mad_log_return = 0 AND d.abs_deviation > 0)
+              )
+        )
+        SELECT
+            symbol,
+            interval,
+            COUNT(*) AS outlier_count,
+            MIN(timestamp) AS first_timestamp,
+            MAX(timestamp) AS last_timestamp,
+            MAX(ABS(relative_return)) AS max_abs_relative_return,
+            MAX(ABS(log_return)) AS max_abs_log_return
+        FROM outliers
+        GROUP BY symbol, interval
+        """,
+        [
+            *params,
+            config.min_outlier_observations,
+            config.price_jump_abs_return_warn,
+            config.price_jump_mad_multiplier,
+        ],
+    ).fetchall()
+
+    return [
+        QualityFinding(
+            severity="WARN",
+            table=table,
+            check_name="robust_price_jumps",
+            message=f"{outlier_count} robust price jump outliers detected",
+            count=int(outlier_count),
+            symbol=symbol,
+            interval=interval,
+            first_timestamp=first_timestamp,
+            last_timestamp=last_timestamp,
+            metadata={
+                "max_abs_relative_return": float(max_abs_relative_return),
+                "max_abs_log_return": float(max_abs_log_return),
+                "absolute_return_threshold": config.price_jump_abs_return_warn,
+                "mad_multiplier": config.price_jump_mad_multiplier,
+            },
+        )
+        for (
+            symbol,
+            interval,
+            outlier_count,
+            first_timestamp,
+            last_timestamp,
+            max_abs_relative_return,
+            max_abs_log_return,
+        ) in rows
+    ]
+
+
+def _check_kline_wick_outliers(
+    conn: duckdb.DuckDBPyConnection,
+    table: str,
+    symbols: Sequence[str] | None,
+    intervals: Sequence[str] | None,
+    config: QualityConfig,
+) -> list[QualityFinding]:
+    filter_sql, params = _filters(symbols=symbols, intervals=intervals, alias="t")
+    where_sql = _append_condition(
+        filter_sql,
+        """
+        t.open IS NOT NULL AND isfinite(t.open) AND t.open > 0
+        AND t.high IS NOT NULL AND isfinite(t.high) AND t.high > 0
+        AND t.low IS NOT NULL AND isfinite(t.low) AND t.low > 0
+        AND t.close IS NOT NULL AND isfinite(t.close) AND t.close > 0
+        AND t.high >= t.low
+        AND t.high >= t.open
+        AND t.high >= t.close
+        AND t.low <= t.open
+        AND t.low <= t.close
+        """,
+    )
+    rows = conn.execute(
+        f"""
+        WITH base AS (
+            SELECT
+                t.symbol,
+                t.interval,
+                t.timestamp,
+                (t.high - t.low) / t.close AS range_pct,
+                (t.high - GREATEST(t.open, t.close)) / t.close AS upper_wick_pct,
+                (LEAST(t.open, t.close) - t.low) / t.close AS lower_wick_pct
+            FROM {table} AS t
+            {where_sql}
+        ),
+        outliers AS (
+            SELECT *
+            FROM base
+            WHERE range_pct > ?
+               OR upper_wick_pct > ?
+               OR lower_wick_pct > ?
+        )
+        SELECT
+            symbol,
+            interval,
+            COUNT(*) AS outlier_count,
+            MIN(timestamp) AS first_timestamp,
+            MAX(timestamp) AS last_timestamp,
+            MAX(range_pct) AS max_range_pct,
+            MAX(upper_wick_pct) AS max_upper_wick_pct,
+            MAX(lower_wick_pct) AS max_lower_wick_pct
+        FROM outliers
+        GROUP BY symbol, interval
+        """,
+        [
+            *params,
+            config.wick_range_pct_warn,
+            config.wick_side_pct_warn,
+            config.wick_side_pct_warn,
+        ],
+    ).fetchall()
+
+    return [
+        QualityFinding(
+            severity="WARN",
+            table=table,
+            check_name="wick_outliers",
+            message=f"{outlier_count} candles have unusually large range or wick",
+            count=int(outlier_count),
+            symbol=symbol,
+            interval=interval,
+            first_timestamp=first_timestamp,
+            last_timestamp=last_timestamp,
+            metadata={
+                "max_range_pct": float(max_range_pct),
+                "max_upper_wick_pct": float(max_upper_wick_pct),
+                "max_lower_wick_pct": float(max_lower_wick_pct),
+            },
+        )
+        for (
+            symbol,
+            interval,
+            outlier_count,
+            first_timestamp,
+            last_timestamp,
+            max_range_pct,
+            max_upper_wick_pct,
+            max_lower_wick_pct,
+        ) in rows
+    ]
+
+
 def _check_kline_volume_outliers(
     conn: duckdb.DuckDBPyConnection,
     table: str,
@@ -656,6 +1181,141 @@ def _check_kline_volume_outliers(
             metadata={"max_volume": float(max_volume)},
         )
         for symbol, interval, outlier_count, first_timestamp, last_timestamp, max_volume in rows
+    ]
+
+
+def _check_kline_stale_price_runs(
+    conn: duckdb.DuckDBPyConnection,
+    table: str,
+    symbols: Sequence[str] | None,
+    intervals: Sequence[str] | None,
+    config: QualityConfig,
+) -> list[QualityFinding]:
+    expected_values = ", ".join(
+        f"('{interval}', {seconds})" for interval, seconds in KLINE_INTERVAL_SECONDS.items()
+    )
+    filter_sql, params = _filters(symbols=symbols, intervals=intervals, alias="t")
+    rows = conn.execute(
+        f"""
+        WITH expected(interval, expected_seconds) AS (
+            VALUES {expected_values}
+        ),
+        base AS (
+            SELECT
+                t.symbol,
+                t.interval,
+                t.timestamp,
+                expected.expected_seconds,
+                (
+                    t.open IS NOT NULL AND isfinite(t.open)
+                    AND t.high IS NOT NULL AND isfinite(t.high)
+                    AND t.low IS NOT NULL AND isfinite(t.low)
+                    AND t.close IS NOT NULL AND isfinite(t.close)
+                    AND t.open = t.high
+                    AND t.high = t.low
+                    AND t.low = t.close
+                    AND t.volume IS NOT NULL AND isfinite(t.volume) AND t.volume = 0
+                    AND t.quote_volume IS NOT NULL AND isfinite(t.quote_volume)
+                    AND t.quote_volume = 0
+                    AND COALESCE(t.trades_count, 0) = 0
+                ) AS is_stale
+            FROM {table} AS t
+            JOIN expected ON expected.interval = t.interval
+            {filter_sql}
+        ),
+        ordered AS (
+            SELECT
+                *,
+                LAG(timestamp) OVER (
+                    PARTITION BY symbol, interval
+                    ORDER BY timestamp
+                ) AS prev_timestamp,
+                LAG(is_stale) OVER (
+                    PARTITION BY symbol, interval
+                    ORDER BY timestamp
+                ) AS prev_is_stale
+            FROM base
+        ),
+        segmented AS (
+            SELECT
+                *,
+                SUM(
+                    CASE
+                        WHEN is_stale
+                         AND COALESCE(prev_is_stale, FALSE)
+                         AND date_diff('second', prev_timestamp, timestamp) = expected_seconds
+                        THEN 0
+                        ELSE 1
+                    END
+                ) OVER (
+                    PARTITION BY symbol, interval
+                    ORDER BY timestamp
+                    ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+                ) AS segment_id
+            FROM ordered
+        ),
+        runs AS (
+            SELECT
+                symbol,
+                interval,
+                segment_id,
+                MIN(timestamp) AS first_timestamp,
+                MAX(timestamp) AS last_timestamp,
+                COUNT(*) AS observations,
+                MAX(expected_seconds) AS expected_seconds,
+                date_diff('second', MIN(timestamp), MAX(timestamp)) + MAX(expected_seconds)
+                    AS duration_seconds
+            FROM segmented
+            WHERE is_stale
+            GROUP BY symbol, interval, segment_id
+            HAVING COUNT(*) >= ?
+               AND date_diff('second', MIN(timestamp), MAX(timestamp)) + MAX(expected_seconds) >= ?
+        )
+        SELECT
+            symbol,
+            interval,
+            COUNT(*) AS run_count,
+            MIN(first_timestamp) AS first_timestamp,
+            MAX(last_timestamp) AS last_timestamp,
+            MAX(observations) AS max_observations,
+            MAX(duration_seconds) AS max_duration_seconds
+        FROM runs
+        GROUP BY symbol, interval
+        """,
+        [
+            *params,
+            config.stale_run_min_observations,
+            config.stale_run_min_duration_seconds,
+        ],
+    ).fetchall()
+
+    return [
+        QualityFinding(
+            severity="WARN",
+            table=table,
+            check_name="stale_price_runs",
+            message=f"{run_count} long flat inactive price runs detected",
+            count=int(run_count),
+            symbol=symbol,
+            interval=interval,
+            first_timestamp=first_timestamp,
+            last_timestamp=last_timestamp,
+            metadata={
+                "max_observations": int(max_observations),
+                "max_duration_seconds": int(max_duration_seconds),
+                "min_observations": config.stale_run_min_observations,
+                "min_duration_seconds": config.stale_run_min_duration_seconds,
+            },
+        )
+        for (
+            symbol,
+            interval,
+            run_count,
+            first_timestamp,
+            last_timestamp,
+            max_observations,
+            max_duration_seconds,
+        ) in rows
     ]
 
 
@@ -1216,6 +1876,51 @@ def _check_universe_duplicate_ranks(
     ]
 
 
+def _check_universe_duplicate_symbols(
+    conn: duckdb.DuckDBPyConnection,
+    symbols: Sequence[str] | None,
+) -> list[QualityFinding]:
+    filter_sql, params = _filters(symbols=symbols, alias="t")
+    rows = conn.execute(
+        f"""
+        WITH duplicate_symbols AS (
+            SELECT
+                t.date,
+                t.symbol,
+                COUNT(*) AS duplicate_count
+            FROM crypto_universe AS t
+            {filter_sql}
+            GROUP BY t.date, t.symbol
+            HAVING COUNT(*) > 1
+        )
+        SELECT
+            symbol,
+            CAST(SUM(duplicate_count - 1) AS BIGINT) AS bad_count,
+            MIN(date) AS first_timestamp,
+            MAX(date) AS last_timestamp,
+            MAX(duplicate_count) AS max_occurrences
+        FROM duplicate_symbols
+        GROUP BY symbol
+        """,
+        params,
+    ).fetchall()
+
+    return [
+        QualityFinding(
+            severity="WARN",
+            table="crypto_universe",
+            check_name="duplicate_symbols",
+            message=f"{bad_count} duplicate symbol rows detected for the same date",
+            count=int(bad_count),
+            symbol=symbol,
+            first_timestamp=first_timestamp,
+            last_timestamp=last_timestamp,
+            metadata={"max_occurrences": int(max_occurrences)},
+        )
+        for symbol, bad_count, first_timestamp, last_timestamp, max_occurrences in rows
+    ]
+
+
 def _check_universe_invalid_values(
     conn: duckdb.DuckDBPyConnection,
     symbols: Sequence[str] | None,
@@ -1257,6 +1962,92 @@ def _check_universe_invalid_values(
             last_timestamp=last_timestamp,
         )
         for symbol, bad_count, first_timestamp, last_timestamp in rows
+    ]
+
+
+def _check_universe_missing_ranks(
+    conn: duckdb.DuckDBPyConnection,
+    config: QualityConfig,
+) -> list[QualityFinding]:
+    date_filter_sql, date_filter_params = _universe_date_filter(conn, config)
+    top_n = int(config.universe_top_n) if config.universe_top_n is not None else None
+    max_rank_expr = "LEAST(MAX(rank), ?)" if top_n is not None else "MAX(rank)"
+    params: list[Any] = [top_n, *date_filter_params] if top_n is not None else [*date_filter_params]
+
+    missing_sql = f"""
+        WITH per_date AS (
+            SELECT
+                date,
+                {max_rank_expr} AS max_expected_rank
+            FROM crypto_universe
+            {date_filter_sql}
+            GROUP BY date
+            HAVING max_expected_rank >= 1
+        ),
+        expected AS (
+            SELECT
+                per_date.date,
+                expected_rank.rank
+            FROM per_date
+            CROSS JOIN generate_series(1, per_date.max_expected_rank) AS expected_rank(rank)
+        ),
+        missing AS (
+            SELECT expected.date, expected.rank
+            FROM expected
+            LEFT JOIN crypto_universe AS observed
+              ON observed.date = expected.date
+             AND observed.rank = expected.rank
+            WHERE observed.rank IS NULL
+        )
+    """
+
+    row = conn.execute(
+        f"""
+        {missing_sql}
+        SELECT
+            COUNT(*) AS missing_count,
+            COUNT(DISTINCT date) AS affected_dates,
+            MIN(date) AS first_timestamp,
+            MAX(date) AS last_timestamp,
+            MAX(rank) AS max_missing_rank
+        FROM missing
+        """,
+        params,
+    ).fetchone()
+
+    missing_count, affected_dates, first_timestamp, last_timestamp, max_missing_rank = row
+    if not missing_count:
+        return []
+
+    sample_rows = conn.execute(
+        f"""
+        {missing_sql}
+        SELECT strftime(date, '%Y-%m-%d') AS date, rank
+        FROM missing
+        ORDER BY date, rank
+        LIMIT 20
+        """,
+        params,
+    ).fetchall()
+
+    return [
+        QualityFinding(
+            severity="WARN",
+            table="crypto_universe",
+            check_name="missing_ranks",
+            message=f"{missing_count} rank slots are missing inside observed universe snapshots",
+            count=int(missing_count),
+            first_timestamp=first_timestamp,
+            last_timestamp=last_timestamp,
+            metadata={
+                "affected_dates": int(affected_dates),
+                "max_missing_rank": int(max_missing_rank),
+                "top_n": top_n,
+                "sample_missing_ranks": [
+                    {"date": row_date, "rank": int(rank)} for row_date, rank in sample_rows
+                ],
+            },
+        )
     ]
 
 
@@ -1475,6 +2266,7 @@ __all__ = [
     "audit_connection",
     "audit_database",
     "findings_to_dataframe",
+    "findings_from_import_anomaly_jsonl",
     "findings_to_jsonable",
     "format_findings",
     "has_errors",

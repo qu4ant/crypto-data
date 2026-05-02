@@ -8,6 +8,7 @@ from crypto_data.quality import (
     QualityConfig,
     QualityFinding,
     audit_connection,
+    findings_from_import_anomaly_jsonl,
     findings_to_dataframe,
     format_findings,
 )
@@ -100,7 +101,16 @@ def make_spot_row(
     low=99.0,
     close=100.5,
     volume=100.0,
+    quote_volume=None,
+    trades_count=10,
+    taker_buy_base_volume=None,
+    taker_buy_quote_volume=None,
 ):
+    quote_volume = volume * 100 if quote_volume is None else quote_volume
+    taker_buy_base_volume = volume / 2 if taker_buy_base_volume is None else taker_buy_base_volume
+    taker_buy_quote_volume = (
+        volume * 50 if taker_buy_quote_volume is None else taker_buy_quote_volume
+    )
     return (
         "binance",
         symbol,
@@ -111,10 +121,10 @@ def make_spot_row(
         low,
         close,
         volume,
-        volume * 100,
-        10,
-        volume / 2,
-        volume * 50,
+        quote_volume,
+        trades_count,
+        taker_buy_base_volume,
+        taker_buy_quote_volume,
     )
 
 
@@ -225,6 +235,131 @@ def test_spot_volume_outlier_is_warning():
     outlier = next(finding for finding in findings if finding.check_name == "volume_outliers")
     assert outlier.severity == "WARN"
     assert outlier.count == 1
+
+
+def test_spot_timestamp_alignment_is_warning():
+    conn = duckdb.connect(":memory:")
+    create_spot_table(conn)
+    insert_spot_rows(conn, [make_spot_row(datetime(2024, 1, 1, 1), interval="4h")])
+
+    findings = audit_connection(conn, tables=["spot"])
+
+    assert ("spot", "BTCUSDT", "4h", "timestamp_alignment") in finding_names(findings)
+    finding = next(finding for finding in findings if finding.check_name == "timestamp_alignment")
+    assert finding.severity == "WARN"
+    assert finding.metadata["max_distance_seconds"] == 3600
+
+
+def test_spot_volume_price_inconsistency_is_warning():
+    conn = duckdb.connect(":memory:")
+    create_spot_table(conn)
+    row = make_spot_row(
+        datetime(2024, 1, 1),
+        open_=100.0,
+        high=101.0,
+        low=99.0,
+        close=100.0,
+        volume=10.0,
+        quote_volume=1.0,
+    )
+    insert_spot_rows(conn, [row])
+
+    findings = audit_connection(conn, tables=["spot"])
+
+    assert ("spot", "BTCUSDT", "4h", "volume_price_inconsistency") in finding_names(findings)
+    finding = next(
+        finding for finding in findings if finding.check_name == "volume_price_inconsistency"
+    )
+    assert finding.severity == "WARN"
+    assert finding.metadata["quote_volume_price_band_count"] == 1
+
+
+def test_spot_robust_price_jump_is_warning():
+    conn = duckdb.connect(":memory:")
+    create_spot_table(conn)
+    start = datetime(2024, 1, 1)
+    rows = [
+        make_spot_row(
+            start + timedelta(hours=4 * i),
+            open_=100.0,
+            high=101.0,
+            low=99.0,
+            close=100.0,
+            volume=10.0,
+            quote_volume=1000.0,
+        )
+        for i in range(20)
+    ]
+    rows.append(
+        make_spot_row(
+            start + timedelta(hours=4 * 20),
+            open_=100.0,
+            high=1001.0,
+            low=99.0,
+            close=1000.0,
+            volume=10.0,
+            quote_volume=5000.0,
+        )
+    )
+    insert_spot_rows(conn, rows)
+
+    findings = audit_connection(conn, tables=["spot"])
+
+    assert ("spot", "BTCUSDT", "4h", "robust_price_jumps") in finding_names(findings)
+    finding = next(finding for finding in findings if finding.check_name == "robust_price_jumps")
+    assert finding.severity == "WARN"
+    assert finding.metadata["max_abs_relative_return"] == 9.0
+
+
+def test_spot_wick_outlier_is_warning():
+    conn = duckdb.connect(":memory:")
+    create_spot_table(conn)
+    row = make_spot_row(
+        datetime(2024, 1, 1),
+        open_=100.0,
+        high=250.0,
+        low=99.0,
+        close=100.0,
+        volume=10.0,
+        quote_volume=1000.0,
+    )
+    insert_spot_rows(conn, [row])
+
+    findings = audit_connection(conn, tables=["spot"])
+
+    assert ("spot", "BTCUSDT", "4h", "wick_outliers") in finding_names(findings)
+    finding = next(finding for finding in findings if finding.check_name == "wick_outliers")
+    assert finding.severity == "WARN"
+    assert finding.metadata["max_range_pct"] > 1.0
+
+
+def test_spot_stale_price_run_is_warning():
+    conn = duckdb.connect(":memory:")
+    create_spot_table(conn)
+    start = datetime(2024, 1, 1)
+    rows = [
+        make_spot_row(
+            start + timedelta(hours=4 * i),
+            open_=100.0,
+            high=100.0,
+            low=100.0,
+            close=100.0,
+            volume=0.0,
+            quote_volume=0.0,
+            trades_count=0,
+            taker_buy_base_volume=0.0,
+            taker_buy_quote_volume=0.0,
+        )
+        for i in range(6)
+    ]
+    insert_spot_rows(conn, rows)
+
+    findings = audit_connection(conn, tables=["spot"])
+
+    assert ("spot", "BTCUSDT", "4h", "stale_price_runs") in finding_names(findings)
+    finding = next(finding for finding in findings if finding.check_name == "stale_price_runs")
+    assert finding.severity == "WARN"
+    assert finding.metadata["max_observations"] == 6
 
 
 def test_funding_rate_gap_is_error():
@@ -359,6 +494,49 @@ def test_universe_top_n_rank_checks_respect_config_date_bounds():
     assert ("crypto_universe", None, None, "rank_coverage_below_top_n") not in names
 
 
+def test_universe_missing_ranks_is_warning():
+    conn = duckdb.connect(":memory:")
+    create_universe_table(conn)
+    conn.executemany(
+        "INSERT INTO crypto_universe VALUES (?, ?, ?, ?, ?)",
+        [
+            ("2024-01-01", "BTC", 1, 1_000_000.0, ""),
+            ("2024-01-01", "SOL", 3, 800_000.0, ""),
+        ],
+    )
+
+    findings = audit_connection(
+        conn,
+        tables=["crypto_universe"],
+        config=QualityConfig(universe_top_n=3),
+    )
+
+    assert ("crypto_universe", None, None, "missing_ranks") in finding_names(findings)
+    finding = next(finding for finding in findings if finding.check_name == "missing_ranks")
+    assert finding.severity == "WARN"
+    assert finding.count == 1
+    assert finding.metadata["sample_missing_ranks"] == [{"date": "2024-01-01", "rank": 2}]
+
+
+def test_universe_duplicate_symbols_is_warning():
+    conn = duckdb.connect(":memory:")
+    create_universe_v6_table(conn)
+    conn.executemany(
+        "INSERT INTO crypto_universe VALUES (?, ?, ?, ?, ?, ?)",
+        [
+            ("coinmarketcap", 1, "2024-01-01", "AAA", 1, 100.0),
+            ("coinmarketcap", 2, "2024-01-01", "AAA", 2, 90.0),
+        ],
+    )
+
+    findings = audit_connection(conn, tables=["crypto_universe"])
+
+    assert ("crypto_universe", "AAA", None, "duplicate_symbols") in finding_names(findings)
+    finding = next(finding for finding in findings if finding.check_name == "duplicate_symbols")
+    assert finding.severity == "WARN"
+    assert finding.count == 1
+
+
 def test_universe_v6_same_symbol_different_provider_ids_is_not_duplicate_primary_key():
     conn = duckdb.connect(":memory:")
     create_universe_v6_table(conn)
@@ -418,3 +596,34 @@ def test_findings_report_schema_and_formatting():
     ]
     assert "WARNINGS: 1" in report
     assert "[WARN] spot BTCUSDT 4h volume_outliers" in report
+
+
+def test_import_anomaly_jsonl_becomes_warning(tmp_path):
+    report_path = tmp_path / "import_anomalies.jsonl"
+    report_path.write_text(
+        "\n".join(
+            [
+                '{"table":"spot","symbol":"BTCUSDT","interval":"4h","period":"2024-01",'
+                '"source_file":"BTCUSDT.zip","check_name":"import_dropped_duplicate_rows",'
+                '"count":2,"metadata":{"primary_key":["exchange","symbol"]},'
+                '"event_timestamp":"2024-01-01T00:00:00"}',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    findings = findings_from_import_anomaly_jsonl(
+        report_path,
+        tables=["spot"],
+        symbols=["BTCUSDT"],
+        intervals=["4h"],
+    )
+
+    assert len(findings) == 1
+    finding = findings[0]
+    assert finding.severity == "WARN"
+    assert finding.table == "spot"
+    assert finding.check_name == "import_dropped_duplicate_rows"
+    assert finding.count == 2
+    assert finding.metadata["source_file"] == "BTCUSDT.zip"
