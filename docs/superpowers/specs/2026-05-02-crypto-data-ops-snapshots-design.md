@@ -10,8 +10,8 @@ existing `crypto-data` ingestion package.
 
 The system must support:
 
-- one mutable working DuckDB database on the ops VPS
-- immutable release snapshots for laptops and production machines
+- one temporary build DuckDB database per publication run
+- one immutable full DuckDB release snapshot per month
 - a versioned JSON config as the source of truth for each run
 - a metadata JSON file next to each snapshot
 - checksum files for integrity checks
@@ -22,8 +22,9 @@ responsible for orchestration, locking, publication, metadata, and retention.
 
 ## Non-Goals
 
-- Do not use a shared network mount as a working DuckDB database.
+- Do not use a shared network mount as a build DuckDB database.
 - Do not let multiple machines write to the same DuckDB file.
+- Do not keep a permanent mutable `latest.duckdb` or `work/crypto_data.duckdb`.
 - Do not move storage to Hetzner Storage Box or Object Storage in V1.
 - Do not introduce Parquet as the source of truth in V1.
 - Do not make `current.txt` contain metadata. It should only point to the latest
@@ -44,8 +45,8 @@ VPS layout:
 
 ```text
 /srv/crypto-data/
-  work/
-    crypto_data.duckdb
+  build/
+    crypto_data_2026-06.tmp.duckdb
   releases/
     crypto_data_2026-05.duckdb
     crypto_data_2026-05.sha256
@@ -59,19 +60,20 @@ VPS layout:
 
 ### Writer Model
 
-The VPS ops machine is the only writer. It owns:
+The VPS ops machine is the only writer. During each run it owns a temporary
+build database:
 
 ```text
-/srv/crypto-data/work/crypto_data.duckdb
+/srv/crypto-data/build/crypto_data_YYYY-MM.tmp.duckdb
 ```
 
 Cron or a manual operator runs the update process on the VPS. Laptops and
-production machines must not read from or write to `work/`. They consume only
+production machines must not read from or write to `build/`. They consume only
 published release snapshots.
 
-The word `work` is intentional. This dataset is primarily for historical
-backtests and research, not a live market-serving database. `current.txt` means
-the latest published dataset snapshot, not a real-time database.
+This dataset is primarily for historical backtests and research, not a live
+market-serving database. `current.txt` means the latest published dataset
+snapshot, not a real-time database.
 
 ### Snapshot Model
 
@@ -81,9 +83,45 @@ Each published snapshot is a full DuckDB file:
 releases/crypto_data_YYYY-MM.duckdb
 ```
 
+Release files are immutable. A run must fail if the target monthly release file
+already exists.
+
 At the current expected size, around 1 GB per database, full monthly snapshots
 are simpler and safer than incremental files. With an 80 GB VPS disk, keeping 12
 monthly snapshots is acceptable.
+
+### Build Model
+
+The script builds each new monthly snapshot in `build/`.
+
+Default mode:
+
+```text
+incremental_from_current
+```
+
+In this mode, `publish_snapshot.py` reads `current.txt`, copies the referenced
+release snapshot to a temporary build database, then runs ingestion on that copy
+with the configured `skip_existing_*` behavior.
+
+This keeps the published snapshots immutable while still avoiding a full
+redownload on each monthly run.
+
+If no previous snapshot exists, the script starts from an empty build database.
+
+If the config is structurally incompatible with the previous snapshot, the
+script must fail before ingestion unless the config explicitly requests a full
+rebuild. Structural compatibility includes at least:
+
+- `start_date`
+- `top_n`
+- `interval`
+- `data_types`
+- `exclude_symbols`
+- `exclude_tags`
+- `universe_frequency`
+
+`end_date` is allowed to advance between monthly snapshots.
 
 ### Config Source of Truth
 
@@ -118,7 +156,9 @@ Example:
 ```json
 {
   "name": "top50_h4_daily",
-  "db_path": "/srv/crypto-data/work/crypto_data.duckdb",
+  "root_dir": "/srv/crypto-data",
+  "snapshot_prefix": "crypto_data",
+  "build_mode": "incremental_from_current",
   "start_date": "2022-01-01",
   "end_date": "2026-04-01",
   "top_n": 50,
@@ -144,7 +184,9 @@ Rules:
 - `data_types` must map to `crypto_data.DataType` enum members.
 - `exclude_tags` may be the string `DEFAULT_UNIVERSE_EXCLUDE_TAGS` or an explicit
   list of tag strings.
-- `db_path` points to the mutable working database on the VPS.
+- `root_dir` points to the VPS dataset root.
+- `snapshot_prefix` controls release filenames.
+- `build_mode` is `incremental_from_current` by default.
 - `retention_months` controls release cleanup.
 - `quality_check.enabled` controls whether the quality validation step runs.
 - `quality_check.output_file` may be `auto` in V1, which writes the report next
@@ -164,13 +206,17 @@ Responsibilities:
 - convert enum strings to `Interval` and `DataType`
 - resolve `DEFAULT_UNIVERSE_EXCLUDE_TAGS`
 - acquire a non-blocking file lock
-- ensure `/srv/crypto-data/work`, `/srv/crypto-data/releases`, and
+- ensure `/srv/crypto-data/build`, `/srv/crypto-data/releases`, and
   `/srv/crypto-data/logs` exist
+- derive the target `snapshot_id`, release path, and temporary build DB path
+- fail if the target release file already exists
+- seed the build DB from `current.txt` when `build_mode=incremental_from_current`
+- verify structural config compatibility with the base snapshot metadata
 - call `setup_colored_logging()`
-- call `create_binance_database(...)`
+- call `create_binance_database(...)` with the temporary build DB path
 - return non-zero on invalid config or failed ingestion
 - run the existing quality validation script when `quality_check.enabled` is true
-- copy the working DB to a release file
+- publish the temporary build DB as an immutable release file
 - compute `sha256`
 - write metadata JSON
 - update `current.txt`
@@ -189,12 +235,14 @@ duplicating logic in shell.
 manual run or cron
   -> publish_snapshot.py CONFIG
   -> file lock acquired
-  -> create_binance_database(db_path=/srv/crypto-data/work/crypto_data.duckdb, ...)
+  -> derive snapshot_id crypto_data_YYYY-MM
+  -> fail if releases/crypto_data_YYYY-MM.duckdb exists
+  -> copy current snapshot to build/crypto_data_YYYY-MM.tmp.duckdb if compatible
+  -> create_binance_database(db_path=/srv/crypto-data/build/crypto_data_YYYY-MM.tmp.duckdb, ...)
   -> validate data quality if enabled
-  -> copy working DB to releases/crypto_data_YYYY-MM.duckdb.tmp
   -> compute checksum
   -> write metadata tmp
-  -> atomic rename tmp files to final release files
+  -> atomic move build DB and sidecars to final release files
   -> write current.txt tmp
   -> atomic rename current.txt
   -> prune old snapshots
@@ -226,6 +274,7 @@ Example:
   "snapshot_id": "crypto_data_2026-05",
   "created_at_utc": "2026-05-02T05:20:00Z",
   "status": "published",
+  "immutable": true,
   "db_file": "crypto_data_2026-05.duckdb",
   "sha256": "abc123...",
   "size_bytes": 1073741824,
@@ -235,9 +284,17 @@ Example:
     "command": "uv run python ops/publish_snapshot.py ops/configs/top50_h4_daily.json",
     "hostname": "vps-ops"
   },
+  "build": {
+    "mode": "incremental_from_current",
+    "base_snapshot": "releases/crypto_data_2026-04.duckdb",
+    "build_db_file": "build/crypto_data_2026-05.tmp.duckdb",
+    "config_compatibility": "passed"
+  },
   "config": {
     "name": "top50_h4_daily",
-    "db_path": "/srv/crypto-data/work/crypto_data.duckdb",
+    "root_dir": "/srv/crypto-data",
+    "snapshot_prefix": "crypto_data",
+    "build_mode": "incremental_from_current",
     "start_date": "2022-01-01",
     "end_date": "2026-04-01",
     "top_n": 50,
@@ -268,9 +325,13 @@ Required metadata fields:
 - `snapshot_id`
 - `created_at_utc`
 - `status`
+- `immutable`
 - `db_file`
 - `sha256`
 - `size_bytes`
+- `build.mode`
+- `build.base_snapshot` (nullable for the first snapshot or full rebuild)
+- `build.config_compatibility`
 - `source.git_commit`
 - `source.git_branch`
 - `source.command`
@@ -284,17 +345,21 @@ The workflow must fail without publishing a new `current.txt` when:
 
 - the config JSON is invalid
 - enum names cannot be resolved
+- the target monthly release already exists
+- `current.txt` exists but the referenced base snapshot is missing
+- `current.txt` exists but the base snapshot metadata is missing or incompatible
+  in incremental mode
 - ingestion fails
 - validation fails when enabled
 - checksum generation fails
-- the release copy fails
+- the build DB publish step fails
 - metadata generation fails
 
 If the workflow fails after creating temporary files, the temporary files can be
 left for debugging, but they must not be referenced by `current.txt`.
 
-If a release filename already exists, the script must fail instead of
-overwriting it.
+If a release filename already exists, the script must fail instead of overwriting
+it.
 
 ## Retention
 
@@ -312,6 +377,9 @@ crypto_data_YYYY-MM.quality.json
 The currently referenced snapshot in `current.txt` must never be pruned.
 The quality report is optional when `quality_check.enabled` is false, but if it
 exists it must be pruned with the matching snapshot group.
+
+Temporary build files are not part of retention. They may be removed after a
+successful publication. On failure, they may be left for debugging.
 
 ## Cron
 
@@ -334,6 +402,8 @@ V1 should include tests for `ops/publish_snapshot.py`:
 - invalid data type fails clearly
 - `DEFAULT_UNIVERSE_EXCLUDE_TAGS` resolves correctly
 - explicit `exclude_tags` list is accepted
+- incremental mode seeds the build DB from `current.txt`
+- incompatible base snapshot config fails before ingestion
 - `quality_check.enabled=false` records validation as skipped
 - existing release filenames are not overwritten
 - `current.txt` is not changed when publication fails before the final step
@@ -341,10 +411,12 @@ V1 should include tests for `ops/publish_snapshot.py`:
 
 Manual acceptance checklist:
 
-- ingestion writes to `/srv/crypto-data/work/crypto_data.duckdb`
+- ingestion writes to `/srv/crypto-data/build/crypto_data_YYYY-MM.tmp.duckdb`
 - release DB appears in `/srv/crypto-data/releases`
+- release DB is never overwritten by a later run
 - `.sha256` validates against the release DB
 - `.metadata.json` contains the exact config used
+- `.metadata.json` records `base_snapshot` and `build_mode`
 - `current.txt` points to the release DB path
 - a consumer can `rsync` the release DB and open it with DuckDB
 - rerunning while the lock is held fails without a second writer
@@ -354,7 +426,8 @@ Manual acceptance checklist:
 The V1 implementation is complete when:
 
 - a config JSON can drive ingestion without editing Python constants
-- the working DB is updated only on the VPS path
+- each run builds in `/srv/crypto-data/build`
+- published monthly DB files are immutable and never overwritten
 - a release snapshot is published with checksum, metadata, and either a passed
   validation report or an explicit `validation.status=skipped`
 - `current.txt` points to the latest published snapshot
