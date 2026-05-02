@@ -37,8 +37,7 @@ Repository layout:
 ops/
   configs/
     top50_h4_daily.json
-  run_ingestion_from_config.py
-  update_and_publish.sh
+  publish_snapshot.py
 ```
 
 VPS layout:
@@ -97,9 +96,8 @@ The production run path is:
 
 ```text
 ops/configs/*.json
-  -> ops/run_ingestion_from_config.py
+  -> ops/publish_snapshot.py
   -> crypto_data.create_binance_database(...)
-  -> ops/update_and_publish.sh
   -> releases/*.duckdb + metadata
 ```
 
@@ -128,7 +126,11 @@ Example:
   "skip_existing_universe": true,
   "daily_quota": 200,
   "repair_gaps_via_api": false,
-  "retention_months": 12
+  "retention_months": 12,
+  "quality_check": {
+    "enabled": true,
+    "output_file": "auto"
+  }
 }
 ```
 
@@ -140,13 +142,16 @@ Rules:
   list of tag strings.
 - `db_path` points to the live mutable database on the VPS.
 - `retention_months` controls release cleanup.
+- `quality_check.enabled` controls whether the quality validation step runs.
+- `quality_check.output_file` may be `auto` in V1, which writes the report next
+  to the published snapshot using the snapshot id.
 
-### `ops/run_ingestion_from_config.py`
+### `ops/publish_snapshot.py`
 
-Reads the JSON config and calls:
+Runs the complete VPS publication workflow from one config file:
 
-```python
-create_binance_database(...)
+```bash
+uv run python ops/publish_snapshot.py ops/configs/top50_h4_daily.json
 ```
 
 Responsibilities:
@@ -154,24 +159,13 @@ Responsibilities:
 - parse and validate the JSON config
 - convert enum strings to `Interval` and `DataType`
 - resolve `DEFAULT_UNIVERSE_EXCLUDE_TAGS`
+- acquire a non-blocking file lock
+- ensure `/srv/crypto-data/live`, `/srv/crypto-data/releases`, and
+  `/srv/crypto-data/logs` exist
 - call `setup_colored_logging()`
 - call `create_binance_database(...)`
 - return non-zero on invalid config or failed ingestion
-
-It does not create snapshots, checksums, metadata, or retention cleanup. Those
-belong to `update_and_publish.sh`.
-
-### `ops/update_and_publish.sh`
-
-Runs the full VPS workflow.
-
-Responsibilities:
-
-- acquire a non-blocking `flock`
-- ensure `/srv/crypto-data/live`, `/srv/crypto-data/releases`, and
-  `/srv/crypto-data/logs` exist
-- run `uv run python ops/run_ingestion_from_config.py ops/configs/top50_h4_daily.json`
-- run the existing quality validation script
+- run the existing quality validation script when `quality_check.enabled` is true
 - copy the live DB to a release file
 - compute `sha256`
 - write metadata JSON
@@ -181,15 +175,18 @@ Responsibilities:
 The release publish step should avoid exposing partial files. The script should
 write temporary files first and then move them into their final names.
 
+V1 intentionally avoids a shell wrapper. Python owns config parsing, metadata,
+checksum generation, and retention so the workflow can be tested without
+duplicating logic in shell.
+
 ## Data Flow
 
 ```text
 manual run or cron
-  -> update_and_publish.sh CONFIG
-  -> flock lock acquired
-  -> run_ingestion_from_config.py CONFIG
+  -> publish_snapshot.py CONFIG
+  -> file lock acquired
   -> create_binance_database(db_path=/srv/crypto-data/live/crypto_data.duckdb, ...)
-  -> validate data quality
+  -> validate data quality if enabled
   -> copy live DB to releases/crypto_data_YYYY-MM.duckdb.tmp
   -> compute checksum
   -> write metadata tmp
@@ -231,7 +228,7 @@ Example:
   "source": {
     "git_commit": "abc1234",
     "git_branch": "main",
-    "command": "ops/update_and_publish.sh ops/configs/top50_h4_daily.json",
+    "command": "uv run python ops/publish_snapshot.py ops/configs/top50_h4_daily.json",
     "hostname": "vps-ops"
   },
   "config": {
@@ -248,7 +245,11 @@ Example:
     "skip_existing_universe": true,
     "daily_quota": 200,
     "repair_gaps_via_api": false,
-    "retention_months": 12
+    "retention_months": 12,
+    "quality_check": {
+      "enabled": true,
+      "output_file": "auto"
+    }
   },
   "validation": {
     "status": "passed",
@@ -280,7 +281,7 @@ The workflow must fail without publishing a new `current.txt` when:
 - the config JSON is invalid
 - enum names cannot be resolved
 - ingestion fails
-- validation fails
+- validation fails when enabled
 - checksum generation fails
 - the release copy fails
 - metadata generation fails
@@ -305,6 +306,8 @@ crypto_data_YYYY-MM.quality.json
 ```
 
 The currently referenced snapshot in `current.txt` must never be pruned.
+The quality report is optional when `quality_check.enabled` is false, but if it
+exists it must be pruned with the matching snapshot group.
 
 ## Cron
 
@@ -313,23 +316,24 @@ The cron entry should run on the VPS ops machine.
 Example monthly schedule:
 
 ```cron
-0 3 1 * * cd /path/to/crypto-data && ops/update_and_publish.sh ops/configs/top50_h4_daily.json >> /srv/crypto-data/logs/monthly_publish.log 2>&1
+0 3 1 * * cd /path/to/crypto-data && uv run python ops/publish_snapshot.py ops/configs/top50_h4_daily.json >> /srv/crypto-data/logs/monthly_publish.log 2>&1
 ```
 
 The same script can be run manually for controlled publication.
 
 ## Testing
 
-V1 should include tests for the Python config adapter:
+V1 should include tests for `ops/publish_snapshot.py`:
 
 - valid config maps strings to enums correctly
 - invalid interval fails clearly
 - invalid data type fails clearly
 - `DEFAULT_UNIVERSE_EXCLUDE_TAGS` resolves correctly
 - explicit `exclude_tags` list is accepted
-
-The shell workflow should be tested manually with a small date range before the
-first production run.
+- `quality_check.enabled=false` records validation as skipped
+- existing release filenames are not overwritten
+- `current.txt` is not changed when publication fails before the final step
+- retention keeps the current snapshot and prunes older snapshot groups
 
 Manual acceptance checklist:
 
@@ -347,8 +351,9 @@ The V1 implementation is complete when:
 
 - a config JSON can drive ingestion without editing Python constants
 - the live DB is updated only on the VPS path
-- a validated release snapshot is published with checksum and metadata
-- `current.txt` points to the latest validated snapshot
+- a release snapshot is published with checksum, metadata, and either a passed
+  validation report or an explicit `validation.status=skipped`
+- `current.txt` points to the latest published snapshot
 - failures do not update `current.txt`
 - old monthly releases are pruned according to `retention_months`
 - the package ingestion API remains usable independently of the ops layer
