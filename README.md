@@ -113,6 +113,52 @@ If you don't include these cryptos in your backtest, your results will be **arti
 > superset once, then filter snapshot by snapshot (or rebalance by rebalance) with
 > `crypto_universe` when building the investable universe.
 
+### CoinMarketCap Snapshot Availability and Look-Ahead Bias
+
+CoinMarketCap historical listings are UTC daily snapshots. The
+[CoinMarketCap Listings Historical API documentation](https://coinmarketcap.com/api/documentation/pro-api-reference/cryptocurrency)
+states that these snapshots reflect market data at the end of each UTC day, and
+that the last completed UTC day is available 30 minutes after midnight on the
+next UTC day. CoinMarketCap also documents that market data is recorded and
+reported in UTC in its
+[UTC timing note](https://support.coinmarketcap.com/hc/en-us/articles/360018691172-About-UTC-Timing).
+
+This creates an important backtesting rule: using `crypto_universe.date = D` to
+trade during day `D` is look-ahead biased. The snapshot is labeled as day `D`,
+but it is only observable after day `D` has completed.
+
+Live-like rule:
+
+```text
+CMC snapshot date = D
+first usable date = D + 1 day, after the CMC availability lag
+```
+
+For daily backtests, join trading day `T` to the latest known universe snapshot
+with `crypto_universe.date <= T - INTERVAL 1 DAY`. Equivalently, model an
+eligibility date as:
+
+```sql
+effective_date = date + INTERVAL 1 DAY
+```
+
+Operational check from this project, using the same client pattern as
+`src/crypto_data/clients/coinmarketcap.py`:
+
+```text
+Checked at 2026-05-02 04:33:04 UTC
+
+date=2026-05-02 -> ERROR
+Search query is out of range. Max available date was 5/1/26, 12:00 AM.
+
+date=2026-05-01 -> OK
+BTC rank 1, ETH rank 2, USDT rank 3
+lastUpdated = 2026-05-01T00:00:00.000Z
+```
+
+So for a trade or rebalance on `2026-05-02`, the latest live-known Top N
+universe is the CMC snapshot dated `2026-05-01`, not `2026-05-02`.
+
 **Concrete Example**:
 ```python
 # Top 100 over 12 months
@@ -187,7 +233,7 @@ create_binance_database(
     top_n=100,                    # Top 100 by market cap
     interval=Interval.HOUR_1,     # Use Interval enum (MIN_5, HOUR_1, HOUR_4, DAY_1, etc.)
     data_types=[DataType.SPOT, DataType.FUTURES],  # Use DataType enum
-    # Defaults exclude stablecoins, wrapped tokens, and tokenized assets
+    # Defaults exclude stablecoins, wrapped tokens, and tokenized gold/commodities
     exclude_symbols=['LUNA', 'FTT', 'UST']  # Optional additional exclusions
 )
 ```
@@ -212,7 +258,7 @@ asyncio.run(update_coinmarketcap_universe(
     db_path='crypto_data.db',
     dates=['2024-01-01', '2024-02-01', '2024-03-01'],  # List of snapshot dates
     top_n=100,
-    # Defaults exclude stablecoins, wrapped tokens, and tokenized assets
+    # Defaults exclude stablecoins, wrapped tokens, and tokenized gold/commodities
     exclude_symbols=[]
 ))
 
@@ -362,7 +408,9 @@ ORDER BY date;
 >
 > **PIT reminder**: `get_binance_symbols_from_universe()` is intentionally broader than a
 > tradable universe. Use it to make sure data is downloaded, then apply the
-> actual top N filter from `crypto_universe` on each month/rebalance date.
+> actual top N filter from `crypto_universe` with the CoinMarketCap availability
+> lag. For a live-like daily backtest on trading day `T`, use the latest snapshot
+> with `crypto_universe.date <= T - INTERVAL 1 DAY`.
 
 ### 6. Query Multiple Intervals from Same Database
 
@@ -453,6 +501,11 @@ Stores CoinMarketCap rankings (top N by market cap).
 > **Timestamp Interpretation**: `crypto_universe.date` is a snapshot timestamp.
 > With `universe_frequency='monthly'`, `2024-01-01` is the month-start snapshot.
 > With `daily` or `weekly`, it is the exact snapshot day used for that ingestion run.
+>
+> **Availability lag**: a CoinMarketCap snapshot dated `D` is not known during
+> day `D`; it becomes usable on `D + 1` after the CMC publication lag. Keep
+> `crypto_universe.date` as the official CMC snapshot date, and shift eligibility
+> in your research logic, for example `effective_date = date + INTERVAL 1 DAY`.
 
 ### Tables `spot` and `futures` - OHLCV Data
 
@@ -519,7 +572,7 @@ The pipeline automatically handles several data issues:
 - ~120-150 symbols for top 100 over 12 months
 - Avoids survivorship bias
 
-**Default Universe Filters**: stablecoins, wrapped tokens, and tokenized assets excluded
+**Default Universe Filters**: stablecoins, wrapped tokens, and tokenized gold/commodities excluded
 - `exclude_tags=[]` explicitly disables these default exclusions
 - `exclude_symbols` lets callers add ticker-level exclusions case by case
 

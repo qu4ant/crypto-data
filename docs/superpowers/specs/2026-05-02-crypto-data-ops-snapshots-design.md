@@ -15,6 +15,7 @@ The system must support:
 - a versioned JSON config as the source of truth for each run
 - a metadata JSON file next to each snapshot
 - checksum files for integrity checks
+- an import anomaly JSONL sidecar when import-time anomalies are recorded
 - monthly retention, keeping the latest 12 published snapshots
 
 The core Python package remains responsible for ingestion. The ops layer is
@@ -51,6 +52,7 @@ VPS layout:
     crypto_data_2026-05.duckdb
     crypto_data_2026-05.sha256
     crypto_data_2026-05.metadata.json
+    crypto_data_2026-05.import_anomalies.jsonl
     crypto_data_2026-05.quality.json
   current.txt
   logs/
@@ -82,6 +84,19 @@ Each published snapshot is a full DuckDB file:
 ```text
 releases/crypto_data_YYYY-MM.duckdb
 ```
+
+The snapshot id is derived from an explicit `snapshot_month` config value:
+
+```text
+snapshot_id = {snapshot_prefix}_{snapshot_month}
+```
+
+For example, `snapshot_prefix=crypto_data` and `snapshot_month=2026-05`
+publish `releases/crypto_data_2026-05.duckdb`.
+
+`snapshot_month` is the publication month, not necessarily the final covered
+data month. The covered data range remains defined only by `start_date` and
+`end_date`.
 
 Release files are immutable. A run must fail if the target monthly release file
 already exists.
@@ -122,6 +137,9 @@ rebuild. Structural compatibility includes at least:
 - `universe_frequency`
 
 `end_date` is allowed to advance between monthly snapshots.
+Compatibility checks must compare the resolved `config_effective` values from
+metadata, not only the raw JSON values. This avoids treating
+`DEFAULT_UNIVERSE_EXCLUDE_TAGS` and its expanded list as different configs.
 
 ### Config Source of Truth
 
@@ -158,6 +176,7 @@ Example:
   "name": "top50_h4_daily",
   "root_dir": "/srv/crypto-data",
   "snapshot_prefix": "crypto_data",
+  "snapshot_month": "2026-05",
   "build_mode": "incremental_from_current",
   "start_date": "2022-01-01",
   "end_date": "2026-04-01",
@@ -186,6 +205,7 @@ Rules:
   list of tag strings.
 - `root_dir` points to the VPS dataset root.
 - `snapshot_prefix` controls release filenames.
+- `snapshot_month` is required and must be `YYYY-MM`.
 - `build_mode` is `incremental_from_current` by default.
 - `retention_months` controls release cleanup.
 - `quality_check.enabled` controls whether the quality validation step runs.
@@ -213,10 +233,12 @@ Responsibilities:
 - seed the build DB from `current.txt` when `build_mode=incremental_from_current`
 - verify structural config compatibility with the base snapshot metadata
 - call `setup_colored_logging()`
-- call `create_binance_database(...)` with the temporary build DB path
+- call `create_binance_database(...)` with the temporary build DB path and an
+  explicit import anomaly report path
 - return non-zero on invalid config or failed ingestion
 - run the existing quality validation script when `quality_check.enabled` is true
 - publish the temporary build DB as an immutable release file
+- publish the import anomaly sidecar when one was produced
 - compute `sha256`
 - write metadata JSON
 - update `current.txt`
@@ -241,7 +263,7 @@ manual run or cron
   -> create_binance_database(db_path=/srv/crypto-data/build/crypto_data_YYYY-MM.tmp.duckdb, ...)
   -> validate data quality if enabled
   -> compute checksum
-  -> write metadata tmp
+  -> write metadata tmp, including raw and effective config
   -> atomic move build DB and sidecars to final release files
   -> write current.txt tmp
   -> atomic rename current.txt
@@ -249,6 +271,12 @@ manual run or cron
 ```
 
 Consumers read `current.txt`, then copy the referenced release snapshot.
+`current.txt` must contain only the release DB path relative to `root_dir`, for
+example:
+
+```text
+releases/crypto_data_2026-05.duckdb
+```
 
 Example:
 
@@ -278,6 +306,11 @@ Example:
   "db_file": "crypto_data_2026-05.duckdb",
   "sha256": "abc123...",
   "size_bytes": 1073741824,
+  "sidecars": {
+    "metadata_file": "crypto_data_2026-05.metadata.json",
+    "quality_report_file": "crypto_data_2026-05.quality.json",
+    "import_anomaly_file": "crypto_data_2026-05.import_anomalies.jsonl"
+  },
   "source": {
     "git_commit": "abc1234",
     "git_branch": "main",
@@ -290,10 +323,11 @@ Example:
     "build_db_file": "build/crypto_data_2026-05.tmp.duckdb",
     "config_compatibility": "passed"
   },
-  "config": {
+  "config_raw": {
     "name": "top50_h4_daily",
     "root_dir": "/srv/crypto-data",
     "snapshot_prefix": "crypto_data",
+    "snapshot_month": "2026-05",
     "build_mode": "incremental_from_current",
     "start_date": "2022-01-01",
     "end_date": "2026-04-01",
@@ -312,6 +346,36 @@ Example:
       "output_file": "auto"
     }
   },
+  "config_effective": {
+    "name": "top50_h4_daily",
+    "root_dir": "/srv/crypto-data",
+    "snapshot_prefix": "crypto_data",
+    "snapshot_month": "2026-05",
+    "build_mode": "incremental_from_current",
+    "start_date": "2022-01-01",
+    "end_date": "2026-04-01",
+    "top_n": 50,
+    "interval": "HOUR_4",
+    "data_types": ["SPOT", "FUTURES", "FUNDING_RATES"],
+    "exclude_symbols": ["LUNA", "FTT"],
+    "exclude_tags": [
+      "stablecoin",
+      "usd-stablecoin",
+      "wrapped-tokens",
+      "tokenized-gold",
+      "tokenized-commodities"
+    ],
+    "universe_frequency": "daily",
+    "skip_existing_universe": true,
+    "daily_quota": 200,
+    "repair_gaps_via_api": false,
+    "retention_months": 12,
+    "quality_check": {
+      "enabled": true,
+      "output_file": "crypto_data_2026-05.quality.json"
+    },
+    "import_anomaly_file": "crypto_data_2026-05.import_anomalies.jsonl"
+  },
   "validation": {
     "status": "passed",
     "quality_report_file": "crypto_data_2026-05.quality.json"
@@ -329,6 +393,9 @@ Required metadata fields:
 - `db_file`
 - `sha256`
 - `size_bytes`
+- `sidecars.metadata_file`
+- `sidecars.quality_report_file` (nullable when validation is skipped)
+- `sidecars.import_anomaly_file` (nullable when no anomaly file is produced)
 - `build.mode`
 - `build.base_snapshot` (nullable for the first snapshot or full rebuild)
 - `build.config_compatibility`
@@ -336,8 +403,13 @@ Required metadata fields:
 - `source.git_branch`
 - `source.command`
 - `source.hostname`
-- `config`
+- `config_raw`
+- `config_effective`
 - `validation.status`
+
+`config_raw` must preserve the exact JSON config values used for the run.
+`config_effective` must contain the resolved values actually passed to the
+Python API, including the expanded `DEFAULT_UNIVERSE_EXCLUDE_TAGS` list.
 
 ## Error Handling
 
@@ -371,11 +443,14 @@ Retention applies to groups of files sharing the same snapshot id:
 crypto_data_YYYY-MM.duckdb
 crypto_data_YYYY-MM.sha256
 crypto_data_YYYY-MM.metadata.json
+crypto_data_YYYY-MM.import_anomalies.jsonl
 crypto_data_YYYY-MM.quality.json
 ```
 
 The currently referenced snapshot in `current.txt` must never be pruned.
 The quality report is optional when `quality_check.enabled` is false, but if it
+exists it must be pruned with the matching snapshot group.
+The import anomaly sidecar is optional when no anomalies were recorded, but if it
 exists it must be pruned with the matching snapshot group.
 
 Temporary build files are not part of retention. They may be removed after a
@@ -416,8 +491,10 @@ Manual acceptance checklist:
 - release DB is never overwritten by a later run
 - `.sha256` validates against the release DB
 - `.metadata.json` contains the exact config used
+- `.metadata.json` contains the effective resolved config used by the API
+- import anomalies, when present, are published next to the release DB
 - `.metadata.json` records `base_snapshot` and `build_mode`
-- `current.txt` points to the release DB path
+- `current.txt` contains only the release DB path relative to `root_dir`
 - a consumer can `rsync` the release DB and open it with DuckDB
 - rerunning while the lock is held fails without a second writer
 
@@ -430,7 +507,9 @@ The V1 implementation is complete when:
 - published monthly DB files are immutable and never overwritten
 - a release snapshot is published with checksum, metadata, and either a passed
   validation report or an explicit `validation.status=skipped`
-- `current.txt` points to the latest published snapshot
+- `current.txt` points to the latest published snapshot using a root-relative
+  release DB path
+- metadata records both raw config and effective config
 - failures do not update `current.txt`
 - old monthly releases are pruned according to `retention_months`
 - the package ingestion API remains usable independently of the ops layer

@@ -190,7 +190,7 @@ create_binance_database(
     top_n=100,                    # Top 100 par capitalisation
     interval=Interval.HOUR_1,     # Utiliser l'enum Interval (MIN_5, HOUR_1, HOUR_4, DAY_1, etc.)
     data_types=[DataType.SPOT, DataType.FUTURES],  # Utiliser l'enum DataType
-    # Par défaut: exclut stablecoins, wrapped tokens et actifs tokenisés
+    # Par défaut: exclut stablecoins, wrapped tokens, or et matières premières tokenisés
     exclude_symbols=['LUNA', 'FTT', 'UST']  # Exclusions additionnelles optionnelles
 )
 ```
@@ -215,7 +215,7 @@ asyncio.run(update_coinmarketcap_universe(
     db_path='crypto_data.db',
     dates=['2024-01-01', '2024-02-01', '2024-03-01'],  # Liste de dates de snapshots
     top_n=100,
-    # Par défaut: exclut stablecoins, wrapped tokens et actifs tokenisés
+    # Par défaut: exclut stablecoins, wrapped tokens, or et matières premières tokenisés
     exclude_symbols=[]
 ))
 
@@ -524,7 +524,7 @@ Le pipeline gère automatiquement plusieurs problèmes de données :
 - ~120-150 symboles pour top 100 sur 12 mois
 - Évite le biais du survivant
 
-**Filtres d'univers par défaut** : stablecoins, wrapped tokens et actifs tokenisés exclus
+**Filtres d'univers par défaut** : stablecoins, wrapped tokens, or et matières premières tokenisés exclus
 - `exclude_tags=[]` désactive explicitement ces exclusions par défaut
 - `exclude_symbols` permet d'ajouter des tickers à exclure au cas par cas
 
