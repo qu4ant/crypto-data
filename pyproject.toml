@@ -216,6 +216,8 @@ DEP002 = [
     "requests-mock",
     "ibis-framework",
     "scipy",
+    "bokeh",
+    "jupyter",
     "pyarrow",  # used by pandas/duckdb arrow interop, not imported directly
 ]
 
