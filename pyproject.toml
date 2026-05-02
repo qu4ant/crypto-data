@@ -59,6 +59,8 @@ dev = [
     "pandera[strategies]>=0.18.0",
     "ibis-framework[duckdb]>=8.0.0",
     "scipy>=1.10.0",
+    "bokeh>=3.4.0",
+    "jupyter>=1.1.0",
 ]
 
 [project.urls]
