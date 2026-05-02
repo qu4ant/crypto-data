@@ -88,6 +88,33 @@ def test_insert_idempotent_counts_only_new_primary_keys(tmp_path) -> None:
         db.close()
 
 
+def test_insert_idempotent_deduplicates_incoming_primary_keys(tmp_path) -> None:
+    db = CryptoDatabase(str(tmp_path / "insert_duplicates.db"))
+    try:
+        row = {
+            "exchange": "binance",
+            "symbol": "BTCUSDT",
+            "interval": "4h",
+            "timestamp": pd.Timestamp("2024-01-01T04:00"),
+            "open": 1.0,
+            "high": 2.0,
+            "low": 0.5,
+            "close": 1.5,
+            "volume": 100.0,
+            "quote_volume": 150.0,
+            "trades_count": 42,
+            "taker_buy_base_volume": 50.0,
+            "taker_buy_quote_volume": 75.0,
+        }
+        df = pd.DataFrame([row, {**row, "close": 1.6}], columns=KLINE_TABLE_COLUMNS)
+
+        assert insert_idempotent(db.conn, "spot", df) == 1
+        assert insert_idempotent(db.conn, "spot", df) == 0
+        assert db.conn.execute("SELECT COUNT(*) FROM spot").fetchone()[0] == 1
+    finally:
+        db.close()
+
+
 def test_completeness_detects_full_kline_period_and_filters_existing(tmp_path) -> None:
     db = CryptoDatabase(str(tmp_path / "complete.db"))
     try:

@@ -216,6 +216,26 @@ class TestBinanceFundingRatesDatasetCsvParsing:
         finally:
             temp_path.unlink()
 
+    def test_parse_csv_preserves_microsecond_timestamps_exactly(self):
+        """Parse microsecond timestamps without float rounding drift."""
+        dataset = BinanceFundingRatesDataset()
+
+        csv_content = (
+            "symbol,calc_time,funding_interval_hours,last_funding_rate\n"
+            "1000SATSUSDT,1703318400000999,8,0.0002\n"
+        )
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+            f.write(csv_content)
+            temp_path = Path(f.name)
+
+        try:
+            df = dataset.parse_csv(temp_path, "1000SATSUSDT")
+
+            assert df["timestamp"].iloc[0] == pd.Timestamp("2023-12-23 08:00:00.000999")
+        finally:
+            temp_path.unlink()
+
     def test_parse_csv_drops_duplicates(self, caplog):
         """Parse CSV and drop duplicate timestamps."""
         dataset = BinanceFundingRatesDataset()

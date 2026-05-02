@@ -27,6 +27,8 @@ def test_database_creation():
         assert "spot" in table_names
         assert "futures" in table_names
         assert "crypto_universe" in table_names
+        assert "univers" not in table_names
+        assert "universe" not in table_names
 
         # Verify spot schema
         spot_schema = db.execute("""

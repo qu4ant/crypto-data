@@ -251,6 +251,29 @@ class TestBinanceOpenInterestDatasetCsvParsing:
         finally:
             temp_path.unlink()
 
+    def test_parse_csv_preserves_numeric_microsecond_timestamps_exactly(self):
+        """Parse numeric microsecond timestamps without float rounding drift."""
+        dataset = BinanceOpenInterestDataset()
+
+        csv_content = (
+            "create_time,symbol,sum_open_interest,sum_open_interest_value,"
+            "count_toptrader_long_short_ratio,sum_toptrader_long_short_ratio,"
+            "count_long_short_ratio,sum_taker_long_short_vol_ratio\n"
+            "1703318400000999,BTCUSDT,12345.67,123456789.0,"
+            "1.5,2.0,1.2,0.8\n"
+        )
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+            f.write(csv_content)
+            temp_path = Path(f.name)
+
+        try:
+            df = dataset.parse_csv(temp_path, "BTCUSDT")
+
+            assert df["timestamp"].iloc[0] == pd.Timestamp("2023-12-23 08:00:00.000999")
+        finally:
+            temp_path.unlink()
+
     def test_parse_csv_drops_duplicates(self, caplog):
         """Parse CSV and drop duplicate timestamps."""
         dataset = BinanceOpenInterestDataset()

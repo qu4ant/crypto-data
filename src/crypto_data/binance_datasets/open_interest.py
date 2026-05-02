@@ -15,6 +15,7 @@ import pandera.pandas as pa
 
 from crypto_data.binance_datasets.base import BinanceDatasetStrategy, Period
 from crypto_data.enums import DataType
+from crypto_data.import_anomalies import ImportAnomaly
 from crypto_data.schemas import OPEN_INTEREST_SCHEMA
 from crypto_data.tables import OPEN_INTEREST_COLUMNS, get_table_spec
 from crypto_data.utils.dates import generate_day_list
@@ -144,6 +145,15 @@ class BinanceOpenInterestDataset(BinanceDatasetStrategy):
         return f"{symbol}-metrics-{period.value}.zip"
 
     def parse_csv(self, csv_path: Path, symbol: str) -> pd.DataFrame:
+        """Parse a metrics CSV file into a DataFrame ready for database import."""
+        df, _ = self.parse_csv_with_anomalies(csv_path, symbol)
+        return df
+
+    def parse_csv_with_anomalies(
+        self,
+        csv_path: Path,
+        symbol: str,
+    ) -> tuple[pd.DataFrame, list[ImportAnomaly]]:
         """
         Parse a metrics CSV file into a DataFrame ready for database import.
 
@@ -185,12 +195,13 @@ class BinanceOpenInterestDataset(BinanceDatasetStrategy):
         if pd.api.types.is_numeric_dtype(create_time):
             # Numeric timestamps: detect ms vs μs (same logic as klines)
             # timestamps >= 5e12 are microseconds
+            create_time = pd.to_numeric(create_time, errors="raise")
             if (create_time >= 5e12).any():
                 # Microseconds
-                df["timestamp"] = pd.to_datetime(create_time / 1_000_000, unit="s")
+                df["timestamp"] = pd.to_datetime(create_time.astype("int64"), unit="us")
             else:
                 # Milliseconds
-                df["timestamp"] = pd.to_datetime(create_time / 1_000, unit="s")
+                df["timestamp"] = pd.to_datetime(create_time.astype("int64"), unit="ms")
         else:
             # String timestamps (e.g., '2024-01-01 00:00:00')
             df["timestamp"] = pd.to_datetime(create_time)
@@ -201,7 +212,17 @@ class BinanceOpenInterestDataset(BinanceDatasetStrategy):
         # Select final columns
         df = df[FINAL_COLUMNS]
 
+        anomalies: list[ImportAnomaly] = []
+
         # Filter out rows where open_interest == 0 (erroneous data)
+        zero_open_interest_count = int((df["open_interest"] == 0).sum())
+        if zero_open_interest_count:
+            anomalies.append(
+                ImportAnomaly(
+                    check_name="import_dropped_zero_open_interest_rows",
+                    count=zero_open_interest_count,
+                )
+            )
         df = df[df["open_interest"] != 0]
 
         # Drop duplicates on primary key columns, but make the data issue visible.
@@ -210,6 +231,13 @@ class BinanceOpenInterestDataset(BinanceDatasetStrategy):
         df = df.drop_duplicates(subset=key_columns)
         dropped = before_dedup - len(df)
         if dropped:
+            anomalies.append(
+                ImportAnomaly(
+                    check_name="import_dropped_duplicate_rows",
+                    count=dropped,
+                    metadata={"primary_key": key_columns},
+                )
+            )
             logger.warning(
                 "Dropped %s duplicate open interest rows for %s on key %s",
                 dropped,
@@ -217,4 +245,4 @@ class BinanceOpenInterestDataset(BinanceDatasetStrategy):
                 key_columns,
             )
 
-        return df
+        return df, anomalies

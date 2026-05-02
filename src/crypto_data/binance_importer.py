@@ -14,6 +14,7 @@ import pandera.pandas as pa
 
 from crypto_data.binance_datasets.base import BinanceDatasetStrategy
 from crypto_data.db_write import insert_idempotent
+from crypto_data.import_anomalies import ImportAnomaly, contextualize_import_anomalies
 from crypto_data.tables import is_kline_table
 
 logger = logging.getLogger(__name__)
@@ -43,6 +44,7 @@ class BinanceDuckDBImporter:
     def __init__(self, dataset: BinanceDatasetStrategy) -> None:
         """Initialize the importer with a Binance dataset."""
         self.dataset = dataset
+        self.last_import_anomalies: list[dict] = []
 
     def import_file(
         self,
@@ -95,6 +97,7 @@ class BinanceDuckDBImporter:
         """
         table = self.dataset.table_name
         logger.debug(f"Importing to {table} (exchange=binance, symbol={symbol})")
+        self.last_import_anomalies = []
 
         # Extract ZIP file
         with zipfile.ZipFile(file_path, "r") as zip_ref:
@@ -112,7 +115,7 @@ class BinanceDuckDBImporter:
 
         try:
             # Parse CSV using the dataset handler.
-            df = self.dataset.parse_csv(csv_path, symbol)
+            df, anomalies = self.dataset.parse_csv_with_anomalies(csv_path, symbol)
 
             if is_kline_table(table) and (window_start is not None or window_end is not None):
                 timestamps = df["timestamp"]
@@ -125,6 +128,21 @@ class BinanceDuckDBImporter:
                 df = df.loc[keep].reset_index(drop=True)
 
             if df.empty:
+                anomalies.append(
+                    ImportAnomaly(
+                        check_name="import_empty_after_parse",
+                        count=1,
+                        metadata={"reason": "no_rows_after_parse_or_window_filter"},
+                    )
+                )
+                self.last_import_anomalies = contextualize_import_anomalies(
+                    anomalies,
+                    table=table,
+                    symbol=symbol,
+                    interval=self.dataset.interval.value if is_kline_table(table) else None,
+                    period=period,
+                    source_file=file_path.name,
+                )
                 logger.debug("  No data after parsing (filtered out)")
                 return 0
 
@@ -138,6 +156,15 @@ class BinanceDuckDBImporter:
                 logger.error(f"  Validation errors: {e}")
                 logger.error(f"  File rejected: {file_path.name}")
                 raise ValueError(f"Data validation failed for {symbol}: Invalid data format") from e
+
+            self.last_import_anomalies = contextualize_import_anomalies(
+                anomalies,
+                table=table,
+                symbol=symbol,
+                interval=self.dataset.interval.value if is_kline_table(table) else None,
+                period=period,
+                source_file=file_path.name,
+            )
 
             if replace_existing:
                 if not is_kline_table(table) or not period:

@@ -398,6 +398,7 @@ def create_binance_database(
     skip_existing_universe: bool = True,
     daily_quota: int = 200,
     repair_gaps_via_api: bool = False,
+    import_anomaly_report_path: str | Path | None = None,
 ):
     """
     Complete workflow: universe + binance in one call.
@@ -446,6 +447,9 @@ def create_binance_database(
     repair_gaps_via_api : bool
         When True, run Binance REST gap repair after Data Vision ingestion
         finishes (default: False).
+    import_anomaly_report_path : str or Path, optional
+        JSONL sidecar path for non-blocking import anomalies. Defaults to
+        logs/{db_stem}_import_anomalies.jsonl.
 
     Example
     -------
@@ -528,20 +532,23 @@ def create_binance_database(
     logger.info("")
 
     # Ingest Binance market data.
-    update_binance_market_data(
-        db_path=db_path,
-        symbols=symbols,
-        data_types=data_types,
-        start_date=start_date,
-        end_date=end_date,
-        interval=interval,
-        max_concurrent_klines=20,  # Optimal S3 performance for high-frequency data
-        max_concurrent_metrics=100,  # Higher for daily open_interest (365 files/year)
-        max_concurrent_funding=50,  # Higher for monthly funding_rates (12 files/year)
-        failure_threshold=3,  # Stop after 3 consecutive missing months
-        repair_gaps_via_api=repair_gaps_via_api,
-        prune_klines_to_date_range=True,
-    )
+    market_data_kwargs = {
+        "db_path": db_path,
+        "symbols": symbols,
+        "data_types": data_types,
+        "start_date": start_date,
+        "end_date": end_date,
+        "interval": interval,
+        "max_concurrent_klines": 20,  # Optimal S3 performance for high-frequency data
+        "max_concurrent_metrics": 100,  # Higher for daily open_interest (365 files/year)
+        "max_concurrent_funding": 50,  # Higher for monthly funding_rates (12 files/year)
+        "failure_threshold": 3,  # Stop after 3 consecutive missing months
+        "repair_gaps_via_api": repair_gaps_via_api,
+        "prune_klines_to_date_range": True,
+    }
+    if import_anomaly_report_path is not None:
+        market_data_kwargs["import_anomaly_report_path"] = import_anomaly_report_path
+    update_binance_market_data(**market_data_kwargs)
 
     logger.info("")
     logger.info("=" * 60)

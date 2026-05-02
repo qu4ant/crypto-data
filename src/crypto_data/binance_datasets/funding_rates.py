@@ -15,6 +15,7 @@ import pandera.pandas as pa
 
 from crypto_data.binance_datasets.base import BinanceDatasetStrategy, Period
 from crypto_data.enums import DataType
+from crypto_data.import_anomalies import ImportAnomaly
 from crypto_data.schemas import FUNDING_RATES_SCHEMA
 from crypto_data.tables import FUNDING_RATES_COLUMNS, get_table_spec
 from crypto_data.utils.dates import generate_month_list
@@ -144,6 +145,15 @@ class BinanceFundingRatesDataset(BinanceDatasetStrategy):
         return f"{symbol}-fundingRate-{period.value}.zip"
 
     def parse_csv(self, csv_path: Path, symbol: str) -> pd.DataFrame:
+        """Parse a funding rate CSV file into a DataFrame ready for database import."""
+        df, _ = self.parse_csv_with_anomalies(csv_path, symbol)
+        return df
+
+    def parse_csv_with_anomalies(
+        self,
+        csv_path: Path,
+        symbol: str,
+    ) -> tuple[pd.DataFrame, list[ImportAnomaly]]:
         """
         Parse a funding rate CSV file into a DataFrame ready for database import.
 
@@ -181,13 +191,13 @@ class BinanceFundingRatesDataset(BinanceDatasetStrategy):
         df["symbol"] = symbol
 
         # Convert timestamp: calc_time >= 5e12 means microseconds, otherwise milliseconds
-        calc_time = df["calc_time"]
+        calc_time = pd.to_numeric(df["calc_time"], errors="raise")
         if (calc_time >= 5e12).any():
-            # Microseconds (16+ digits) - divide by 1,000,000
-            df["timestamp"] = pd.to_datetime(calc_time / 1_000_000, unit="s")
+            # Microseconds (16+ digits)
+            df["timestamp"] = pd.to_datetime(calc_time.astype("int64"), unit="us")
         else:
-            # Milliseconds (13 digits) - divide by 1,000
-            df["timestamp"] = pd.to_datetime(calc_time / 1_000, unit="s")
+            # Milliseconds (13 digits)
+            df["timestamp"] = pd.to_datetime(calc_time.astype("int64"), unit="ms")
 
         # Rename last_funding_rate to funding_rate
         df = df.rename(columns={"last_funding_rate": "funding_rate"})
@@ -195,12 +205,21 @@ class BinanceFundingRatesDataset(BinanceDatasetStrategy):
         # Select final columns
         df = df[FINAL_COLUMNS]
 
+        anomalies: list[ImportAnomaly] = []
+
         # Drop duplicates on primary key columns, but make the data issue visible.
         key_columns = ["exchange", "symbol", "timestamp"]
         before_dedup = len(df)
         df = df.drop_duplicates(subset=key_columns)
         dropped = before_dedup - len(df)
         if dropped:
+            anomalies.append(
+                ImportAnomaly(
+                    check_name="import_dropped_duplicate_rows",
+                    count=dropped,
+                    metadata={"primary_key": key_columns},
+                )
+            )
             logger.warning(
                 "Dropped %s duplicate funding rate rows for %s on key %s",
                 dropped,
@@ -208,4 +227,4 @@ class BinanceFundingRatesDataset(BinanceDatasetStrategy):
                 key_columns,
             )
 
-        return df
+        return df, anomalies

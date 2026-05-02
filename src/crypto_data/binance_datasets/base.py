@@ -16,6 +16,7 @@ import pandas as pd
 import pandera.pandas as pa
 
 from crypto_data.enums import DataType
+from crypto_data.import_anomalies import ImportAnomaly
 
 
 @dataclass
@@ -261,3 +262,11 @@ class BinanceDatasetStrategy(ABC):
             Parsed DataFrame with all required columns
         """
         ...
+
+    def parse_csv_with_anomalies(
+        self,
+        csv_path: Path,
+        symbol: str,
+    ) -> tuple[pd.DataFrame, list[ImportAnomaly]]:
+        """Parse CSV data and return non-blocking import anomaly counters."""
+        return self.parse_csv(csv_path, symbol), []

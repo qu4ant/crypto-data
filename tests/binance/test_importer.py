@@ -127,6 +127,23 @@ def klines_zip(tmp_path):
 
 
 @pytest.fixture
+def klines_zip_with_duplicate_rows(tmp_path):
+    """Create a kline ZIP whose CSV contains duplicate primary-key rows."""
+    csv_content = """1704067199999,42000.0,42100.0,41900.0,42050.0,100.5,1704067199999,4215000.0,500,50.2,2107500.0,0
+1704067199999,42000.0,42100.0,41900.0,42050.0,100.5,1704067199999,4215000.0,500,50.2,2107500.0,0"""
+
+    csv_path = tmp_path / "BTCUSDT-5m-duplicate-2024-01.csv"
+    csv_path.write_text(csv_content)
+
+    zip_path = tmp_path / "BTCUSDT-5m-duplicate-2024-01.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.write(csv_path, csv_path.name)
+
+    csv_path.unlink()
+    return zip_path
+
+
+@pytest.fixture
 def klines_zip_with_header(tmp_path):
     """Create a test ZIP file with klines CSV data (with header)."""
     # Note: using 'count' (renamed to trades_count) and taker_buy_base_volume
@@ -235,6 +252,19 @@ class TestBinanceDuckDBImporterKlines:
         # Verify interval column
         result = db_conn_spot.execute("SELECT DISTINCT interval FROM spot").fetchone()
         assert result[0] == "5m"
+
+    def test_duplicate_csv_rows_are_reported(self, db_conn_spot, klines_zip_with_duplicate_rows):
+        """Duplicate rows dropped before insert are exposed as import anomalies."""
+        dataset = BinanceKlinesDataset(DataType.SPOT, Interval.MIN_5)
+        importer = BinanceDuckDBImporter(dataset)
+
+        db_conn_spot.execute("BEGIN TRANSACTION")
+        rows = importer.import_file(db_conn_spot, klines_zip_with_duplicate_rows, "BTCUSDT")
+        db_conn_spot.execute("COMMIT")
+
+        assert rows == 1
+        assert importer.last_import_anomalies[0]["check_name"] == "import_dropped_duplicate_rows"
+        assert importer.last_import_anomalies[0]["count"] == 1
 
     def test_import_spot_klines_with_header(self, db_conn_spot, klines_zip_with_header):
         """Test importing spot klines CSV with header (auto-detect)."""
@@ -427,6 +457,11 @@ class TestBinanceDuckDBImporterOpenInterest:
 
         # Only 2 rows (the one with 0 is filtered)
         assert rows == 2
+        assert (
+            importer.last_import_anomalies[0]["check_name"]
+            == "import_dropped_zero_open_interest_rows"
+        )
+        assert importer.last_import_anomalies[0]["count"] == 1
 
     def test_symbol_override(self, db_conn_open_interest, open_interest_zip):
         """Test that symbol is overridden (for 1000-prefix normalization)."""

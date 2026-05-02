@@ -16,6 +16,7 @@ import pandera.pandas as pa
 
 from crypto_data.binance_datasets.base import BinanceDatasetStrategy, Period
 from crypto_data.enums import DataType, Interval
+from crypto_data.import_anomalies import ImportAnomaly
 from crypto_data.schemas import OHLCV_SCHEMA
 from crypto_data.tables import KLINE_TABLE_COLUMNS, get_table_spec
 from crypto_data.utils.dates import generate_day_list, generate_month_list
@@ -251,6 +252,15 @@ class BinanceKlinesDataset(BinanceDatasetStrategy):
         return f"{symbol}-{self._data_type.value}-{interval_str}-{period.value}.zip"
 
     def parse_csv(self, csv_path: Path, symbol: str) -> pd.DataFrame:
+        """Parse a klines CSV file into a DataFrame ready for database import."""
+        df, _ = self.parse_csv_with_anomalies(csv_path, symbol)
+        return df
+
+    def parse_csv_with_anomalies(
+        self,
+        csv_path: Path,
+        symbol: str,
+    ) -> tuple[pd.DataFrame, list[ImportAnomaly]]:
         """
         Parse a klines CSV file into a DataFrame ready for database import.
 
@@ -314,12 +324,21 @@ class BinanceKlinesDataset(BinanceDatasetStrategy):
         # Select and order final columns
         df = df[FINAL_COLUMNS]
 
+        anomalies: list[ImportAnomaly] = []
+
         # Drop duplicates on primary key columns, but make the data issue visible.
         key_columns = ["exchange", "symbol", "interval", "timestamp"]
         before_dedup = len(df)
         df = df.drop_duplicates(subset=key_columns)
         dropped = before_dedup - len(df)
         if dropped:
+            anomalies.append(
+                ImportAnomaly(
+                    check_name="import_dropped_duplicate_rows",
+                    count=dropped,
+                    metadata={"primary_key": key_columns},
+                )
+            )
             logger.warning(
                 "Dropped %s duplicate kline rows for %s %s on key %s",
                 dropped,
@@ -328,4 +347,4 @@ class BinanceKlinesDataset(BinanceDatasetStrategy):
                 key_columns,
             )
 
-        return df
+        return df, anomalies

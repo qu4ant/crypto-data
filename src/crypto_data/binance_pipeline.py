@@ -28,6 +28,10 @@ from crypto_data.completeness import (
 )
 from crypto_data.database import CryptoDatabase
 from crypto_data.enums import DataType, Interval
+from crypto_data.import_anomalies import (
+    append_import_anomaly_jsonl,
+    default_import_anomaly_report_path,
+)
 from crypto_data.tables import is_kline_table
 from crypto_data.utils.dates import parse_date_range
 from crypto_data.utils.ingestion_helpers import initialize_ingestion_stats, log_ingestion_summary
@@ -84,6 +88,7 @@ def _process_results(
     symbol: str,
     window_start: datetime | None = None,
     window_end: datetime | None = None,
+    import_anomaly_report_path: Path | None = None,
 ) -> None:
     """
     Process download results: import to DB, update stats, cleanup.
@@ -120,6 +125,10 @@ def _process_results(
                     window_end=window_end,
                 )
                 conn.execute("COMMIT")
+                append_import_anomaly_jsonl(
+                    import_anomaly_report_path,
+                    getattr(importer, "last_import_anomalies", []),
+                )
                 stats["downloaded"] += 1
                 logger.debug(f"    Imported {result.period}")
 
@@ -159,6 +168,7 @@ async def _ingest_symbol_data_type(
     failure_threshold: int,
     window_start: datetime | None = None,
     window_end: datetime | None = None,
+    import_anomaly_report_path: Path | None = None,
 ) -> None:
     """
     Ingest a single symbol + data_type combination.
@@ -252,6 +262,7 @@ async def _ingest_symbol_data_type(
         symbol,
         window_start=window_start,
         window_end=window_end,
+        import_anomaly_report_path=import_anomaly_report_path,
     )
 
 
@@ -270,6 +281,7 @@ async def _run_all_ingestion(
     failure_threshold: int,
     window_start: datetime | None = None,
     window_end: datetime | None = None,
+    import_anomaly_report_path: Path | None = None,
 ) -> None:
     """
     Run all ingestion tasks in a single event loop.
@@ -331,6 +343,7 @@ async def _run_all_ingestion(
                 failure_threshold=failure_threshold,
                 window_start=window_start if is_kline else None,
                 window_end=window_end if is_kline else None,
+                import_anomaly_report_path=import_anomaly_report_path,
             )
 
 
@@ -347,6 +360,7 @@ def update_binance_market_data(
     failure_threshold: int = 3,
     repair_gaps_via_api: bool = False,
     prune_klines_to_date_range: bool = False,
+    import_anomaly_report_path: str | Path | None = None,
 ) -> None:
     """
     Download Binance market data and import it into DuckDB.
@@ -385,6 +399,9 @@ def update_binance_market_data(
         When True, remove existing spot/futures rows for the requested symbols
         and interval whose close timestamps fall outside start_date/end_date.
         This is intended for exact database rebuild workflows.
+    import_anomaly_report_path : str or Path, optional
+        JSONL sidecar path for non-blocking import anomalies. Defaults to
+        logs/{db_stem}_import_anomalies.jsonl.
 
     Examples
     --------
@@ -409,6 +426,11 @@ def update_binance_market_data(
     # Initialize stats
     stats = initialize_ingestion_stats()
     window_start, window_end = _kline_close_window(start, end)
+    anomaly_path = (
+        default_import_anomaly_report_path(db_path)
+        if import_anomaly_report_path is None
+        else Path(import_anomaly_report_path)
+    )
 
     if prune_klines_to_date_range:
         _prune_klines_outside_date_range(
@@ -442,6 +464,7 @@ def update_binance_market_data(
                     failure_threshold=failure_threshold,
                     window_start=window_start,
                     window_end=window_end,
+                    import_anomaly_report_path=anomaly_path,
                 ),
                 "update_binance_market_data",
             )
